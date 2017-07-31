@@ -146,7 +146,7 @@ struct Directive_t {
 //! Basic callback interface for constructing a logic program.
 class AbstractProgram {
 public:
-	virtual ~AbstractProgram();
+	virtual ~AbstractProgram() = default;
 	//! Called once to prepare for a new logic program.
 	virtual void initProgram(bool incremental);
 	//! Called once before rules and directives of the current program step are added.

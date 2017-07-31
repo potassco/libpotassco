@@ -283,7 +283,7 @@ public:
 	//! Interface for visiting a theory.
 	class Visitor {
 	public:
-		virtual ~Visitor();
+		virtual ~Visitor() = default;
 		//! Visit a theory term. Should call data.accept(t, *this) to visit any arguments of the term.
 		virtual void visit(const TheoryData& data, Id_t termId, const TheoryTerm& t) = 0;
 		//! Visit a theory element. Should call data.accept(e, *this) to visit the terms of the element.

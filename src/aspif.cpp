@@ -41,7 +41,6 @@ struct AspifInput::Extra {
 	std::string       sym;
 };
 AspifInput::AspifInput(AbstractProgram& out) : out_(out), rule_(nullptr), data_(nullptr) {}
-AspifInput::~AspifInput() {  }
 
 bool AspifInput::doAttach(bool& inc) {
 	if (!match("asp ")) { return false; }

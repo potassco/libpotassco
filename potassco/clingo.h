@@ -62,7 +62,7 @@ class AbstractAssignment {
 public:
 	typedef Potassco::Value_t Value_t;
 	typedef Potassco::Lit_t   Lit_t;
-	virtual ~AbstractAssignment();
+	virtual ~AbstractAssignment() = default;
 	//! Returns the number of variables in the assignment.
 	virtual uint32_t size()            const = 0;
 	//! Returns the number of unassigned variables in the assignment.
@@ -96,7 +96,7 @@ public:
 class AbstractSolver {
 public:
 	typedef Potassco::Lit_t Lit;
-	virtual ~AbstractSolver();
+	virtual ~AbstractSolver() = default;
 	//! Returns the id of the solver that is associated with this object.
 	virtual Id_t id() const = 0;
 	//! Returns the current assignment of the solver.
@@ -155,7 +155,7 @@ class AbstractPropagator {
 public:
 	//! Type for representing a set of literals that have recently changed.
 	typedef Potassco::LitSpan ChangeList;
-	virtual ~AbstractPropagator();
+	virtual ~AbstractPropagator() = default;
 	//! Shall propagate the newly assigned literals given in changes.
 	virtual void propagate(AbstractSolver& solver,  const ChangeList& changes) = 0;
 	//! May update internal state of the newly unassigned literals given in undo.
@@ -175,7 +175,7 @@ public:
 	//! Opaque type for representing (sub) keys.
 	typedef uint64_t Key_t;
 
-	virtual ~AbstractStatistics();
+	virtual ~AbstractStatistics() = default;
 
 	//! Returns the root key of this statistic object.
 	virtual Key_t        root()         const = 0;

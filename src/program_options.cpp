@@ -230,7 +230,6 @@ bool Option::assignDefault() const {
 // class OptionGroup
 ///////////////////////////////////////////////////////////////////////////////
 OptionGroup::OptionGroup(const std::string& caption, DescriptionLevel hl) : caption_(caption), level_(hl) {}
-OptionGroup::~OptionGroup() {}
 
 OptionInitHelper OptionGroup::addOptions() {
 	return OptionInitHelper(*this);
@@ -312,8 +311,7 @@ OptionContext::OptionContext(const std::string& cap, DescriptionLevel def)
 	: caption_(cap)
 	, descLevel_(def) {
 }
-OptionContext::~OptionContext() {
-}
+OptionContext::~OptionContext() = default;
 const std::string& OptionContext::caption() const {
 	return caption_;
 }
@@ -570,14 +568,13 @@ OptionParser::OptionParser(ParseContext& o)
 	: ctx_(&o) {
 }
 
-OptionParser::~OptionParser() {
-}
+OptionParser::~OptionParser() = default;
 
 ParseContext& OptionParser::parse() {
 	doParse();
 	return *ctx_;
 }
-ParseContext::~ParseContext() {}
+ParseContext::~ParseContext() = default;
 namespace {
 ///////////////////////////////////////////////////////////////////////////////
 // class CommandLineParser

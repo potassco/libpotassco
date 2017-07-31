@@ -43,7 +43,7 @@ public:
 		invalid_format
 	};
 	SyntaxError(Type t, const std::string& key);
-	~SyntaxError() throw () override {}
+	~SyntaxError() throw () override = default;
 	Type               type() const { return type_; }
 	const std::string& key()  const { return key_; }
 private:
@@ -61,7 +61,7 @@ public:
 		unknown_group
 	};
 	ContextError(const std::string& ctx, Type t, const std::string& key, const std::string& desc = "");
-	~ContextError() throw () override {}
+	~ContextError() throw () override = default;
 	Type               type() const { return type_; }
 	const std::string& key()  const { return key_; }
 	const std::string& ctx()  const { return ctx_; }
@@ -74,17 +74,17 @@ private:
 class DuplicateOption : public ContextError {
 public:
 	DuplicateOption(const std::string& ctx, const std::string& key) : ContextError(ctx, ContextError::duplicate_option, key) {}
-	~DuplicateOption() throw () override {}
+	~DuplicateOption() throw () override = default;
 };
 class UnknownOption : public ContextError {
 public:
 	UnknownOption(const std::string& ctx, const std::string& key) : ContextError(ctx, ContextError::unknown_option, key) {}
-	~UnknownOption() throw () override {}
+	~UnknownOption() throw () override = default;
 };
 class AmbiguousOption : public ContextError {
 public:
 	AmbiguousOption(const std::string& ctx, const std::string& key, const std::string& alt) : ContextError(ctx, ContextError::ambiguous_option, key, alt) {}
-	~AmbiguousOption() throw () override {}
+	~AmbiguousOption() throw () override = default;
 };
 
 //! Used for signaling validation errors when trying to assign option values.
@@ -96,7 +96,7 @@ public:
 		invalid_value
 	};
 	ValueError(const std::string& ctx, Type t, const std::string& opt, const std::string& value);
-	~ValueError() throw () override {}
+	~ValueError() throw () override = default;
 	Type               type() const { return type_; }
 	const std::string& key()  const { return key_; }
 	const std::string& ctx()  const { return ctx_; }

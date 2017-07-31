@@ -69,7 +69,7 @@ struct ValueMapping : ValueMappingBase {
 		return false;
 	}
 private:
-	ValueMapping() {}
+	ValueMapping() = default;
 };
 template <class T> ValueMapping<T>& values() { return ValueMapping<T>::instance(); }
 ///////////////////////////////////////////////////////////////////////////////

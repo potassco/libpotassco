@@ -97,7 +97,7 @@ public:
 	 * Creates a new group of options under the given caption.
 	 */
 	OptionGroup(const std::string& caption = "", DescriptionLevel descLevel = desc_level_default);
-	~OptionGroup();
+	~OptionGroup() = default;
 
 	//! Returns the caption of this group.
 	const std::string& caption() const { return caption_; }
@@ -387,8 +387,8 @@ struct DefaultFormat {
 //! Base class for printing options.
 class OptionOutput {
 public:
-	OptionOutput() {}
-	virtual ~OptionOutput() {}
+	OptionOutput() = default;
+	virtual ~OptionOutput() = default;
 	virtual bool printContext(const OptionContext& ctx) = 0;
 	virtual bool printGroup(const OptionGroup& group) = 0;
 	virtual bool printOption(const Option& opt, std::size_t maxW) = 0;

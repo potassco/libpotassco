@@ -33,7 +33,7 @@ namespace Potassco {
 //! Interface representing an smodels-style symbol table.
 class AtomTable {
 public:
-	virtual ~AtomTable();
+	virtual ~AtomTable() = default;
 	//! Associate a name with the given (output) atom.
 	virtual void   add(Atom_t id, const StringSpan& name, bool output) = 0;
 	//! Return the atom with the given name or 0 if no such atom was previously added.

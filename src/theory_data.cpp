@@ -355,7 +355,6 @@ void TheoryData::accept(const TheoryAtom& a, Visitor& out, VisitMode m) const {
 	if (a.guard() && doVisitTerm(m, *a.guard())) { out.visit(*this, *a.guard(), getTerm(*a.guard())); }
 	if (a.rhs() && doVisitTerm(m, *a.rhs()))     { out.visit(*this, *a.rhs(),   getTerm(*a.rhs())); }
 }
-TheoryData::Visitor::~Visitor() {}
 StringSpan toSpan(const char* x) {
 	return Potassco::toSpan(x, std::strlen(x));
 }

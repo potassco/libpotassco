@@ -49,7 +49,7 @@ namespace Potassco { namespace ProgramOptions {
 class ValueMap {
 public:
 	ValueMap() {}
-	~ValueMap() {}
+	~ValueMap() = default;
 	bool               empty() const { return map_.empty(); }
 	size_t             size()  const { return map_.size(); }
 	size_t             count(const std::string& name) const { return map_.count(name); }

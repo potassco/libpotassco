@@ -40,7 +40,7 @@ class AspifInput : public ProgramReader {
 public:
 	//! Creates a new parser object that calls out on each parsed element.
 	AspifInput(AbstractProgram& out);
-	~AspifInput() override;
+	~AspifInput() override = default;
 protected:
 	//! Checks whether stream starts with aspif header.
 	bool doAttach(bool& inc) override;

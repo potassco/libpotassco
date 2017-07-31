@@ -30,7 +30,6 @@
 #include <algorithm>
 #include <cstdio>
 namespace Potassco {
-AbstractProgram::~AbstractProgram() {}
 void AbstractProgram::initProgram(bool) {}
 void AbstractProgram::beginStep() {}
 void AbstractProgram::project(const AtomSpan&) { throw std::logic_error("projection directive not supported"); }

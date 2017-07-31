@@ -275,7 +275,7 @@ string& xconvert(string& out, double d) {
 	return (StringBuilder(out).append(d), out);
 }
 
-bad_string_cast::~bad_string_cast() throw() {}
+bad_string_cast::~bad_string_cast() throw() = default;
 const char* bad_string_cast::what() const throw() { return "bad_string_cast"; }
 
 StringBuilder::StringBuilder() {
