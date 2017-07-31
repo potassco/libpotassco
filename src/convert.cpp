@@ -180,7 +180,7 @@ unsigned SmodelsConvert::maxAtom() const {
 }
 const char* SmodelsConvert::getName(Atom_t a) const {
 	SymTab::iterator it = data_->symTab_.find(a);
-	return it != data_->symTab_.end() ? it->second : 0;
+	return it != data_->symTab_.end() ? it->second : nullptr;
 }
 Atom_t SmodelsConvert::makeAtom(const LitSpan& cond, bool named) {
 	Atom_t id = 0;
@@ -291,7 +291,7 @@ void SmodelsConvert::flushHeuristic() {
 		const SmData::Heuristic& heu = *it;
 		if (!data_->mapped(heu.atom)) { continue; }
 		SmData::Atom& ma = data_->mapAtom(heu.atom);
-		const char* name = ma.show ? getName(ma.smId) : 0;
+		const char* name = ma.show ? getName(ma.smId) : nullptr;
 		if (!name) {
 			ma.show = 1;
 			buf.clear();

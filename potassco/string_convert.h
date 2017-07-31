@@ -113,16 +113,16 @@ template <class T>          struct is_same<T, T> { enum { value = 1 }; };
 // primitive parser
 ///////////////////////////////////////////////////////////////////////////////
 template <class T>
-int xconvert(const char* x, T& out, const char** errPos = 0, double = 0);
-int xconvert(const char* x, bool& out, const char** errPos = 0, int = 0);
-int xconvert(const char* x, char& out, const char** errPos = 0, int = 0);
-int xconvert(const char* x, unsigned& out, const char** errPos = 0, int = 0);
-int xconvert(const char* x, int& out, const char** errPos = 0, int = 0);
-int xconvert(const char* x, long& out, const char** errPos = 0, int = 0);
-int xconvert(const char* x, unsigned long& out, const char** errPos = 0, int = 0);
-int xconvert(const char* x, double& out, const char** errPos = 0, int = 0);
-int xconvert(const char* x, const char*& out, const char** errPos = 0, int = 0);
-int xconvert(const char* x, std::string& out, const char** errPos = 0, int sep = 0);
+int xconvert(const char* x, T& out, const char** errPos = nullptr, double = 0);
+int xconvert(const char* x, bool& out, const char** errPos = nullptr, int = 0);
+int xconvert(const char* x, char& out, const char** errPos = nullptr, int = 0);
+int xconvert(const char* x, unsigned& out, const char** errPos = nullptr, int = 0);
+int xconvert(const char* x, int& out, const char** errPos = nullptr, int = 0);
+int xconvert(const char* x, long& out, const char** errPos = nullptr, int = 0);
+int xconvert(const char* x, unsigned long& out, const char** errPos = nullptr, int = 0);
+int xconvert(const char* x, double& out, const char** errPos = nullptr, int = 0);
+int xconvert(const char* x, const char*& out, const char** errPos = nullptr, int = 0);
+int xconvert(const char* x, std::string& out, const char** errPos = nullptr, int sep = 0);
 template <class T>
 typename detail::enable_if<detail::type_check<EnumClass(*)(), &T::enumClass>::value, int>::type
 xconvert(const char* x, T& out, const char** errPos, int e = 0) {
@@ -148,8 +148,8 @@ xconvert(std::string& out, T x) {
 	return out.append(key, len);
 }
 #if defined(LLONG_MAX)
-int xconvert(const char* x, long long& out, const char** errPos = 0, int = 0);
-int xconvert(const char* x, unsigned long long& out, const char** errPos = 0, int = 0);
+int xconvert(const char* x, long long& out, const char** errPos = nullptr, int = 0);
+int xconvert(const char* x, unsigned long long& out, const char** errPos = nullptr, int = 0);
 std::string& xconvert(std::string&, long long x);
 std::string& xconvert(std::string&, unsigned long long x);
 #endif
@@ -158,11 +158,11 @@ std::string& xconvert(std::string&, unsigned long long x);
 ///////////////////////////////////////////////////////////////////////////////
 const int def_sep = int(',');
 template <class T>
-int xconvert(const char* x, std::vector<T>& out, const char** errPos = 0, int sep = def_sep);
+int xconvert(const char* x, std::vector<T>& out, const char** errPos = nullptr, int sep = def_sep);
 
 // parses T[,U] optionally enclosed in parentheses
 template <class T, class U>
-int xconvert(const char* x, std::pair<T, U>& out, const char** errPos = 0, int sep = def_sep) {
+int xconvert(const char* x, std::pair<T, U>& out, const char** errPos = nullptr, int sep = def_sep) {
 	if (!x) { return 0; }
 	if (sep == 0) { sep = def_sep; }
 	std::pair<T, U> temp(out);
@@ -183,7 +183,7 @@ int xconvert(const char* x, std::pair<T, U>& out, const char** errPos = 0, int s
 }
 // parses T1 [, ..., Tn] optionally enclosed in brackets
 template <class T, class OutIt>
-std::size_t convert_seq(const char* x, std::size_t maxLen, OutIt out, char sep, const char** errPos = 0) {
+std::size_t convert_seq(const char* x, std::size_t maxLen, OutIt out, char sep, const char** errPos = nullptr) {
 	if (!x) { return 0; }
 	const char* n = x;
 	std::size_t t = 0;
@@ -212,7 +212,7 @@ int xconvert(const char* x, std::vector<T>& out, const char** errPos, int sep) {
 	return static_cast<int>(t);
 }
 template <class T, int sz>
-int xconvert(const char* x, T(&out)[sz], const char** errPos = 0, int sep = 0) {
+int xconvert(const char* x, T(&out)[sz], const char** errPos = nullptr, int sep = 0) {
 	return static_cast<int>(convert_seq<T>(x, sz, out, static_cast<char>(sep ? sep : def_sep), errPos));
 }
 template <class T, class U>

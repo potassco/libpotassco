@@ -98,8 +98,8 @@ bool TheoryTerm::isTuple()    const { return type() == Theory_t::Compound && fun
 Id_t TheoryTerm::function()   const { POTASSCO_REQUIRE(isFunction(), "Term is not a function"); return static_cast<Id_t>(func()->base); }
 Tuple_t TheoryTerm::tuple()   const { POTASSCO_REQUIRE(isTuple(), "Term is not a tuple"); return static_cast<Tuple_t>(func()->base); }
 uint32_t TheoryTerm::size()   const { return type() == Theory_t::Compound ? func()->size : 0; }
-TheoryTerm::iterator TheoryTerm::begin() const { return type() == Theory_t::Compound ? func()->args : 0; }
-TheoryTerm::iterator TheoryTerm::end()   const { return type() == Theory_t::Compound ? func()->args + func()->size : 0; }
+TheoryTerm::iterator TheoryTerm::begin() const { return type() == Theory_t::Compound ? func()->args : nullptr; }
+TheoryTerm::iterator TheoryTerm::end()   const { return type() == Theory_t::Compound ? func()->args + func()->size : nullptr; }
 
 TheoryElement::TheoryElement(const IdSpan& terms, Id_t c) : nTerms_(static_cast<uint32_t>(Potassco::size(terms))), nCond_(c != 0) {
 	std::memcpy(term_, Potassco::begin(terms), nTerms_ * sizeof(Id_t));
@@ -125,7 +125,7 @@ void TheoryElement::setCondition(Id_t c) {
 
 TheoryAtom::TheoryAtom(Id_t a, Id_t term, const IdSpan& args, Id_t* op, Id_t* rhs)
 	: atom_(a)
-	, guard_(op != 0)
+	, guard_(op != nullptr)
 	, termId_(term)
 	, nTerms_(static_cast<uint32_t>(Potassco::size(args))) {
 	std::memcpy(term_, Potassco::begin(args), nTerms_ * sizeof(Id_t));
@@ -136,7 +136,7 @@ TheoryAtom::TheoryAtom(Id_t a, Id_t term, const IdSpan& args, Id_t* op, Id_t* rh
 }
 
 TheoryAtom* TheoryAtom::newAtom(Id_t a, Id_t term, const IdSpan& args) {
-	return new (::operator new(nBytes<TheoryAtom>(args))) TheoryAtom(a, term, args, 0, 0);
+	return new (::operator new(nBytes<TheoryAtom>(args))) TheoryAtom(a, term, args, nullptr, nullptr);
 }
 TheoryAtom* TheoryAtom::newAtom(Id_t a, Id_t term, const IdSpan& args, Id_t op, Id_t rhs) {
 	std::size_t nb = nBytes<TheoryAtom>(args) + (2*sizeof(Id_t));
@@ -149,10 +149,10 @@ void TheoryAtom::destroy(TheoryAtom* a) {
 	}
 }
 const Id_t* TheoryAtom::guard() const {
-	return guard_ != 0 ? &term_[nTerms_] : 0;
+	return guard_ != 0 ? &term_[nTerms_] : nullptr;
 }
 const Id_t* TheoryAtom::rhs() const {
-	return guard_ != 0 ? &term_[nTerms_ + 1] : 0;
+	return guard_ != 0 ? &term_[nTerms_ + 1] : nullptr;
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // TheoryData
@@ -316,7 +316,7 @@ bool TheoryData::isNewTerm(Id_t id) const {
 	return hasTerm(id) && id >= data_->frame.term;
 }
 bool TheoryData::hasElement(Id_t id) const {
-	return id < numElems() && elems()[id] != 0;
+	return id < numElems() && elems()[id] != nullptr;
 }
 bool TheoryData::isNewElement(Id_t id) const {
 	return hasElement(id) && id >= data_->frame.elem;

@@ -107,7 +107,7 @@ public:
 	/*!
 	 * Once end() was called, the active rule is considered frozen.
    */
-	RuleBuilder& end(AbstractProgram* out = 0);
+	RuleBuilder& end(AbstractProgram* out = nullptr);
 	//! Discard active rule and unfreeze builder.
 	RuleBuilder& clear();
 	//! Discard body of active rule but keep head if any.

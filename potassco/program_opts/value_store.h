@@ -50,7 +50,7 @@ public:
 	template <class T>
 	ValueStore(const T& obj)
 		: vptr_(detail::vtable(static_cast<const T*>(0)))
-		, value_(0) {
+		, value_(nullptr) {
 		clone(&obj, &value_);
 	}
 	//! releases any stored value
@@ -77,7 +77,7 @@ public:
 	//! swaps this with other
 	void   swap(ValueStore& other);
 	//! Returns true if holder does not contain a value.
-	bool   empty()       const { return vptr_ == 0; }
+	bool   empty()       const { return vptr_ == nullptr; }
 	//! Returns the type of the stored value.
 	const  std::type_info&
 		     type()        const;
@@ -89,7 +89,7 @@ public:
 	void* extract_raw() const {
 		return !empty()
 			? extract(const_cast<void**>(&value_))
-			: 0;
+			: nullptr;
 	}
 private:
 	enum { call_extract = 0, vcall_clone = 1, vcall_destroy = 2, vcall_typeid = 3 };

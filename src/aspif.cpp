@@ -40,7 +40,7 @@ struct AspifInput::Extra {
 	std::vector<Id_t> ids;
 	std::string       sym;
 };
-AspifInput::AspifInput(AbstractProgram& out) : out_(out), rule_(0), data_(0) {}
+AspifInput::AspifInput(AbstractProgram& out) : out_(out), rule_(nullptr), data_(nullptr) {}
 AspifInput::~AspifInput() {  }
 
 bool AspifInput::doAttach(bool& inc) {
@@ -120,8 +120,8 @@ bool AspifInput::doParse() {
 	}
 #undef CR
 	out_.endStep();
-	rule_ = 0;
-	data_ = 0;
+	rule_ = nullptr;
+	data_ = nullptr;
 	return true;
 }
 
@@ -139,7 +139,7 @@ void AspifInput::matchString() {
 	uint32_t len = matchPos("non-negative string length expected");
 	stream()->get();
 	data_->sym.resize(len);
-	require(stream()->copy(len ? &data_->sym[0] : static_cast<char*>(0), (int)len) == (int)len, "invalid string");
+	require(stream()->copy(len ? &data_->sym[0] : static_cast<char*>(nullptr), (int)len) == (int)len, "invalid string");
 }
 void AspifInput::matchIds() {
 	uint32_t len = matchPos("number of terms expected");

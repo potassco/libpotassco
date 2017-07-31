@@ -334,7 +334,7 @@ public:
 	typedef typename base_type::reference reference;
 	typedef typename base_type::pointer   pointer;
 	IteratorAdaptor(const TheoryData& t, const Id_t* e) : data_(&t), elem_(e) {}
-	IteratorAdaptor() : data_(0), elem_(0) {}
+	IteratorAdaptor() : data_(nullptr), elem_(nullptr) {}
 	this_type& operator++() { ++elem_; return *this; }
 	this_type  operator++(int) {
 		this_type t(*this);

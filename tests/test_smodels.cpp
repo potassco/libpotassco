@@ -206,7 +206,7 @@ TEST_CASE("SmodelsExtReader ", "[smodels][smodels_ext]") {
 		finalize(input);
 		input << "90 0\n";
 		finalize(input);
-		REQUIRE(Potassco::readSmodels(input, observer, 0, opts) == 0);
+		REQUIRE(Potassco::readSmodels(input, observer, nullptr, opts) == 0);
 		REQUIRE(observer.incremental == true);
 		REQUIRE(observer.nStep == 2);
 	}
@@ -215,7 +215,7 @@ TEST_CASE("SmodelsExtReader ", "[smodels][smodels_ext]") {
 		input << "91 3 1\n";
 		input << "91 4 2\n";
 		finalize(input);
-		REQUIRE(Potassco::readSmodels(input, observer, 0, opts) == 0);
+		REQUIRE(Potassco::readSmodels(input, observer, nullptr, opts) == 0);
 		REQUIRE(observer.rules[Rule_t::ClaspAssignExt].size() == 3);
 		REQUIRE(observer.rules[Rule_t::ClaspAssignExt][0] == RawRule({2, static_cast<int>(Value_t::False)}));
 		REQUIRE(observer.rules[Rule_t::ClaspAssignExt][1] == RawRule({3, static_cast<int>(Value_t::True)}));
@@ -225,7 +225,7 @@ TEST_CASE("SmodelsExtReader ", "[smodels][smodels_ext]") {
 		input << "91 2 0\n";
 		input << "92 2\n";
 		finalize(input);
-		REQUIRE(Potassco::readSmodels(input, observer, 0, opts) == 0);
+		REQUIRE(Potassco::readSmodels(input, observer, nullptr, opts) == 0);
 		REQUIRE(observer.rules[Rule_t::ClaspAssignExt].size() == 1);
 		REQUIRE(observer.rules[Rule_t::ClaspReleaseExt].size() == 1);
 		REQUIRE(observer.rules[Rule_t::ClaspAssignExt][0] == RawRule({2, static_cast<int>(Value_t::False)}));
@@ -556,7 +556,7 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
 		writer.output(toSpan("_edge(\"1,2\",\"2,1\")"), toSpan(&b, 1));
 		writer.output(toSpan("_edge(\"2,1\",\"1,2\")"), toSpan(&c, 1));
 		writer.endStep();
-		REQUIRE(readSmodels(str, observer, 0, opts) == 0);
+		REQUIRE(readSmodels(str, observer, nullptr, opts) == 0);
 		REQUIRE(observer.edges.size() == 3);
 		REQUIRE(observer.edges[0].cond == Vec<Lit_t>({a}));
 		REQUIRE(observer.edges[0].s == 0);
@@ -576,7 +576,7 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
 			writer.output(toSpan("_edge(4321,1234)"), toSpan(&b, 1));
 		}
 		writer.endStep();
-		REQUIRE(readSmodels(str, observer, 0, opts) == 0);
+		REQUIRE(readSmodels(str, observer, nullptr, opts) == 0);
 		REQUIRE(observer.edges.size() == 2);
 		REQUIRE(observer.edges[0].cond == Vec<Lit_t>({a}));
 		REQUIRE(observer.edges[1].cond == Vec<Lit_t>({b}));
@@ -592,7 +592,7 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
 		writer.output(toSpan("_heuristic(f(\"a,b(c,d)\"),level,-1,10)"), toSpan(&h3, 1));
 		writer.output(toSpan("_heuristic(f(\"a,b(c,d)\"),factor,2,1)"), toSpan(&h4, 1));
 		writer.endStep();
-		REQUIRE(readSmodels(str, observer, 0, opts) == 0);
+		REQUIRE(readSmodels(str, observer, nullptr, opts) == 0);
 		REQUIRE(observer.heuristics.size() == 4);
 		Heuristic exp[] ={
 			{static_cast<Atom_t>(a), Heuristic_t::Sign, -1, 1, {h1}},

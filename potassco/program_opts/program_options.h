@@ -307,7 +307,7 @@ public:
 	 *        for a non-composing option or if p contains a value that is
 	 *        invalid for its option.
 	 */
-	bool        assign(const ParsedValues& p, const ParsedOptions* exclude = 0);
+	bool        assign(const ParsedValues& p, const ParsedOptions* exclude = nullptr);
 private:
 	std::set<std::string> parsed_;
 	int assign(const Option& o, const std::string& value);
@@ -474,7 +474,7 @@ enum CommandLineFlags {
 */
 ParsedValues parseCommandLine(int& argc, char** argv, const OptionContext& ctx,
 	bool allowUnregistered = true,
-	PosOption posParser = 0, unsigned flags = 0);
+	PosOption posParser = nullptr, unsigned flags = 0);
 
 ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsigned flags = 0);
 
@@ -494,7 +494,7 @@ ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsign
 */
 ParsedValues parseCommandArray(const char* const args[], unsigned nArgs, const OptionContext& ctx,
 	bool allowUnregistered = true,
-	PosOption posParser = 0, unsigned flags = 0);
+	PosOption posParser = nullptr, unsigned flags = 0);
 
 /*!
 * Parses the command line given in the first parameter.
@@ -508,7 +508,7 @@ ParsedValues parseCommandArray(const char* const args[], unsigned nArgs, const O
 * \throw SyntaxError if command line syntax is incorrect.
 * \throw UnknownOption if an argument is found that does not match any option.
 */
-ParsedValues parseCommandString(const std::string& cmd, const OptionContext& ctx, bool allowUnreg = false, PosOption posParser = 0, unsigned flags = command_line_allow_flag_value);
+ParsedValues parseCommandString(const std::string& cmd, const OptionContext& ctx, bool allowUnreg = false, PosOption posParser = nullptr, unsigned flags = command_line_allow_flag_value);
 ParseContext& parseCommandString(const char* cmd, ParseContext& ctx, unsigned flags = command_line_allow_flag_value);
 
 /*!
