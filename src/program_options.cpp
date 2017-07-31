@@ -241,18 +241,18 @@ void OptionGroup::addOption(const SharedOptPtr& option) {
 
 std::size_t OptionGroup::maxColumn(DescriptionLevel level) const {
 	std::size_t maxW = 0;
-	for (option_iterator it = options_.begin(), end = options_.end(); it != end; ++it) {
-		if ((*it)->descLevel() <= level) {
-			maxW = std::max(maxW, (*it)->maxColumn());
+	for (auto&& opt : options_) {
+		if (opt->descLevel() <= level) {
+			maxW = std::max(maxW, opt->maxColumn());
 		}
 	}
 	return maxW;
 }
 
 void OptionGroup::format(OptionOutput& out, size_t maxW, DescriptionLevel dl) const {
-	for (option_iterator it = options_.begin(), end = options_.end(); it != end; ++it) {
-		if ((*it)->descLevel() <= dl) {
-			out.printOption(**it, maxW);
+	for (auto&& opt : options_) {
+		if (opt->descLevel() <= dl) {
+			out.printOption(*opt, maxW);
 		}
 	}
 }
@@ -332,8 +332,8 @@ OptionContext& OptionContext::add(const OptionGroup& options) {
 		k = groups_.size();
 		groups_.push_back(OptionGroup(options.caption(), options.descLevel()));
 	}
-	for (option_iterator it = options.begin(), end = options.end(); it != end; ++it) {
-		insertOption(k, *it);
+	for (auto&& opt : options) {
+		insertOption(k, opt);
 	}
 	groups_[k].setDescriptionLevel(std::min(options.descLevel(), groups_[k].descLevel()));
 	return *this;
@@ -399,8 +399,8 @@ OptionContext::PrefixRange OptionContext::findImpl(const char* key, FindType t, 
 		k += k[0];
 		k[0] = '-';
 	}
-	index_iterator it = index_.lower_bound(k);
-	index_iterator up = it;
+	auto it = index_.lower_bound(k);
+	auto up = it;
 	if (it != index_.end()) {
 		if ((it->first == k) && ((t & (find_alias|find_name)) != 0)) {
 			++up;
@@ -456,8 +456,8 @@ std::string OptionContext::defaults(std::size_t n) const {
 		// print all sub-groups followed by main group
 		for (std::size_t i = (g == 0), end = (g == 0) ? groups_.size() : 1; i < end; ++i) {
 			if (groups_[i].descLevel() <= dl) {
-				for (option_iterator it = groups_[i].begin(), oEnd = groups_[i].end(); it != oEnd; ++it) {
-					const Option& o = **it;
+				for (auto&& x : groups_[i]) {
+					const auto& o = *x;
 					if (o.value()->defaultsTo() && o.descLevel() <= dl) {
 						((((opt += "--") += o.name()) += "=") += o.value()->defaultsTo());
 						if (line + opt.size() > 78) {
@@ -483,8 +483,8 @@ std::ostream& operator<<(std::ostream& os, const OptionContext& grp) {
 }
 
 bool OptionContext::assignDefaults(const ParsedOptions& opts) const {
-	for (option_iterator it = begin(), end = this->end(); it != end; ++it) {
-		const Option& o = **it;
+	for (auto&& opt : *this) {
+		const auto& o = *opt;
 		if (opts.count(o.name()) == 0 && !o.assignDefault()) {
 			throw ValueError(caption(), ValueError::invalid_default, o.name(), o.value()->defaultsTo());
 		}
@@ -503,7 +503,7 @@ bool ParsedOptions::assign(const ParsedValues& p, const ParsedOptions* exclude) 
 		void assign(const ParsedValues& p) {
 			begin = it = p.begin();
 			// assign parsed values
-			for (ParsedValues::iterator end = p.end(); it != end; ++it) {
+			for (auto end = p.end(); it != end; ++it) {
 				const Option& o = *it->first;
 				if (ignore && ignore->count(o.name()) != 0 && !o.value()->isComposing()) {
 					continue;
@@ -514,7 +514,7 @@ bool ParsedOptions::assign(const ParsedValues& p, const ParsedOptions* exclude) 
 			}
 		}
 		~Assign() {
-			for (ParsedValues::iterator x = begin, end = this->it; x != end; ++x) {
+			for (auto x = begin, end = this->it; x != end; ++x) {
 				const Option& o = *x->first;
 				assert(o.value()->state() == Value::value_fixed || self->parsed_.count(o.name()) != 0 || ignore->count(o.name()) != 0);
 				if (o.value()->state() == Value::value_fixed) {
@@ -556,7 +556,7 @@ struct LessFirst {
 };
 } // namespace
 void ParsedValues::add(const std::string& name, const std::string& value) {
-	OptionContext::option_iterator it = ctx->tryFind(name.c_str());
+	auto it = ctx->tryFind(name.c_str());
 	if (it != ctx->end()) {
 		add(*it, value);
 	}

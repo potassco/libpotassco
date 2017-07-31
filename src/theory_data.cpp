@@ -42,7 +42,7 @@ POTASSCO_WARNING_END_RELAXED
 };
 FuncData* FuncData::newFunc(int32_t base, const IdSpan& args) {
 	std::size_t nb = nBytes<FuncData>(args);
-	FuncData* f = new (::operator new(nb)) FuncData;
+	auto  f = new (::operator new(nb)) FuncData;
 	f->base = base;
 	f->size = static_cast<uint32_t>(Potassco::size(args));
 	std::memcpy(f->args, begin(args), f->size * sizeof(Id_t));
@@ -207,7 +207,7 @@ const TheoryTerm& TheoryData::addTerm(Id_t termId, const StringSpan& name) {
 	TheoryTerm& t = setTerm(termId);
 	// Align to 4-bytes to disable false-positives from valgrind
 	// in subsequent calls to strlen etc.
-	char* buf = new char[((name.size + 1 + 3)/4) * 4];
+	auto  buf = new char[((name.size + 1 + 3)/4) * 4];
 	*std::copy(Potassco::begin(name), Potassco::end(name), buf) = 0;
 	return (t = TheoryTerm(buf));
 }

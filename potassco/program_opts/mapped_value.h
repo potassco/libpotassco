@@ -55,7 +55,7 @@ public:
 	size_t             count(const std::string& name) const { return map_.count(name); }
 	void               clear() { map_.clear(); }
 	const ValueStore& operator[](const std::string& name) const {
-		MapType::const_iterator it = map_.find(name);
+		auto it = map_.find(name);
 		if (it == map_.end()) {
 			throw UnknownOption("ValueMap", name);
 		}
@@ -63,7 +63,7 @@ public:
 	}
 	template <class T>
 	static bool add(ValueMap* this_, const std::string& name, const T* value) {
-		MapType::iterator it = this_->map_.find(name);
+		auto it = this_->map_.find(name);
 		if (it == this_->map_.end()) {
 			it = this_->map_.insert(it, MapType::value_type(name, ValueStore()));
 		}

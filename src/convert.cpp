@@ -69,8 +69,8 @@ struct SmodelsConvert::SmData {
 	SmData() : next_(2) {}
 	~SmData() {
 		flushStep();
-		for (SymTab::iterator it = symTab_.begin(), end = symTab_.end(); it != end; ++it) {
-			delete [] it->second;
+		for (auto&& sym : symTab_) {
+			delete [] sym.second;
 		}
 	}
 	Atom_t newAtom()   { return next_++; }
@@ -156,7 +156,7 @@ AtomSpan SmodelsConvert::SmData::mapHead(const AtomSpan& h) {
 	return toSpan(head_);
 }
 const char* SmodelsConvert::SmData::addOutput(Atom_t atom, const StringSpan& str, bool addHash) {
-	char* n = new char[str.size + 1];
+	auto  n = new char[str.size + 1];
 	*std::copy(begin(str), end(str), n) = 0;
 	Symbol s; s.atom = atom; s.name = n; s.hash = 0;
 	if (addHash && symTab_.insert(SymTab::value_type(atom, s.name)).second) {
@@ -179,7 +179,7 @@ unsigned SmodelsConvert::maxAtom() const {
 	return data_->next_ - 1;
 }
 const char* SmodelsConvert::getName(Atom_t a) const {
-	SymTab::iterator it = data_->symTab_.find(a);
+	auto it = data_->symTab_.find(a);
 	return it != data_->symTab_.end() ? it->second : nullptr;
 }
 Atom_t SmodelsConvert::makeAtom(const LitSpan& cond, bool named) {
@@ -261,8 +261,8 @@ void SmodelsConvert::endStep() {
 	out_.endStep();
 }
 void SmodelsConvert::flushMinimize() {
-	for (SmData::MinMap::iterator it = data_->minimize_.begin(), end = data_->minimize_.end(); it != end; ++it) {
-		out_.minimize(it->first, data_->mapLits(toSpan(it->second), data_->wlits_));
+	for (auto&& lit : data_->minimize_) {
+		out_.minimize(lit.first, data_->mapLits(toSpan(lit.second), data_->wlits_));
 	}
 }
 void SmodelsConvert::flushExternal() {

@@ -47,8 +47,8 @@ struct ValueMappingBase : private std::vector<std::pair<const char*, int> > {
 	using base_type::empty;
 	void       add(const char* strVal, int eVal) { push_back(value_type(strVal, eVal)); }
 	const int* get(const char* strVal) const {
-		for (const_iterator it = begin(), end = this->end(); it != end; ++it) {
-			if (strcasecmp(strVal, it->first) == 0) { return &it->second; }
+		for (auto&& p : *this) {
+			if (strcasecmp(strVal, p.first) == 0) { return &p.second; }
 		}
 		return nullptr;
 	}

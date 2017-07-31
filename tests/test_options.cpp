@@ -186,7 +186,7 @@ TEST_CASE("Test option groups", "[options]") {
 	REQUIRE_THROWS_AS(ctx.findGroup("Foo"), Po::ContextError);
 	const Po::OptionGroup& x1 = ctx.findGroup(g1.caption());
 	REQUIRE(x1.size() == g1.size());
-	for (Po::OptionGroup::option_iterator gIt = g1.begin(), xIt = x1.begin(); gIt != g1.end(); ++gIt, ++xIt) {
+	for (auto gIt = g1.begin(), xIt = x1.begin(); gIt != g1.end(); ++gIt, ++xIt) {
 		REQUIRE(((*gIt)->name() == (*xIt)->name() && (*gIt)->value() == (*xIt)->value()));
 	}
 }
@@ -312,7 +312,7 @@ TEST_CASE("Test parser", "[options]") {
 			Po::OptionGroup *g;
 			PC(Po::OptionGroup& grp) : g(&grp) {}
 			Po::SharedOptPtr getOption(const char* name, FindType) override {
-				for (Po::OptionGroup::option_iterator it = g->begin(), end = g->end(); it != end; ++it) {
+				for (auto it = g->begin(), end = g->end(); it != end; ++it) {
 					if (it->get()->name() == name) { return *it; }
 				}
 				return Po::SharedOptPtr(nullptr);
