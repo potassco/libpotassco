@@ -61,18 +61,18 @@ struct Heuristic {
 
 class ReadObserver : public AbstractProgram {
 public:
-	virtual void initProgram(bool inc) override {
+	void initProgram(bool inc) override {
 		incremental = inc;
 	}
-	virtual void beginStep() override {
+	void beginStep() override {
 		++nStep;
 	}
-	virtual void endStep() override {}
+	void endStep() override {}
 
-	virtual void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& cond) override {
+	void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& cond) override {
 		heuristics.push_back({a, t, bias, prio, {begin(cond), end(cond)}});
 	}
-	virtual void acycEdge(int s, int t, const LitSpan& cond) override {
+	void acycEdge(int s, int t, const LitSpan& cond) override {
 		edges.push_back({s, t, {begin(cond), end(cond)}});
 	}
 	Vec<Heuristic> heuristics;

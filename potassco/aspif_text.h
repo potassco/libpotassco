@@ -40,13 +40,13 @@ public:
 	void setOutput(AbstractProgram& out);
 protected:
 	//! Checks whether stream starts with a valid token.
-	virtual bool doAttach(bool& inc);
+	bool doAttach(bool& inc) override;
 	//! Attempts to parses the current step or throws an exception on error.
 	/*!
 	 * The function calls beginStep()/endStep() on the associated
 	 * output object before/after parsing the current step.
 	 */
-	virtual bool doParse();
+	bool doParse() override;
 	//! Parses statements until next step directive or input is exhausted.
 	bool parseStatements();
 private:
@@ -78,26 +78,26 @@ private:
 class AspifTextOutput : public Potassco::AbstractProgram {
 public:
 	AspifTextOutput(std::ostream& os);
-	~AspifTextOutput();
-	virtual void initProgram(bool incremental);
-	virtual void beginStep();
-	virtual void rule(Head_t ht, const AtomSpan& head, const LitSpan& body);
-	virtual void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits);
-	virtual void minimize(Weight_t prio, const WeightLitSpan& lits);
-	virtual void output(const StringSpan& str, const LitSpan& cond);
-	virtual void external(Atom_t a, Value_t v);
-	virtual void assume(const LitSpan& lits);
-	virtual void project(const AtomSpan& atoms);
-	virtual void acycEdge(int s, int t, const LitSpan& condition);
-	virtual void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition);
+	~AspifTextOutput() override;
+	void initProgram(bool incremental) override;
+	void beginStep() override;
+	void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override;
+	void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) override;
+	void minimize(Weight_t prio, const WeightLitSpan& lits) override;
+	void output(const StringSpan& str, const LitSpan& cond) override;
+	void external(Atom_t a, Value_t v) override;
+	void assume(const LitSpan& lits) override;
+	void project(const AtomSpan& atoms) override;
+	void acycEdge(int s, int t, const LitSpan& condition) override;
+	void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;
 
-	virtual void theoryTerm(Id_t termId, int number);
-	virtual void theoryTerm(Id_t termId, const StringSpan& name);
-	virtual void theoryTerm(Id_t termId, int compound, const IdSpan& args);
-	virtual void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond);
-	virtual void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements);
-	virtual void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs);
-	virtual void endStep();
+	void theoryTerm(Id_t termId, int number) override;
+	void theoryTerm(Id_t termId, const StringSpan& name) override;
+	void theoryTerm(Id_t termId, int compound, const IdSpan& args) override;
+	void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond) override;
+	void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) override;
+	void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) override;
+	void endStep() override;
 
 	void addAtom(Atom_t id, const StringSpan& str);
 private:

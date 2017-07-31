@@ -57,7 +57,7 @@ public:
 		base_type::setp(0, 0); // no write buffer
 		base_type::setg(buffer_, buffer_, buffer_+size_); // read buffer
 	}
-	pos_type seekoff(off_type offset, std::ios_base::seekdir dir, std::ios_base::openmode which) {
+	pos_type seekoff(off_type offset, std::ios_base::seekdir dir, std::ios_base::openmode which) override {
 		if(which & std::ios_base::out) {
 			// not supported!
 			return base_type::seekoff(offset, dir, which);
@@ -70,7 +70,7 @@ public:
 		}
 		return seekpos(offset, which);
 	}
-	pos_type seekpos(pos_type offset, std::ios_base::openmode which) {
+	pos_type seekpos(pos_type offset, std::ios_base::openmode which) override {
 		if((which & std::ios_base::out) == 0 && offset >= pos_type(0) && ((size_t)offset) <= size_) {
 			base_type::setg(buffer_, buffer_+(size_t)offset, buffer_+size_);
 			return offset;
@@ -252,8 +252,8 @@ int xconvert(const char* x, T& out, const char** errPos, double) {
 ///////////////////////////////////////////////////////////////////////////////
 class bad_string_cast : public std::bad_cast {
 public:
-	~bad_string_cast() throw();
-	virtual const char* what() const throw();
+	~bad_string_cast() throw() override;
+	const char* what() const throw() override;
 };
 template <class T>
 bool string_cast(const char* arg, T& to) {

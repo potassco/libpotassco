@@ -57,46 +57,46 @@ static void rule(std::ostream& os, const Rule& r) {
 
 class ReadObserver : public Test::ReadObserver {
 public:
-	virtual void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override {
+	void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override {
 		rules.push_back({ht, {begin(head), end(head)}, Body_t::Normal, BOUND_NONE, {}});
 		Vec<WeightLit_t>& wb = rules.back().body;
 		std::for_each(begin(body), end(body), [&wb](Lit_t x) {wb.push_back({x, 1}); });
 	}
-	virtual void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override {
+	void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override {
 		rules.push_back({ht, {begin(head), end(head)}, Body_t::Sum, bound, {begin(body), end(body)}});
 	}
-	virtual void minimize(Weight_t prio, const WeightLitSpan& lits) override {
+	void minimize(Weight_t prio, const WeightLitSpan& lits) override {
 		min.push_back({prio, {begin(lits), end(lits)}});
 	}
-	virtual void project(const AtomSpan& atoms) override {
+	void project(const AtomSpan& atoms) override {
 		projects.insert(projects.end(), begin(atoms), end(atoms));
 	}
-	virtual void output(const StringSpan& str, const LitSpan& cond) override {
+	void output(const StringSpan& str, const LitSpan& cond) override {
 		shows.push_back({{begin(str), end(str)}, {begin(cond), end(cond)}});
 	}
 
-	virtual void external(Atom_t a, Value_t v) override {
+	void external(Atom_t a, Value_t v) override {
 		externals.push_back({a, v});
 	}
-	virtual void assume(const LitSpan& lits) override {
+	void assume(const LitSpan& lits) override {
 		assumes.insert(assumes.end(), begin(lits), end(lits));
 	}
-	virtual void theoryTerm(Id_t termId, int number) {
+	void theoryTerm(Id_t termId, int number) override {
 		theory.addTerm(termId, number);
 	}
-	virtual void theoryTerm(Id_t termId, const StringSpan& name) {
+	void theoryTerm(Id_t termId, const StringSpan& name) override {
 		theory.addTerm(termId, name);
 	}
-	virtual void theoryTerm(Id_t termId, int cId, const IdSpan& args) {
+	void theoryTerm(Id_t termId, int cId, const IdSpan& args) override {
 		theory.addTerm(termId, cId, args);
 	}
-	virtual void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan&) {
+	void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan&) override {
 		theory.addElement(elementId, terms, 0u);
 	}
-	virtual void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) {
+	void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) override {
 		theory.addAtom(atomOrZero, termId, elements);
 	}
-	virtual void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) {
+	void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) override {
 		theory.addAtom(atomOrZero, termId, elements, op, rhs);
 	}
 	Vec<Rule> rules;
@@ -345,8 +345,8 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
 		REQUIRE(readAspif(input, observer) == 0);
 		REQUIRE(observer.theory.numAtoms() == 1);
 		struct ToString : public TheoryAtomStringBuilder {
-			virtual LitSpan     getCondition(Id_t) const { return Potassco::toSpan<Lit_t>(); }
-			virtual std::string getName(Atom_t)    const { return "?"; }
+			LitSpan     getCondition(Id_t) const override { return Potassco::toSpan<Lit_t>(); }
+			std::string getName(Atom_t)    const override { return "?"; }
 		} builder;
 		REQUIRE(builder.toString(observer.theory, **observer.theory.begin()) == "&diff{end(1) - start(1)} <= 200");
 	}

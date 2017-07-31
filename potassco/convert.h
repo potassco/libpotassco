@@ -44,28 +44,28 @@ public:
 	 * choice rules or integrity constraints.
 	 */
 	SmodelsConvert(AbstractProgram& out, bool enableClaspExt);
-	~SmodelsConvert();
+	~SmodelsConvert() override;
 	//! Calls initProgram() on the associated output program.
-	virtual void initProgram(bool incremental);
+	void initProgram(bool incremental) override;
 	//! Calls beginStep() on the associated output program.
-	virtual void beginStep();
+	void beginStep() override;
 	//! Converts the given rule into one or more smodels rules.
-	virtual void rule(Head_t t, const AtomSpan& head, const LitSpan& body);
+	void rule(Head_t t, const AtomSpan& head, const LitSpan& body) override;
 	//! Converts the given rule into one or more smodels rules.
-	virtual void rule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body);
+	void rule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override;
 	//! Converts literals associated with a priority to a set of corresponding smodels minimize rules.
-	virtual void minimize(Weight_t prio, const WeightLitSpan& lits);
+	void minimize(Weight_t prio, const WeightLitSpan& lits) override;
 	//! Adds an atom named str that is equivalent to the condition to the symbol table.
-	virtual void output(const StringSpan& str, const LitSpan& cond);
+	void output(const StringSpan& str, const LitSpan& cond) override;
 	//! Marks the atom that is equivalent to a as external.
-	virtual void external(Atom_t a, Value_t v);
+	void external(Atom_t a, Value_t v) override;
 	//! Adds an _heuristic predicate over the given atom to the symbol table that is equivalent to condition.
-	virtual void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition);
+	void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;
 	//! Adds an _edge(s,t) predicate to the symbol table that is equivalent to condition.
-	virtual void acycEdge(int s, int t, const LitSpan& condition);
+	void acycEdge(int s, int t, const LitSpan& condition) override;
 
 	//! Finalizes conversion and calls endStep() on the associated output program.
-	virtual void endStep();
+	void endStep() override;
 
 	//! Returns the output literal associated to in.
 	Lit_t       get(Lit_t in) const;
