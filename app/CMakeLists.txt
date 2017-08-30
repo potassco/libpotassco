@@ -1,5 +1,8 @@
 add_executable(lpconvert lpconvert.cpp)
 target_link_libraries(lpconvert libpotassco)
 set_target_properties(lpconvert PROPERTIES FOLDER exe)
-
-install(TARGETS lpconvert EXPORT lpconvert DESTINATION "bin")
+set(install_dir bin)
+if (CMAKE_INSTALL_BINDIR)
+	set(install_dir ${CMAKE_INSTALL_BINDIR})
+endif()
+install(TARGETS lpconvert EXPORT lpconvert DESTINATION "${install_dir}")

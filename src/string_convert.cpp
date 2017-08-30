@@ -54,7 +54,7 @@ static double strtod_l(const char* x, char** end, const my_locale_t& loc) {
 inline void freelocale(const my_locale_t&) {}
 inline my_locale_t default_locale()        { return std::locale::classic(); }
 #else
-#include <xlocale.h>
+#include <locale.h>
 typedef locale_t my_locale_t;
 inline my_locale_t default_locale() { return newlocale(LC_ALL_MASK, "C", 0); }
 #endif
