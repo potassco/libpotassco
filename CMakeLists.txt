@@ -5,12 +5,19 @@ if (POLICY CMP0063)
 endif()
 # enable folders in IDEs like Visual Studio
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-
+include(GNUInstallDirs)
 option(LIB_POTASSCO_BUILD_TESTS "whether or not to build tests"          OFF)
 option(LIB_POTASSCO_BUILD_APP   "whether or not to build lpconvert tool" ON)
 option(LIB_POTASSCO_INSTALL_LIB "whether or not to install libpotassco"  OFF)
-set(include_dest  "include/potassco-${LIB_POTASSCO_VERSION}")
-set(library_dest  "lib/potassco-${LIB_POTASSCO_VERSION}")
+
+set(include_dest  "potassco-${LIB_POTASSCO_VERSION}")
+set(library_dest  "potassco-${LIB_POTASSCO_VERSION}")
+set(cmake_dest    "potassco-${LIB_POTASSCO_VERSION}/cmake")
+
+if (LIB_POTASSCO_INSTALL_LIB AND NOT CMAKE_INSTALL_LIBDIR)
+	message(STATUS "LIBDIR no set - using lib")
+	set(CMAKE_INSTALL_LIBDIR lib)
+endif()
 
 if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 	message(STATUS "No build type selected - using 'Release'")
@@ -61,6 +68,6 @@ configure_file(cmake/potassco-config-version.cmake.in
 	${CMAKE_CURRENT_BINARY_DIR}/potassco-config-version.cmake
 	@ONLY)
 if(LIB_POTASSCO_INSTALL_LIB)
-	install(FILES cmake/potassco-config.cmake ${CMAKE_CURRENT_BINARY_DIR}/potassco-config-version.cmake DESTINATION "${library_dest}")
-	install(EXPORT potassco DESTINATION "${library_dest}")
+	install(FILES cmake/potassco-config.cmake ${CMAKE_CURRENT_BINARY_DIR}/potassco-config-version.cmake DESTINATION "${CMAKE_INSTALL_LIBDIR}/${cmake_dest}")
+	install(EXPORT potassco DESTINATION "${CMAKE_INSTALL_LIBDIR}/${cmake_dest}")
 endif()

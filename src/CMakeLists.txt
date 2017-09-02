@@ -44,6 +44,7 @@ set(src
 	value_store.cpp)
 
 add_library(libpotassco ${detail_header} ${opts_header} ${header} ${src})
+set_target_properties(libpotassco PROPERTIES VERSION ${PROJECT_VERSION})
 if(MSVC)
 	target_compile_definitions(libpotassco PRIVATE _SCL_SECURE_NO_WARNINGS)
 	target_compile_options(libpotassco PRIVATE "/W4" )
@@ -53,7 +54,7 @@ if(MSVC)
 endif()
 target_include_directories(libpotassco PUBLIC
 	$<BUILD_INTERFACE:${LIB_POTASSCO_SOURCE_DIR}>
-	$<INSTALL_INTERFACE:${include_dest}>)
+	$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/${include_dest}>)
 
 # properties
 set_target_properties(libpotassco PROPERTIES
@@ -62,8 +63,8 @@ set_target_properties(libpotassco PROPERTIES
 
 # installation
 if (LIB_POTASSCO_INSTALL_LIB)
-	install(FILES ${header}         DESTINATION "${include_dest}/potassco")
-	install(FILES ${opts_header}    DESTINATION "${include_dest}/potassco/program_opts")
-	install(FILES ${detail_header}  DESTINATION "${include_dest}/potassco/program_opts/detail")
-	install(TARGETS libpotassco     EXPORT potassco DESTINATION "${library_dest}")
+	install(FILES ${header}         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${include_dest}/potassco")
+	install(FILES ${opts_header}    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${include_dest}/potassco/program_opts")
+	install(FILES ${detail_header}  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${include_dest}/potassco/program_opts/detail")
+	install(TARGETS libpotassco     EXPORT potassco DESTINATION "${CMAKE_INSTALL_LIBDIR}/${library_dest}")
 endif()
