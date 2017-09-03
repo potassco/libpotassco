@@ -82,23 +82,28 @@ int Application::setAlarm(unsigned sec) {
 }
 #else
 int Application::setAlarm(unsigned sec) {
-	static HANDLE timerHandle = CreateEvent(0, FALSE, FALSE, TEXT("Potassco::Application::AlarmEvent"));
-	if (timerHandle == INVALID_HANDLE_VALUE) { return 0; }
-	// kill any existing alarms
-	SetEvent(timerHandle);
-	WaitForSingleObject(timerHandle, INFINITE);
+	static HANDLE alarmEvent  = CreateEvent(0, TRUE, TRUE, TEXT("Potassco::Application::AlarmEvent"));
+	static HANDLE alarmThread = INVALID_HANDLE_VALUE;
+	if (alarmEvent == INVALID_HANDLE_VALUE) { return 0; }
+	if (alarmThread != INVALID_HANDLE_VALUE) {
+		// wakeup any existing alarm
+		SetEvent(alarmEvent);
+		WaitForSingleObject(alarmThread, INFINITE);
+		CloseHandle(alarmThread);
+		alarmThread = INVALID_HANDLE_VALUE;
+	}
 	if (sec > 0) {
-		ResetEvent(timerHandle);
 		struct THUNK {
 			static unsigned __stdcall run(void* p) {
 				unsigned ms = static_cast<unsigned>(reinterpret_cast<std::size_t>(p));
-				if (WaitForSingleObject(timerHandle, ms) == WAIT_TIMEOUT) {
+				if (WaitForSingleObject(alarmEvent, ms) == WAIT_TIMEOUT) {
 					Application::getInstance()->processSignal(SIGALRM);
 				}
 				return 0;
 			}
 		};
-		_beginthreadex(0, 0, &THUNK::run, reinterpret_cast<void*>(static_cast<std::size_t>(sec) * 1000), 0, 0);
+		ResetEvent(alarmEvent);
+		alarmThread = (HANDLE)_beginthreadex(0, 0, &THUNK::run, reinterpret_cast<void*>(static_cast<std::size_t>(sec) * 1000), 0, 0);
 	}
 	return 1;
 }
