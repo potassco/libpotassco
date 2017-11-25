@@ -35,7 +35,7 @@ inline my_locale_t default_locale() { return _create_locale(LC_ALL, "C"); }
 inline unsigned long long strtoull(const char* str, char** endptr, int base) { return  _strtoui64(str, endptr, base); }
 inline long long strtoll(const char* str, char** endptr, int base) { return  _strtoi64(str, endptr, base); }
 #endif
-#elif defined(__CYGWIN__) || defined (__MINGW32__)
+#elif defined(__CYGWIN__) || defined (__MINGW32__) || defined (__OpenBSD__)
 #include <locale>
 typedef std::locale my_locale_t;
 static double strtod_l(const char* x, char** end, const my_locale_t& loc) {
