@@ -91,7 +91,7 @@ public:
 class ValueError : public Error {
 public:
 	enum Type {
-		multiple_occurences,
+		multiple_occurrences,
 		invalid_default,
 		invalid_value
 	};

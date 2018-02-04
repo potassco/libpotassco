@@ -541,7 +541,7 @@ int ParsedOptions::assign(const Option& o, const std::string& value) {
 	}
 	if (badState || !o.value()->parse(o.name(), value, Value::value_fixed)) {
 		return badState
-			? 1 + ValueError::multiple_occurences
+			? 1 + ValueError::multiple_occurrences
 			: 1 + ValueError::invalid_value;
 	}
 	return 0;
@@ -933,7 +933,7 @@ static std::string format(ValueError::Type t, const std::string& ctx, const std:
 	std::string ret; const char* x = "";
 	if (!ctx.empty()) { ret += "In context "; ret += quote(ctx); ret += ": "; }
 	switch (t) {
-		case ValueError::multiple_occurences: ret += "multiple occurences: "; break;
+		case ValueError::multiple_occurrences: ret += "multiple occurrences: "; break;
 		case ValueError::invalid_default: x = "default ";
 		case ValueError::invalid_value:
 			ret += quote(value);
