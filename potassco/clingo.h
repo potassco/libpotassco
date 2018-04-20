@@ -193,6 +193,8 @@ public:
 	 * \pre index < size(key)
 	 */
 	virtual Key_t at(Key_t arr, size_t index) const = 0;
+	//! Create a new Element of type t in the array.
+	virtual Key_t add(Key_t arr, size_t index, Statistics_t t) = 0;
 	//@}
 
 	/*!
@@ -209,6 +211,8 @@ public:
 	virtual const char* key(Key_t mapK, size_t i) const = 0;
 	//! Returns the element stored in the map under the given name.
 	virtual Key_t       get(Key_t mapK, const char* at) const = 0;
+	//! Create a new Element of type t in the map.
+	virtual Key_t add(Key_t arr, const char* at, Statistics_t t) = 0;
 	//@}
 	/*!
 	 * \name Value
@@ -217,6 +221,9 @@ public:
 	//@{
 	//! Returns the statistic value associated with the given key.
 	virtual double value(Key_t key) const = 0;
+	//! Returns a reference to the statistic value associated with the given key.
+	virtual void set(Key_t key, double v) = 0;
+
 	//@}
 };
 ///@}
