@@ -183,6 +183,9 @@ public:
 	virtual Statistics_t type(Key_t key) const = 0;
 	//! Returns the child count of the object with the given key or 0 if it is a value.
 	virtual size_t       size(Key_t key) const = 0;
+	//! Returns whether or not the object with the given key can be updated.
+	virtual bool         writable(Key_t key) const = 0;
+
 	/*!
 	 * \name Array
 	 * Functions in this group shall only be called on Array objects.
@@ -193,6 +196,22 @@ public:
 	 * \pre index < size(key)
 	 */
 	virtual Key_t at(Key_t arr, size_t index) const = 0;
+	//! Creates a statistic object at the given index in the given array.
+	/*!
+	 * \pre writable(arr).
+	 * \param array The array object to which the statistic object should be added.
+	 * \param index The index at which the statistic object should be added.
+	 * \param type The type of the statistic object to create.
+	 * \return The key of the created statistic object.
+	 *
+	 * \note If a (non-empty) statistic object already exists at the given index,
+	 *       the function either returns its key provided that the types match,
+	 *       or otherwise signals failure by throwing an std::logic_error.
+	 *
+	 * \note Given an array A of size i, adding A[j] implicitly also creates
+	 *       empty objects A[k] for i <= k < j.
+	 */
+	virtual Key_t add(Key_t arr, size_t index, Statistics_t type) = 0;
 	//@}
 
 	/*!
@@ -209,6 +228,20 @@ public:
 	virtual const char* key(Key_t mapK, size_t i) const = 0;
 	//! Returns the element stored in the map under the given name.
 	virtual Key_t       get(Key_t mapK, const char* at) const = 0;
+
+	//! Creates a statistic object under the given name in the given map.
+	/*!
+	 * \pre writable(mapK).
+	 * \param mapK The map object to which the statistic object should be added.
+	 * \param name The name under which the statistic object should be added.
+	 * \param type The type of the statistic object to create.
+	 * \return The key of the added statistic object.
+	 *
+	 * \note If a statistic object with the given name already exists in map,
+	 *       the function either returns its key provided that the types match,
+	 *       or otherwise signals failure by throwing an std::logic_error.
+	 */
+	virtual Key_t       add(Key_t mapK, const char* name, Statistics_t type) = 0;
 	//@}
 	/*!
 	 * \name Value
@@ -217,6 +250,12 @@ public:
 	//@{
 	//! Returns the statistic value associated with the given key.
 	virtual double value(Key_t key) const = 0;
+
+	//! Sets value as value for the given statistic object.
+	/*!
+	 * \pre writable(key).
+	 */
+	virtual void set(Key_t key, double value) = 0;
 	//@}
 };
 ///@}
