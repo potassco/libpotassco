@@ -196,22 +196,16 @@ public:
 	 * \pre index < size(key)
 	 */
 	virtual Key_t at(Key_t arr, size_t index) const = 0;
-	//! Creates a statistic object at the given index in the given array.
+
+	//! Appends a statistic object to the end of the given array.
 	/*!
 	 * \pre writable(arr).
 	 * \param array The array object to which the statistic object should be added.
-	 * \param index The index at which the statistic object should be added.
-	 * \param type The type of the statistic object to create.
+	 * \param type The type of the statistic object to append.
 	 * \return The key of the created statistic object.
 	 *
-	 * \note If a (non-empty) statistic object already exists at the given index,
-	 *       the function either returns its key provided that the types match,
-	 *       or otherwise signals failure by throwing an std::logic_error.
-	 *
-	 * \note Given an array A of size i, adding A[j] implicitly also creates
-	 *       empty objects A[k] for i <= k < j.
 	 */
-	virtual Key_t add(Key_t arr, size_t index, Statistics_t type) = 0;
+	virtual Key_t push(Key_t arr, Statistics_t type) = 0;
 	//@}
 
 	/*!
