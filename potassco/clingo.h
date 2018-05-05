@@ -213,15 +213,27 @@ public:
 	 * Functions in this group shall only be called on Map objects.
 	 */
 	//@{
-	//! Returns the i'th key of the given map.
+	//! Returns the name of the i'th element in the given map.
 	/*!
 	 * \pre i < size(mapK)
-	 * \note The order of keys in a map is unspecified and might change
+	 * \note The order of elements in a map is unspecified and might change
 	 * after a solve operation.
 	 */
 	virtual const char* key(Key_t mapK, size_t i) const = 0;
+
 	//! Returns the element stored in the map under the given name.
 	virtual Key_t       get(Key_t mapK, const char* at) const = 0;
+
+	//! Searches the given map for an element.
+	/*!
+	 * \param mapK    The map object to search.
+	 * \param element The element to search for.
+	 * \param outKey  An optional out parameter for storing the key of the element if found.
+	 * \return Whether or not element was found.
+	 * \post !find(mapK, element, outKey) || !outKey || *outKey == get(mapK, element).
+	 */
+	virtual bool        find(Key_t mapK, const char* element, Key_t* outKey) const = 0;
+
 
 	//! Creates a statistic object under the given name in the given map.
 	/*!
