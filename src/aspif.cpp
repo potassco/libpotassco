@@ -62,7 +62,7 @@ bool AspifInput::doParse() {
 	out_.beginStep();
 	for (unsigned rt; (rt = matchPos(Directive_t::eMax, "rule type or 0 expected")) != 0; rule.clear()) {
 		switch (rt) {
-			default: require(false, "unrecognized rule type");
+			default: return require(false, "unrecognized rule type");
 			{case CR(Rule):
 				rule.start(static_cast<Head_t>(matchPos(Head_t::eMax, "invalid head type")));
 				matchAtoms();
@@ -151,7 +151,7 @@ void AspifInput::matchIds() {
 void AspifInput::matchTheory(unsigned rt) {
 	Id_t tId = matchPos();
 	switch (rt) {
-		default: require(false, "unrecognized theory directive type");
+		default: require(false, "unrecognized theory directive type"); return;
 		case Theory_t::Number:
 			out_.theoryTerm(tId, matchInt());
 			break;

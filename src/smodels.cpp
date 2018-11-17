@@ -140,7 +140,7 @@ bool SmodelsInput::readRules() {
 	for (unsigned rt; (rt = matchPos("rule type expected")) != 0;) {
 		rule.clear();
 		switch (rt) {
-			default: require(false, "unrecognized rule type");
+			default: return require(false, "unrecognized rule type");
 			case Choice: case Disjunctive: // n a1..an
 				rule.start(rt == Choice ? Head_t::Choice : Head_t::Disjunctive);
 				for (unsigned i = matchAtom("positive head size expected"); i--;) { rule.addHead(matchAtom()); }

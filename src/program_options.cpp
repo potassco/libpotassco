@@ -934,7 +934,7 @@ static std::string format(ValueError::Type t, const std::string& ctx, const std:
 	if (!ctx.empty()) { ret += "In context "; ret += quote(ctx); ret += ": "; }
 	switch (t) {
 		case ValueError::multiple_occurrences: ret += "multiple occurrences: "; break;
-		case ValueError::invalid_default: x = "default ";
+		case ValueError::invalid_default: x = "default ";  // FALLTHRU
 		case ValueError::invalid_value:
 			ret += quote(value);
 			ret += " invalid ";
