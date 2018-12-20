@@ -164,6 +164,25 @@ public:
 	virtual void check(AbstractSolver& solver) = 0;
 };
 
+//! Base class for implementing heuristics.
+class AbstractHeuristic {
+public:
+	typedef Potassco::Lit_t Lit;
+	virtual ~AbstractHeuristic();
+	//! Shall return the literal that the solver with the given id should decide on next.
+	/*!
+	 * \param solverId The id of an active solver.
+	 * \param assignment The current assignment of the solver with the given id.
+	 * \param fallback A literal that the active solver selected as its next decision literal.
+	 * \pre fallback is a valid decision literal, i.e. it is not yet assigned.
+	 * \return A literal to decide on next.
+	 *
+	 * \note If the function returns 0 or a literal that is already assigned, the returned lit
+	 *       is implicitly replaced with fallback.
+	 */
+	virtual Lit decide(Id_t solverId, const AbstractAssignment& assignment, Lit fallback) = 0;
+};
+
 //! Base class for providing (solver) statistics.
 /*!
  * Functions in this interface taking a key as parameter

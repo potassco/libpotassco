@@ -30,6 +30,7 @@ bool AbstractAssignment::isFalse(Lit_t lit) const { return value(lit) == Value_t
 
 AbstractSolver::~AbstractSolver() {}
 AbstractPropagator::~AbstractPropagator() {}
+AbstractHeuristic::~AbstractHeuristic() {}
 AbstractStatistics::~AbstractStatistics() {}
 
 } // namespace Potassco
