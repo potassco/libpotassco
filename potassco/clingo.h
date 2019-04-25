@@ -71,6 +71,8 @@ public:
 	virtual bool     hasConflict()     const = 0;
 	//! Returns the number of decision literals in the assignment.
 	virtual uint32_t level()           const = 0;
+	//! Returns the the number of decision literals that will not be backtracked while solving.
+	virtual uint32_t rootLevel()       const = 0;
 	//! Returns whether lit is a valid literal in this assignment.
 	virtual bool     hasLit(Lit_t lit) const = 0;
 	//! Returns the truth value that is currently assigned to lit or Value_t::Free if lit is unassigned.
