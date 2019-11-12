@@ -61,4 +61,4 @@ or via the `doc_potassco` target when using cmake.
   
 [aspif]: https://www.cs.uni-potsdam.de/wv/publications/DBLP_conf/iclp/GebserKKOSW16x.pdf  "Aspif specification"
 [cmake]: https://cmake.org/
-[doxygen]: http://www.stack.nl/~dimitri/doxygen/
+[doxygen]: http://www.doxygen.nl/
