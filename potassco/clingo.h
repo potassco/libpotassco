@@ -90,10 +90,15 @@ public:
 	virtual Lit_t    trailAt(uint32_t pos)      const = 0;
 	//! Returns the trail position of the first literal assigned at the given level.
 	/*
-	 * \return The trail position of the first literal assigned at the given level or
-	 *         uint32_t(-1) if level > level().
+	 * \pre level <= level()
 	 */
 	virtual uint32_t trailBegin(uint32_t level) const = 0;
+	//! Returns the one-past-the-end position of literals assigned at the given decision level.
+	/*
+	 * \note Literals assigned at the given level are in the half-open range [trailBegin(), trailEnd()).
+	 * \pre level <= level()
+	 */
+	uint32_t trailEnd(uint32_t level) const;
 
 	//! Returns whether the current assignment is total.
 	/*!
