@@ -81,6 +81,25 @@ public:
 	virtual uint32_t level(Lit_t lit)  const = 0;
 	//! Returns the decision literal of the given decision level.
 	virtual Lit_t    decision(uint32_t)const = 0;
+	//! Returns the number of literals in the assignment trail.
+	virtual uint32_t trailSize()       const = 0;
+	//! Returns the literal in the trail at the given position.
+	/*!
+	 * \pre pos < trailSize()
+	 */
+	virtual Lit_t    trailAt(uint32_t pos)      const = 0;
+	//! Returns the trail position of the first literal assigned at the given level.
+	/*
+	 * \pre level <= level()
+	 */
+	virtual uint32_t trailBegin(uint32_t level) const = 0;
+	//! Returns the one-past-the-end position of literals assigned at the given decision level.
+	/*
+	 * \note Literals assigned at the given level are in the half-open range [trailBegin(), trailEnd()).
+	 * \pre level <= level()
+	 */
+	uint32_t trailEnd(uint32_t level) const;
+
 	//! Returns whether the current assignment is total.
 	/*!
 	 * The default implementation returns unassigned() == 0.
