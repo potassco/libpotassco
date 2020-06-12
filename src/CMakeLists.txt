@@ -50,7 +50,6 @@ if(MSVC)
 	target_compile_options(libpotassco PRIVATE "/W4" )
 	set(VC_RELEASE_OPTIONS /Oi /Oy /GL /Gy)
 	target_compile_options(libpotassco PUBLIC "$<$<CONFIG:RELEASE>:${VC_RELEASE_OPTIONS}>")
-	set_target_properties(libpotassco PROPERTIES PREFIX "lib")
 endif()
 target_include_directories(libpotassco PUBLIC
 	$<BUILD_INTERFACE:${LIB_POTASSCO_SOURCE_DIR}>
