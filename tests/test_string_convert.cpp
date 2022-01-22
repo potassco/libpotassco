@@ -21,6 +21,7 @@
 #include "catch.hpp"
 #include <potassco/string_convert.h>
 #include <string>
+#include <sstream>
 #include <vector>
 namespace Potassco {
 namespace Test {
