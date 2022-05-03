@@ -46,9 +46,9 @@ To use libpotassco in a cmake-based project either:
 - Call `add_subdirectory(<path_to_libpotassco>)`.
 
 or, if libpotassco is installed in `CMAKE_PREFIX_PATH`:
-- Call `find_package(potassco <major>.<minor> CONFIG)`.
+- Call `find_package(Potassco <major>.<minor> CONFIG)`.
 
-Finally, call `target_link_libraries(your_target PUBLIC potassco)` to link to the potassco library.
+Finally, call `target_link_libraries(your_target PUBLIC libpotassco)` to link to the potassco library.
 
 ## Documentation
 Source code documentation can be generated with [Doxygen][doxygen].
