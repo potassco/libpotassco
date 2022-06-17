@@ -25,6 +25,9 @@
 #include <cerrno>
 #include <cstdio>
 #include <algorithm>
+#if defined(__APPLE__) && defined(__POWERPC__)
+#include <xlocale.h>
+#endif
 #if defined(_MSC_VER)
 #pragma warning (disable : 4996)
 #define strtod_l   _strtod_l
