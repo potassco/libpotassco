@@ -311,14 +311,14 @@ TEST_CASE("Test parser", "[options]") {
 		struct PC : public Po::ParseContext {
 			Po::OptionGroup *g;
 			PC(Po::OptionGroup& grp) : g(&grp) {}
-			Po::SharedOptPtr getOption(const char* name, FindType) {
+			Po::SharedOptPtr getOption(const char* name, FindType) override {
 				for (Po::OptionGroup::option_iterator it = g->begin(), end = g->end(); it != end; ++it) {
 					if (it->get()->name() == name) { return *it; }
 				}
 				return Po::SharedOptPtr(0);
 			}
-			Po::SharedOptPtr getOption(int, const char*) { return Po::SharedOptPtr(0); }
-			void         addValue(const Po::SharedOptPtr& key, const std::string& value) {
+			Po::SharedOptPtr getOption(int, const char*) override { return Po::SharedOptPtr(0); }
+			void         addValue(const Po::SharedOptPtr& key, const std::string& value) override {
 				if (!key->value()->parse(key->name(), value, Po::Value::value_unassigned)) {
 					throw std::logic_error("Invalid value");
 				}

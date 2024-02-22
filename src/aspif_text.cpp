@@ -537,10 +537,10 @@ void AspifTextOutput::writeDirectives() {
 void AspifTextOutput::visitTheories() {
 	struct BuildStr : public TheoryAtomStringBuilder {
 		explicit BuildStr(AspifTextOutput& s) : self(&s) {}
-		virtual LitSpan getCondition(Id_t condId) const {
+		LitSpan getCondition(Id_t condId) const override {
 			return self->data_->getCondition(condId);
 		}
-		virtual std::string getName(Atom_t id) const {
+		std::string getName(Atom_t id) const override {
 			if (id < self->data_->atoms.size() && self->data_->atoms[id] < self->data_->strings.size()) {
 				return self->data_->strings[self->data_->atoms[id]];
 			}

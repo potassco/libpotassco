@@ -401,15 +401,15 @@ public:
 	OptionOutputImpl(const Writer& w = Writer(), const Formatter& form = Formatter())
 		: writer_(w)
 		, formatter_(form) {}
-	bool printContext(const OptionContext& ctx) {
+	bool printContext(const OptionContext& ctx) override {
 		writer_.write(buffer_, formatter_.format(buffer_, ctx));
 		return true;
 	}
-	bool printGroup(const OptionGroup& group) {
+	bool printGroup(const OptionGroup& group) override {
 		writer_.write(buffer_, formatter_.format(buffer_, group));
 		return true;
 	}
-	bool printOption(const Option& opt, std::size_t maxW) {
+	bool printOption(const Option& opt, std::size_t maxW) override {
 		writer_.write(buffer_, formatter_.format(buffer_, opt, maxW));
 		writer_.write(buffer_, formatter_.format(buffer_, opt.description(), *opt.value(), maxW));
 		return true;

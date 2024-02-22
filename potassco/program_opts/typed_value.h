@@ -85,7 +85,7 @@ public:
 		, parser_(p) {
 		this->setProperty(Value::property_location);
 	}
-	bool doParse(const std::string&, const std::string& value) {
+	bool doParse(const std::string&, const std::string& value) override {
 		return this->parser_(value, *address_);
 	}
 protected:
@@ -115,7 +115,7 @@ public:
 		this->setProperty(Value::property_location);
 		return this;
 	}
-	bool doParse(const std::string& name, const std::string& value) {
+	bool doParse(const std::string& name, const std::string& value) override {
 		T* pv;
 		detail::Owned<T> exit = {(pv = 0)};
 		if (this->hasProperty(Value::property_location)) {
@@ -149,7 +149,7 @@ public:
 		: Value(0)
 		, notify_(n) {
 	}
-	bool doParse(const std::string& name, const std::string& value) {
+	bool doParse(const std::string& name, const std::string& value) override {
 		return notify_.notify(name, value);
 	}
 protected:

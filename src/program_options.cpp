@@ -593,7 +593,7 @@ public:
 	unsigned flags;
 private:
 	virtual const char* next() = 0;
-	void doParse() {
+	void doParse() override {
 		bool breakEarly = false;
 		int  posKey = 0;
 		const char* curr;
@@ -714,7 +714,7 @@ public:
 		, argv_(argv) {
 	}
 private:
-	const char* next() {
+	const char* next() override {
 		currentArg_ = argPos_ != endPos_ ? argv_[argPos_++] : 0;
 		return currentArg_;
 	}
@@ -732,7 +732,7 @@ public:
 		tok_.reserve(80);
 	}
 private:
-	const char* next() {
+	const char* next() override {
 		// skip leading white
 		while (std::isspace(static_cast<unsigned char>(*cmd_))) { ++cmd_; }
 		if (!*cmd_) return 0;
@@ -782,7 +782,7 @@ private: void operator=(const CfgFileParser&);
 					 }
 					 return false;
 				 }
-				 void doParse() {
+				 void doParse() override {
 					 int lineNr = 0;
 					 std::string sectionName;      // current section name
 					 std::string sectionValue;     // current section value
@@ -843,17 +843,17 @@ public:
 		, parsed(o)
 		, eMask(2u + unsigned(!allowUnreg)) {
 	}
-	SharedOptPtr  getOption(const char* name, FindType ft) {
+	SharedOptPtr  getOption(const char* name, FindType ft) override {
 		OptionContext::OptionRange r = parsed.ctx->findImpl(name, ft, eMask);
 		if (r.first != r.second) { return *(parsed.ctx->begin() + r.first->second); }
 		return SharedOptPtr(0);
 	}
-	SharedOptPtr  getOption(int, const char* tok) {
+	SharedOptPtr  getOption(int, const char* tok) override {
 		std::string optName;
 		if (!posOpt || !posOpt(tok, optName)) { return getOption("Positional Option", OptionContext::find_name_or_prefix); }
 		return getOption(optName.c_str(), OptionContext::find_name_or_prefix);
 	}
-	void          addValue(const SharedOptPtr& key, const std::string& value) { parsed.add(key, value); }
+	void          addValue(const SharedOptPtr& key, const std::string& value) override { parsed.add(key, value); }
 	PosOption    posOpt;
 	ParsedValues parsed;
 	unsigned     eMask;

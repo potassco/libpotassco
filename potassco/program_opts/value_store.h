@@ -101,7 +101,7 @@ private:
 };
 
 struct bad_value_cast : std::bad_cast {
-	const char * what() const throw() {
+	const char * what() const throw() override {
 		return "value_cast: invalid conversion on ValueStore";
 	}
 };

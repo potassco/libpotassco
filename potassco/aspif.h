@@ -40,16 +40,16 @@ class AspifInput : public ProgramReader {
 public:
 	//! Creates a new parser object that calls out on each parsed element.
 	AspifInput(AbstractProgram& out);
-	virtual ~AspifInput();
+	~AspifInput() override;
 protected:
 	//! Checks whether stream starts with aspif header.
-	virtual bool doAttach(bool& inc);
+	bool doAttach(bool& inc) override;
 	//! Parses the current step and throws exception on error.
 	/*!
 	 * The function calls beginStep()/endStep() on the associated
 	 * output object before/after parsing the current step.
 	 */
-	virtual bool doParse();
+	bool doParse() override;
 	//! Attempts to parse a theory directive of type t.
 	/*!
 	 * \see Potassco::Theory_t
@@ -77,42 +77,42 @@ public:
 	//! Creates a new object and associates it with the given output stream.
 	AspifOutput(std::ostream& os);
 	//! Writes an aspif header to the stream.
-	virtual void initProgram(bool incremental);
+	void initProgram(bool incremental) override;
 	//! Prepares the object for a new program step.
-	virtual void beginStep();
+	void beginStep() override;
 	//! Writes an aspif rule directive.
-	virtual void rule(Head_t ht, const AtomSpan& head, const LitSpan& body);
+	void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override;
 	//! Writes an aspif rule directive.
-	virtual void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits);
+	void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) override;
 	//! Writes an aspif minimize directive.
-	virtual void minimize(Weight_t prio, const WeightLitSpan& lits);
+	void minimize(Weight_t prio, const WeightLitSpan& lits) override;
 	//! Writes an aspif output directive.
-	virtual void output(const StringSpan& str, const LitSpan& cond);
+	void output(const StringSpan& str, const LitSpan& cond) override;
 	//! Writes an aspif external directive.
-	virtual void external(Atom_t a, Value_t v);
+	void external(Atom_t a, Value_t v) override;
 	//! Writes an aspif assumption directive.
-	virtual void assume(const LitSpan& lits);
+	void assume(const LitSpan& lits) override;
 	//! Writes an aspif projection directive.
-	virtual void project(const AtomSpan& atoms);
+	void project(const AtomSpan& atoms) override;
 	//! Writes an aspif edge directive.
-	virtual void acycEdge(int s, int t, const LitSpan& condition);
+	void acycEdge(int s, int t, const LitSpan& condition) override;
 	//! Writes an aspif heuristic directive.
-	virtual void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition);
+	void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;
 
 	//! Writes an aspif theory number term.
-	virtual void theoryTerm(Id_t termId, int number);
+	void theoryTerm(Id_t termId, int number) override;
 	//! Writes an aspif theory symbolic term.
-	virtual void theoryTerm(Id_t termId, const StringSpan& name);
+	void theoryTerm(Id_t termId, const StringSpan& name) override;
 	//! Writes an aspif theory compound term.
-	virtual void theoryTerm(Id_t termId, int compound, const IdSpan& args);
+	void theoryTerm(Id_t termId, int compound, const IdSpan& args) override;
 	//! Writes an aspif theory element directive.
-	virtual void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond);
+	void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond) override;
 	//! Writes an aspif theory atom directive.
-	virtual void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements);
+	void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) override;
 	//! Writes an aspif theory atom directive with guard.
-	virtual void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs);
+	void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) override;
 	//! Writes the aspif step terminator.
-	virtual void endStep();
+	void endStep() override;
 protected:
 	//! Starts writing an aspif directive.
 	AspifOutput& startDir(Directive_t r);

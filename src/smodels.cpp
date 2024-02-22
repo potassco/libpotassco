@@ -57,14 +57,14 @@ AtomTable::~AtomTable() {}
 /////////////////////////////////////////////////////////////////////////////////////////
 struct SmodelsInput::SymTab : public AtomTable{
 	SymTab(AbstractProgram& o) : out(&o) {}
-	virtual void add(Atom_t id, const StringSpan& name, bool output) {
+	void add(Atom_t id, const StringSpan& name, bool output) override {
 		atoms.insert(StrMap::value_type(std::string(Potassco::begin(name), Potassco::end(name)), id));
 		if (output) {
 			Lit_t lit = static_cast<Lit_t>(id);
 			out->output(name, toSpan(&lit, 1));
 		}
 	}
-	virtual Atom_t find(const StringSpan& name) {
+	Atom_t find(const StringSpan& name) override {
 		temp.assign(Potassco::begin(name), Potassco::end(name));
 		StrMap::const_iterator it = atoms.find(temp);
 		return it != atoms.end() ? it->second : 0;

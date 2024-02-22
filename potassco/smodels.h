@@ -61,18 +61,18 @@ public:
 	};
 	//! Creates a new parser object that calls out on each parsed element.
 	SmodelsInput(AbstractProgram& out, const Options& opts, AtomTable* symTab = 0);
-	virtual ~SmodelsInput();
+	~SmodelsInput() override;
 protected:
 	//! Checks whether stream starts with a valid smodels token.
-	virtual bool doAttach(bool& inc);
+	bool doAttach(bool& inc) override;
 	//! Parses the current step and throws exception on error.
 	/*!
 	 * The function calls beginStep()/endStep() on the associated
 	 * output object before/after parsing the current step.
 	 */
-	virtual bool doParse();
+	bool doParse() override;
 	//! Resets internal parsing state.
-	virtual void doReset();
+	void doReset() override;
 	//! Reads the current rule block.
 	virtual bool readRules();
 	//! Reads the current smodels symbol table block.
@@ -131,29 +131,29 @@ public:
 	/*!
 	 * Requires enableClaspExt or inc must be false.
 	 */
-	virtual void initProgram(bool inc);
+	void initProgram(bool inc) override;
 	//! Starts a new step.
-	virtual void beginStep();
+	void beginStep() override;
 	//! Writes the given rule provided that isSmodelsHead(head) returns a non-zero value.
-	virtual void rule(Head_t t, const AtomSpan& head, const LitSpan& body);
+	void rule(Head_t t, const AtomSpan& head, const LitSpan& body) override;
 	//! Writes the given rule provided that isSmodelsRule(head, bound, body) returns a non-zero value.
-	virtual void rule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body);
+	void rule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override;
 	//! Writes the given minimize rule while ignoring its priority.
-	virtual void minimize(Weight_t prio, const WeightLitSpan& lits);
+	void minimize(Weight_t prio, const WeightLitSpan& lits) override;
 	//! Writes the entry (a, str) to the symbol table provided that condition equals a.
 	/*!
 	 * \note Symbols shall only be added once after all rules were added.
 	 */
-	virtual void output(const StringSpan& str, const LitSpan& cond);
+	void output(const StringSpan& str, const LitSpan& cond) override;
 	//! Writes lits as a compute statement.
 	/*!
 	 * \note The function shall be called at most once per step and only after all rules and symbols were added.
 	 */
-	virtual void assume(const LitSpan& lits);
+	void assume(const LitSpan& lits) override;
 	//! Requires enableClaspExt or throws exception.
-	virtual void external(Atom_t a, Value_t v);
+	void external(Atom_t a, Value_t v) override;
 	//! Terminates the current step.
-	virtual void endStep();
+	void endStep() override;
 protected:
 	//! Starts writing an smodels-rule of type rt.
 	SmodelsOutput& startRule(int rt);

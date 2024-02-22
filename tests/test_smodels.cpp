@@ -53,7 +53,7 @@ enum class Rule_t : unsigned {
 
 class ReadObserver : public Test::ReadObserver {
 public:
-	virtual void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override {
+	void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override {
 		if (empty(head)) {
 			if (ht == Head_t::Choice) return;
 			compute.push_back(-lit(body[0]));
@@ -70,7 +70,7 @@ public:
 			rules[rt].push_back(std::move(r));
 		}
 	}
-	virtual void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override {
+	void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override {
 		int rt = isSmodelsRule(ht, head, bound, body);
 		REQUIRE(rt != 0);
 		REQUIRE(size(head) == 1);
@@ -82,7 +82,7 @@ public:
 		}
 		rules[static_cast<Rule_t>(rt)].push_back(std::move(r));
 	}
-	virtual void minimize(Weight_t prio, const WeightLitSpan& lits) override {
+	void minimize(Weight_t prio, const WeightLitSpan& lits) override {
 		std::vector<int> r; r.reserve((size(lits) * 2) + 1);
 		r.push_back(prio);
 		for (auto&& x : lits) {
@@ -91,13 +91,13 @@ public:
 		}
 		rules[Rule_t::Optimize].push_back(std::move(r));
 	}
-	virtual void project(const AtomSpan&) override {}
-	virtual void output(const StringSpan& str, const LitSpan& cond) override {
+	void project(const AtomSpan&) override {}
+	void output(const StringSpan& str, const LitSpan& cond) override {
 		REQUIRE(size(cond) == 1);
 		atoms[*begin(cond)].assign(begin(str), end(str));
 	}
 
-	virtual void external(Atom_t a, Value_t v) override {
+	void external(Atom_t a, Value_t v) override {
 		if (v != Value_t::Release) {
 			rules[Rule_t::ClaspAssignExt].push_back(RawRule{static_cast<int>(a), static_cast<int>(v)});
 		}
@@ -105,7 +105,7 @@ public:
 			rules[Rule_t::ClaspReleaseExt].push_back(RawRule{static_cast<int>(a)});
 		}
 	}
-	virtual void assume(const LitSpan&) override {}
+	void assume(const LitSpan&) override {}
 
 	using RuleMap = std::map<Rule_t, std::vector<std::vector<int> > >;
 	using AtomMap = std::unordered_map<int, std::string>;

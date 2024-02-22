@@ -27,16 +27,16 @@ namespace Test {
 namespace Po = ProgramOptions;
 
 struct MyApp : public Potassco::Application {
-	const char* getName()    const { return "TestApp"; }
-	const char* getVersion() const { return "1.0"; }
-	const char* getUsage()   const { return "[options] [files]"; }
-	HelpOpt       getHelpOption() const { return HelpOpt("Print {1=basic|2=extended} help and exit", 2); }
-	Po::PosOption getPositional() const { return parsePos; }
-	void          error(const char* m) const { err = m; }
-	void          info(const char*)    const {}
-	void run() { setExitCode(0); }
-	void setup() {}
-	void initOptions(ProgramOptions::OptionContext& root) {
+	const char* getName()    const override { return "TestApp"; }
+	const char* getVersion() const override { return "1.0"; }
+	const char* getUsage()   const override { return "[options] [files]"; }
+	HelpOpt       getHelpOption() const override { return HelpOpt("Print {1=basic|2=extended} help and exit", 2); }
+	Po::PosOption getPositional() const override { return parsePos; }
+	void          error(const char* m) const override { err = m; }
+	void          info(const char*)    const override {}
+	void run() override { setExitCode(0); }
+	void setup() override {}
+	void initOptions(ProgramOptions::OptionContext& root) override {
 		Po::OptionGroup g("Basic Options");
 		g.addOptions()
 			("foo,@,@1", Po::storeTo(foo), "Option on level 1")
@@ -49,8 +49,8 @@ struct MyApp : public Potassco::Application {
 			;
 		root.add(g2);
 	}
-	void validateOptions(const Po::OptionContext&, const Po::ParsedOptions&, const Po::ParsedValues&) {}
-	void printHelp(const Po::OptionContext& ctx) {
+	void validateOptions(const Po::OptionContext&, const Po::ParsedOptions&, const Po::ParsedValues&) override {}
+	void printHelp(const Po::OptionContext& ctx) override {
 		desc.clear();
 		Po::StringOut out(desc);
 		ctx.description(out);
@@ -87,12 +87,12 @@ TEST_CASE("Test application", "[app]") {
 TEST_CASE("Test alarm", "[app]") {
 	struct TimedApp : MyApp {
 		TimedApp() : stop(0) {}
-		void run() {
+		void run() override {
 			int i = 0;
 			while (!stop) { ++i;  }
 			setExitCode(i);
 		}
-		virtual bool onSignal(int) {
+		bool onSignal(int) override {
 			stop = 1;
 			return true;
 		}

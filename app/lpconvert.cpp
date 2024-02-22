@@ -36,19 +36,19 @@ using namespace Potassco::ProgramOptions;
 
 class LpConvert : public Potassco::Application {
 public:
-	virtual const char* getName()       const { return "lpconvert"; }
-	virtual const char* getVersion()    const { return "1.0.0"; }
-	virtual PosOption   getPositional() const { return &positional; }
-	virtual const char* getUsage()      const {
+	const char* getName()       const override { return "lpconvert"; }
+	const char* getVersion()    const override { return "1.0.0"; }
+	PosOption   getPositional() const override { return &positional; }
+	const char* getUsage()      const override {
 		return
 			"[options] [<file>]\n"
 			"Convert program in <file> or standard input";
 	}
-	virtual void initOptions(OptionContext& root);
-	virtual void validateOptions(const OptionContext&, const ParsedOptions&, const ParsedValues&) {}
-	virtual void setup() {}
-	virtual void run();
-	virtual void printVersion() {
+	void initOptions(OptionContext& root) override;
+	void validateOptions(const OptionContext&, const ParsedOptions&, const ParsedValues&) override {}
+	void setup() override {}
+	void run() override;
+	void printVersion() override {
 		Potassco::Application::printVersion();
 		printf("libpotassco version %s\n", LIB_POTASSCO_VERSION);
 		printf("Copyright (C) Benjamin Kaufmann\n");
