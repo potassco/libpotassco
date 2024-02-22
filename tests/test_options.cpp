@@ -31,7 +31,7 @@ TEST_CASE("Test option default value", "[options]") {
 	int x;
 	SECTION("options don't have defaults by default") {
 		Po::Option o("other-int", 'i', "some other integer", Po::storeTo(x)->arg("<n>"));
-		REQUIRE(o.value()->defaultsTo() == static_cast<const char*>(0));
+		REQUIRE(o.value()->defaultsTo() == static_cast<const char*>(nullptr));
 	}
 	SECTION("options can have default values") {
 		Po::Option o("some-int", 'i', "some integer", Po::storeTo(x)->defaultsTo("123")->arg("<n>"));
@@ -246,7 +246,7 @@ TEST_CASE("Test errors", "[options]") {
 	Po::OptionContext ctx;
 	bool b;
 	SECTION("option name must not be empty") {
-		REQUIRE_THROWS_AS(x(0, Po::flag(b), ""), Po::Error);
+		REQUIRE_THROWS_AS(x(nullptr, Po::flag(b), ""), Po::Error);
 		REQUIRE_THROWS_AS(x("", Po::flag(b), ""), Po::Error);
 	}
 	SECTION("alias must be a single character") {
@@ -315,9 +315,9 @@ TEST_CASE("Test parser", "[options]") {
 				for (Po::OptionGroup::option_iterator it = g->begin(), end = g->end(); it != end; ++it) {
 					if (it->get()->name() == name) { return *it; }
 				}
-				return Po::SharedOptPtr(0);
+				return Po::SharedOptPtr(nullptr);
 			}
-			Po::SharedOptPtr getOption(int, const char*) override { return Po::SharedOptPtr(0); }
+			Po::SharedOptPtr getOption(int, const char*) override { return Po::SharedOptPtr(nullptr); }
 			void         addValue(const Po::SharedOptPtr& key, const std::string& value) override {
 				if (!key->value()->parse(key->name(), value, Po::Value::value_unassigned)) {
 					throw std::logic_error("Invalid value");
@@ -331,8 +331,8 @@ TEST_CASE("Test parser", "[options]") {
 		Po::OptionContext ctx;
 		ctx.add(g);
 		std::string cmd = "--flag=false --foo=on";
-		REQUIRE_THROWS_AS(Po::parseCommandString(cmd, ctx, false, 0, 0), Po::SyntaxError);
-		Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, false, 0, Po::command_line_allow_flag_value));
+		REQUIRE_THROWS_AS(Po::parseCommandString(cmd, ctx, false, nullptr, 0), Po::SyntaxError);
+		Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, false, nullptr, Po::command_line_allow_flag_value));
 		REQUIRE(flag1 == false);
 		REQUIRE(flag2 == true);
 	}

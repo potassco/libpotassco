@@ -46,13 +46,13 @@ public:
 	//! Returns the version number of this application.
 	virtual const char* getVersion()    const   = 0;
 	//! Returns a null-terminated array of signals that this application handles.
-	virtual const int*  getSignals()    const { return 0; }
+	virtual const int*  getSignals()    const { return nullptr; }
 	//! Returns the usage information of this application.
 	virtual const char* getUsage()      const { return "[options]"; }
 	//! Returns the application's help option and its description.
 	virtual HelpOpt     getHelpOption() const { return HelpOpt("Print help information and exit", 1); }
 	//! Returns the parser function for handling positional options.
-	virtual PosOption   getPositional() const { return 0; }
+	virtual PosOption   getPositional() const { return nullptr; }
 	//! Prints the given error message to stderr.
 	virtual void        error(const char* msg) const { WRITE_STDERR("ERROR", getName(), msg); }
 	//! Prints the given info message to stderr.

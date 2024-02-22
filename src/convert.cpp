@@ -291,7 +291,7 @@ void SmodelsConvert::flushHeuristic() {
 		const SmData::Heuristic& heu = *it;
 		if (!data_->mapped(heu.atom)) { continue; }
 		SmData::Atom& ma = data_->mapAtom(heu.atom);
-		const char* name = ma.show ? getName(ma.smId) : 0;
+		const char* name = ma.show ? getName(ma.smId) : nullptr;
 		if (!name) {
 			ma.show = 1;
 			buf.clear();

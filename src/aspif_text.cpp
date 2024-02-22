@@ -38,7 +38,7 @@ struct AspifTextInput::Data {
 	RuleBuilder rule;
 	std::string symbol;
 };
-AspifTextInput::AspifTextInput(AbstractProgram* out) : out_(out), data_(0) {}
+AspifTextInput::AspifTextInput(AbstractProgram* out) : out_(out), data_(nullptr) {}
 bool AspifTextInput::doAttach(bool& inc) {
 	char n = peek(true);
 	if (out_ && (!n || std::islower(static_cast<unsigned char>(n)) || std::strchr(".#%{:", n))) {
@@ -61,7 +61,7 @@ bool AspifTextInput::doParse() {
 }
 
 bool AspifTextInput::parseStatements() {
-	require(out_ != 0, "output not set");
+	require(out_ != nullptr, "output not set");
 	Data data;
 	data_ = &data;
 	for (char c; (c = peek(true)) != 0; data.clear()) {
@@ -454,7 +454,7 @@ AspifTextOutput& AspifTextOutput::push(const WeightLitSpan& wlits) {
 	return *this;
 }
 void AspifTextOutput::writeDirectives() {
-	const char* sep = 0, *term = 0;
+	const char* sep = nullptr, *term = nullptr;
 	data_->readPos = 0;
 	for (uint32_t x; (x = get<uint32_t>()) != Directive_t::End;) {
 		sep = term = "";
@@ -589,7 +589,7 @@ std::string TheoryAtomStringBuilder::toString(const TheoryData& td, const Theory
 }
 bool TheoryAtomStringBuilder::function(const TheoryData& td, const TheoryTerm& f) {
 	TheoryTerm x = td.getTerm(f.function());
-	if (x.type() == Theory_t::Symbol && std::strchr("/!<=>+-*\\?&@|:;~^.", *x.symbol()) != 0) {
+	if (x.type() == Theory_t::Symbol && std::strchr("/!<=>+-*\\?&@|:;~^.", *x.symbol()) != nullptr) {
 		if (f.size() == 1) {
 			term(td, x).term(td, td.getTerm(*f.begin()));
 			return false;

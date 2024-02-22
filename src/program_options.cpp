@@ -73,7 +73,7 @@ std::size_t DefaultFormat::format(std::vector<char>& buf, const Option& o, std::
 }
 std::size_t DefaultFormat::format(std::vector<char>& buf, const char* desc, const Value& val, std::size_t) {
 	std::size_t minS = strlen(desc);
-	const char* temp = 0;
+	const char* temp = nullptr;
 	if (!desc)  desc = "";
 	buf.clear();
 	buf.reserve(minS+2);
@@ -92,7 +92,7 @@ std::size_t DefaultFormat::format(std::vector<char>& buf, const char* desc, cons
 		else { buf.push_back(*look); }
 		if (temp) { buf.insert(buf.end(), temp, temp + strlen(temp)); }
 		desc = look;
-		temp = 0;
+		temp = nullptr;
 	}
 	buf.push_back('\n');
 	return buf.size();
@@ -126,7 +126,7 @@ Value::Value(byte_t flagSet, State initial)
 	, flags_(flagSet)
 	, descFlag_(0)
 	, optAlias_(0) {
-	desc_.value = 0;
+	desc_.value = nullptr;
 }
 
 Value::~Value() {
@@ -142,7 +142,7 @@ const char* Value::arg() const {
 }
 
 Value* Value::desc(DescType t, const char* n) {
-	if (n == 0) return this;
+	if (n == nullptr) return this;
 	if (t == desc_implicit) {
 		setProperty(property_implicit);
 		if (!*n) return this;
@@ -156,7 +156,7 @@ Value* Value::desc(DescType t, const char* n) {
 		const char* oldVal = desc_.value;
 		unsigned    oldKey = descFlag_ >> 1u;
 		desc_.pack = (const char**)::operator new(sizeof(const char*[3]));
-		desc_.pack[0] = desc_.pack[1] = desc_.pack[2] = 0;
+		desc_.pack[0] = desc_.pack[1] = desc_.pack[2] = nullptr;
 		descFlag_ = desc_pack;
 		desc_.pack[oldKey] = oldVal;
 	}
@@ -169,11 +169,11 @@ const char* Value::desc(DescType t) const {
 			? desc_.value
 			: desc_.pack[t >> 1u];
 	}
-	return 0;
+	return nullptr;
 }
 
 const char* Value::implicit() const {
-	if (!hasProperty(property_implicit)) return 0;
+	if (!hasProperty(property_implicit)) return nullptr;
 	const char* x = desc(desc_implicit);
 	return x ? x : "1";
 }
@@ -221,7 +221,7 @@ std::size_t Option::maxColumn() const {
 }
 
 bool Option::assignDefault() const {
-	if (value()->defaultsTo() != 0 && value()->state() != Value::value_defaulted) {
+	if (value()->defaultsTo() != nullptr && value()->state() != Value::value_defaulted) {
 		return value()->parse(name(), value()->defaultsTo(), Value::value_defaulted);
 	}
 	return true;
@@ -302,7 +302,7 @@ OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, con
 		else     longName += '!';
 	}
 	owner_->addOption(SharedOptPtr(new Option(longName, shortName, desc, val)));
-	exit.obj = 0;
+	exit.obj = nullptr;
 	return *this;
 }
 ///////////////////////////////////////////////////////////////////////////////
@@ -356,7 +356,7 @@ const OptionGroup& OptionContext::findGroup(const std::string& name) const {
 }
 const OptionGroup* OptionContext::tryFindGroup(const std::string& name) const {
 	std::size_t x = findGroupKey(name);
-	return x < groups_.size() ? &groups_[x] : 0;
+	return x < groups_.size() ? &groups_[x] : nullptr;
 }
 
 OptionContext& OptionContext::add(const OptionContext& other) {
@@ -597,16 +597,16 @@ private:
 		bool breakEarly = false;
 		int  posKey = 0;
 		const char* curr;
-		while ((curr = next()) != 0 && !breakEarly) {
+		while ((curr = next()) != nullptr && !breakEarly) {
 			switch (getOptionType(curr)) {
-				case short_opt: if (handleShortOpt(curr + 1)) curr = 0; break;
-				case long_opt:  if (handleLongOpt(curr + 2))  curr = 0; break;
-				case end_opt:   curr = 0; breakEarly = true; break;
+				case short_opt: if (handleShortOpt(curr + 1)) curr = nullptr; break;
+				case long_opt:  if (handleLongOpt(curr + 2))  curr = nullptr; break;
+				case end_opt:   curr = nullptr; breakEarly = true; break;
 				case no_opt: {
 					SharedOptPtr opt = getOption(posKey++, curr);
 					if (opt.get()) {
 						addOptionValue(opt, curr);
-						curr = 0;
+						curr = nullptr;
 					}
 					break; }
 				default:
@@ -649,7 +649,7 @@ private:
 						++optName;
 					}
 				}
-				else if (*val != 0 || (val = next()) != 0) {
+				else if (*val != 0 || (val = next()) != nullptr) {
 					// -ovalue or -o value
 					addOptionValue(o, val);
 					return true;
@@ -708,14 +708,14 @@ class ArgvParser : public CommandLineParser {
 public:
 	ArgvParser(ParseContext& ctx, int startPos, int endPos, const char*const* argv, unsigned flags)
 		: CommandLineParser(ctx, flags)
-		, currentArg_(0)
+		, currentArg_(nullptr)
 		, argPos_(startPos)
 		, endPos_(endPos)
 		, argv_(argv) {
 	}
 private:
 	const char* next() override {
-		currentArg_ = argPos_ != endPos_ ? argv_[argPos_++] : 0;
+		currentArg_ = argPos_ != endPos_ ? argv_[argPos_++] : nullptr;
 		return currentArg_;
 	}
 	const char*       currentArg_;
@@ -735,7 +735,7 @@ private:
 	const char* next() override {
 		// skip leading white
 		while (std::isspace(static_cast<unsigned char>(*cmd_))) { ++cmd_; }
-		if (!*cmd_) return 0;
+		if (!*cmd_) return nullptr;
 		tok_.clear();
 		// find end of current arg
 		for (char c, t = ' ', n; (c = *cmd_) != 0; ++cmd_) {
@@ -846,7 +846,7 @@ public:
 	SharedOptPtr  getOption(const char* name, FindType ft) override {
 		OptionContext::OptionRange r = parsed.ctx->findImpl(name, ft, eMask);
 		if (r.first != r.second) { return *(parsed.ctx->begin() + r.first->second); }
-		return SharedOptPtr(0);
+		return SharedOptPtr(nullptr);
 	}
 	SharedOptPtr  getOption(int, const char* tok) override {
 		std::string optName;
@@ -873,7 +873,7 @@ ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsign
 	for (int i = 1; i != argc; ++i) {
 		argv[i] = const_cast<char*>(parser.remaining[i-1]);
 	}
-	argv[argc] = 0;
+	argv[argc] = nullptr;
 	return ctx;
 }
 ParsedValues parseCommandArray(const char* const* argv, unsigned nArgs, const OptionContext& o, bool allowUnreg, PosOption po, unsigned flags) {
@@ -891,7 +891,7 @@ ParsedValues parseCommandString(const std::string& cmd, const OptionContext& o, 
 }
 
 ParsedValues parseCfgFile(std::istream& in, const OptionContext& o, bool allowUnreg) {
-	DefaultContext ctx(o, allowUnreg, 0);
+	DefaultContext ctx(o, allowUnreg, nullptr);
 	return static_cast<DefaultContext&>(CfgFileParser(ctx, in).parse()).parsed;
 }
 

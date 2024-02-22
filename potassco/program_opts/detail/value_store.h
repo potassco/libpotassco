@@ -34,7 +34,7 @@ struct VTable {
 	}
 	static void destroy(const void* o, void** out) {
 		delete static_cast<const T*>(o);
-		*out = 0;
+		*out = nullptr;
 	}
 	static void typeinfo(const void*, void** out)  {
 		*out = const_cast<void*>( static_cast<const void*>(&typeid(T)) );
@@ -48,7 +48,7 @@ struct OptVTable {
 	}
 	static void destroy(const void* o, void** out) {
 		static_cast<const T*>(o)->~T();
-		*out = 0;
+		*out = nullptr;
 	}
 	static vtable_type vtable_s;
 };

@@ -68,7 +68,7 @@ struct MyApp : public Potassco::Application {
 };
 
 TEST_CASE("Test application", "[app]") {
-	char* argv[] = {(char*)"app", (char*)"-h", (char*)"-V3", (char*)"--vers", (char*)"hallo", 0};
+	char* argv[] = {(char*)"app", (char*)"-h", (char*)"-V3", (char*)"--vers", (char*)"hallo", nullptr};
 	int   argc = 5;
 	MyApp app;
 	REQUIRE(app.main(argc, argv) == EXIT_SUCCESS);
@@ -100,7 +100,7 @@ TEST_CASE("Test alarm", "[app]") {
 	};
 
 	TimedApp app;
-	char* argv[] = {(char*)"app", (char*)"--time-limit=1", 0};
+	char* argv[] = {(char*)"app", (char*)"--time-limit=1", nullptr};
 	int argc = 2;
 	app.main(argc, argv);
 	REQUIRE(app.stop == 1);

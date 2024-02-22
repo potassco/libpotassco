@@ -40,7 +40,7 @@ namespace Potassco { namespace ProgramOptions { namespace detail {
 template <class ParamT>
 struct Notifier {
 	typedef bool (*notify_func_type)(void*, const std::string& name, ParamT);
-	Notifier() : obj(0), func(0) {}
+	Notifier() : obj(nullptr), func(0) {}
 	template <class O>
 	Notifier(O* o, bool (*f)(O*, const std::string&, ParamT)) {
 		obj = o;

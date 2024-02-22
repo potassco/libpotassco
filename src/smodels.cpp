@@ -86,7 +86,7 @@ struct SmodelsInput::NodeTab {
 	}
 	StrMap nodes;
 };
-SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts, AtomTable* syms) : out_(out), atoms_(syms), nodes_(0), opts_(opts), delSyms_(false) {}
+SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts, AtomTable* syms) : out_(out), atoms_(syms), nodes_(nullptr), opts_(opts), delSyms_(false) {}
 SmodelsInput::~SmodelsInput() { if (delSyms_) delete atoms_; delete nodes_; }
 void SmodelsInput::doReset() {}
 bool SmodelsInput::doAttach(bool& inc) {
@@ -221,8 +221,8 @@ bool SmodelsInput::readSymbols() {
 	if (!incremental()) {
 		delete nodes_;
 		if (delSyms_) delete atoms_;
-		nodes_ = 0;
-		atoms_ = 0;
+		nodes_ = nullptr;
+		atoms_ = nullptr;
 	}
 	return true;
 }

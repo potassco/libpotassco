@@ -143,13 +143,13 @@ TEST_CASE("String conversion", "[string]") {
 	SECTION("double parsing is locale-independent") {
 		typedef std::pair<std::string, std::string> P;
 		P lcg[] = {P("de", "DE"), P("el", "GR"), P("ru", "RU"), P("es", "ES"), P("it", "IT")};
-		const char* x = 0;
+		const char* x = nullptr;
 #if defined(_MSC_VER) && _MSC_VER <= 1600
 		x = setlocale(LC_ALL, "deu_deu");
 #endif
 		for (const P* it = lcg, *end = it + sizeof(lcg)/sizeof(P); it != end && !x; ++it) {
 			x = setlocale(LC_ALL, std::string(it->first).append(1, '_').append(it->second).c_str());
-			if (x != 0) { break; }
+			if (x != nullptr) { break; }
 			x = setlocale(LC_ALL, std::string(it->first).append(1, '-').append(it->second).c_str());
 		}
 		if (x) {
@@ -369,15 +369,15 @@ TEST_CASE("String builder", "[string]") {
 
 TEST_CASE("Macro test", "[macro]") {
 	SECTION("test fail function") {
-		REQUIRE_THROWS_AS(fail(Potassco::error_logic, 0, 0, 0, "Message with %d parameters {'%s', '%s'}", 2, "Foo", "Bar"), std::logic_error);
-		REQUIRE_THROWS_WITH(fail(Potassco::error_logic, 0, 0, 0, "Message with %d parameters {'%s', '%s'}", 2, "Foo", "Bar"),
+		REQUIRE_THROWS_AS(fail(Potassco::error_logic, nullptr, 0, nullptr, "Message with %d parameters {'%s', '%s'}", 2, "Foo", "Bar"), std::logic_error);
+		REQUIRE_THROWS_WITH(fail(Potassco::error_logic, nullptr, 0, nullptr, "Message with %d parameters {'%s', '%s'}", 2, "Foo", "Bar"),
 			"Message with 2 parameters {'Foo', 'Bar'}");
 
-		REQUIRE_THROWS_AS(fail(Potassco::error_assert, 0, 0, "false", 0), std::logic_error);
-		REQUIRE_THROWS_AS(fail(Potassco::error_runtime, 0, 0, "false", 0), std::runtime_error);
+		REQUIRE_THROWS_AS(fail(Potassco::error_assert, nullptr, 0, "false", nullptr), std::logic_error);
+		REQUIRE_THROWS_AS(fail(Potassco::error_runtime, nullptr, 0, "false", nullptr), std::runtime_error);
 	}
 	SECTION("calling fail with success is a logic error") {
-		REQUIRE_THROWS_AS(fail(0, 0, 0, 0, 0), std::invalid_argument);
+		REQUIRE_THROWS_AS(fail(0, nullptr, 0, nullptr, nullptr), std::invalid_argument);
 	}
 	SECTION("test check") {
 		REQUIRE_NOTHROW(POTASSCO_CHECK(true, EINVAL));

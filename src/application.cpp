@@ -65,14 +65,14 @@ namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Application
 /////////////////////////////////////////////////////////////////////////////////////////
-Application* Application::instance_s = 0;
+Application* Application::instance_s = nullptr;
 Application::Application() : exitCode_(EXIT_FAILURE), timeout_(0), verbose_(0), fastExit_(false), blocked_(0), pending_(0) {}
 Application::~Application() { resetInstance(*this); }
 void Application::initInstance(Application& app) {
 	instance_s = &app;
 }
 void Application::resetInstance(Application& app) {
-	if (instance_s == &app) { instance_s = 0; }
+	if (instance_s == &app) { instance_s = nullptr; }
 }
 #if !defined(_WIN32)
 int Application::setAlarm(unsigned sec) {

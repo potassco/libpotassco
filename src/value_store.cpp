@@ -28,12 +28,12 @@
 namespace Potassco { namespace ProgramOptions {
 
 ValueStore::ValueStore()
-	: vptr_(0)
-	, value_(0) {
+	: vptr_(nullptr)
+	, value_(nullptr) {
 }
 ValueStore::ValueStore(const ValueStore& other)
 	: vptr_(other.vptr_)
-	, value_(0) {
+	, value_(nullptr) {
 	if (!other.empty()) {
 		clone(extract(const_cast<void**>(&other.value_)), &value_);
 	}
@@ -53,7 +53,7 @@ void ValueStore::swap(ValueStore& other) {
 const  std::type_info& ValueStore::type() const {
 	if (!empty()) {
 		void* x;
-		(*vptr_)[vcall_typeid](0, &x);
+		(*vptr_)[vcall_typeid](nullptr, &x);
 		return *static_cast<const std::type_info*>( x );
 	}
 	struct internal_empty_type {};
@@ -63,12 +63,12 @@ const  std::type_info& ValueStore::type() const {
 void ValueStore::clear() {
 	if (!empty()) {
 		(*vptr_)[vcall_destroy](extract(&value_), &value_);
-		vptr_  = 0;
+		vptr_  = nullptr;
 	}
 }
 
 void ValueStore::surrender() {
-	vptr_ = 0;
+	vptr_ = nullptr;
 }
 
 void ValueStore::clone(const void* obj, void** out) const {
@@ -76,7 +76,7 @@ void ValueStore::clone(const void* obj, void** out) const {
 }
 
 void* ValueStore::extract(void** v) const {
-	if ((*vptr_)[call_extract] == 0) {
+	if ((*vptr_)[call_extract] == nullptr) {
 		return *v;
 	}
 	return reinterpret_cast<void*>(v);

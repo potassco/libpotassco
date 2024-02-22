@@ -50,7 +50,7 @@ struct ValueMappingBase : private std::vector<std::pair<const char*, int> > {
 		for (const_iterator it = begin(), end = this->end(); it != end; ++it) {
 			if (strcasecmp(strVal, it->first) == 0) { return &it->second; }
 		}
-		return 0;
+		return nullptr;
 	}
 };
 template <class T>

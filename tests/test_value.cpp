@@ -53,7 +53,7 @@ private:
 
 int Counted::count = 0;
 struct Notified {
-	Notified() : notifications(0), reused(0), loc(0), ret(false) {}
+	Notified() : notifications(0), reused(0), loc(nullptr), ret(false) {}
 	~Notified() { delete loc; }
 	static bool notifyInt(Notified* this_, const std::string& name, const int* loc) {
 		++this_->notifications;
@@ -100,7 +100,7 @@ TEST_CASE("Test value store", "[value]") {
 		REQUIRE(Po::value_cast<Counted>(x).parsed == 10);
 		REQUIRE(Po::value_cast<Counted>(y).parsed == 0);
 		x.clear();
-		REQUIRE(Po::unsafe_value_cast<Counted>(&x) == static_cast<Counted*>(0));
+		REQUIRE(Po::unsafe_value_cast<Counted>(&x) == static_cast<Counted*>(nullptr));
 	}
 	REQUIRE(Counted::count == 0);
 }

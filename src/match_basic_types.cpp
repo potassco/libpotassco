@@ -139,12 +139,12 @@ int BufferedStream::copy(char* out, int max) {
 }
 unsigned BufferedStream::line() const { return line_; }
 void BufferedStream::fail(unsigned line, const char* err) {
-	Potassco::fail(Potassco::error_logic, 0, 0, 0, "parse error in line %u: %s", line, err);
+	Potassco::fail(Potassco::error_logic, nullptr, 0, nullptr, "parse error in line %u: %s", line, err);
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // ProgramReader
 /////////////////////////////////////////////////////////////////////////////////////////
-ProgramReader::ProgramReader() : str_(0), varMax_(static_cast<unsigned>(INT_MAX)), inc_(false) {}
+ProgramReader::ProgramReader() : str_(nullptr), varMax_(static_cast<unsigned>(INT_MAX)), inc_(false) {}
 ProgramReader::~ProgramReader() { delete str_; }
 bool ProgramReader::accept(std::istream& str) {
 	reset();
@@ -156,7 +156,7 @@ bool ProgramReader::incremental() const {
 	return inc_;
 }
 bool ProgramReader::parse(ReadMode m) {
-	POTASSCO_REQUIRE(str_ != 0, "no input stream");
+	POTASSCO_REQUIRE(str_ != nullptr, "no input stream");
 	do {
 		if (!doParse()) { return false; }
 		stream()->skipWs();
@@ -168,7 +168,7 @@ bool ProgramReader::more() {
 	return str_ && (str_->skipWs(), !str_->end());
 }
 void ProgramReader::reset() {
-	delete str_; str_ = 0;
+	delete str_; str_ = nullptr;
 	doReset();
 }
 void ProgramReader::doReset() {}
@@ -272,13 +272,13 @@ int matchEdgePred(const char*& in, StringSpan& n0, StringSpan& n1) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // MemoryRegion
 /////////////////////////////////////////////////////////////////////////////////////////
-MemoryRegion::MemoryRegion(std::size_t init) : beg_(0), end_(0) {
+MemoryRegion::MemoryRegion(std::size_t init) : beg_(nullptr), end_(nullptr) {
 	grow(init);
 }
 MemoryRegion::~MemoryRegion() { release(); }
 void MemoryRegion::release() {
 	std::free(beg_);
-	beg_ = end_ = 0;
+	beg_ = end_ = nullptr;
 }
 void* MemoryRegion::operator[](std::size_t idx) const {
 	return static_cast<unsigned char*>(beg_)+idx;

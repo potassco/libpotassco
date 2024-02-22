@@ -59,7 +59,7 @@ inline my_locale_t default_locale()        { return std::locale::classic(); }
 #else
 #include <locale.h>
 typedef locale_t my_locale_t;
-inline my_locale_t default_locale() { return newlocale(LC_ALL_MASK, "C", 0); }
+inline my_locale_t default_locale() { return newlocale(LC_ALL_MASK, "C", nullptr); }
 #endif
 static struct LocaleHolder {
 	~LocaleHolder() { freelocale(loc_);  }
@@ -118,7 +118,7 @@ static bool parseSigned(const char*& x, long long& out, long long sMin, long lon
 	out = strtoll(x, &err, detectBase(x));
 	if ((out == LLONG_MAX || out == LLONG_MIN) && errno == ERANGE) {
 		errno = 0;
-		long long temp = strtoll(x, 0, detectBase(x));
+		long long temp = strtoll(x, nullptr, detectBase(x));
 		if (errno == ERANGE || out != temp) {
 			return false;
 		}
@@ -144,7 +144,7 @@ static bool parseUnsigned(const char*& x, unsigned long long& out, unsigned long
 	out = strtoull(x, &err, detectBase(x));
 	if (out == ULLONG_MAX && errno == ERANGE) {
 		errno = 0;
-		unsigned long long temp = strtoull(x, 0, detectBase(x));
+		unsigned long long temp = strtoull(x, nullptr, detectBase(x));
 		if (errno == ERANGE || out != temp) {
 			return false;
 		}
@@ -241,7 +241,7 @@ int xconvert(const char* x, const char*& out, const char** errPos, int) {
 }
 int xconvert(const char* x, string& out, const char** errPos, int sep) {
 	const char* end;
-	if (sep == 0 || (end = strchr(x, char(sep))) == 0) {
+	if (sep == 0 || (end = strchr(x, char(sep))) == nullptr) {
 		out = x;
 	}
 	else {
@@ -362,7 +362,7 @@ StringBuilder::Buffer StringBuilder::grow(std::size_t n) {
 			temp.str_->append(current.head, current.used);
 			setTag(temp.tag());
 			str_ = temp.str_;
-			temp.str_ = 0;
+			temp.str_ = nullptr;
 		}
 		str_->append(n, '\0');
 		ret.head = const_cast<char*>(&str_->operator[](0));
@@ -502,7 +502,7 @@ bool find_kv(const EnumClass& e, const StringSpan* sKey, const int* iKey, String
 }
 }
 bool EnumClass::isValid(int v) const {
-	return v >= min && v <= max && detail::find_kv(*this, 0, &v, 0, 0);
+	return v >= min && v <= max && detail::find_kv(*this, nullptr, &v, nullptr, nullptr);
 }
 size_t EnumClass::convert(const char* x, int& out) const {
 	int cVal; const char* next;
@@ -512,13 +512,13 @@ size_t EnumClass::convert(const char* x, int& out) const {
 	}
 	else if (x == next) {
 		StringSpan k = toSpan(x, std::strcspn(x, " ,="));
-		return detail::find_kv(*this, &k, 0, 0, &out) ? k.size : 0;
+		return detail::find_kv(*this, &k, nullptr, nullptr, &out) ? k.size : 0;
 	}
 	else { return static_cast<size_t>(0); }
 }
 size_t EnumClass::convert(int val, const char*& out) const {
 	StringSpan key = toSpan("", 0);
-	detail::find_kv(*this, 0, &val, &key, 0);
+	detail::find_kv(*this, nullptr, &val, &key, nullptr);
 	out = key.first;
 	return key.size;
 }
