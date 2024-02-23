@@ -422,14 +422,14 @@ struct OstreamWriter {
 	OstreamWriter(std::ostream& os) : out(os) {}
 	void write(const std::vector<char>& buf, std::size_t num);
 	std::ostream& out;
-private: void operator=(const OstreamWriter&);
+	void operator=(const OstreamWriter&) = delete;
 };
 //! Writes formatted option descriptions to an std::string.
 struct StringWriter {
 	StringWriter(std::string& str) : out(str) {}
 	void write(const std::vector<char>& buf, std::size_t num);
 	std::string& out;
-private: void operator=(const StringWriter&);
+	void operator=(const StringWriter&) = delete;
 };
 //! Writes formatted option descriptions to a FILE.
 struct FileWriter {

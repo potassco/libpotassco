@@ -367,7 +367,8 @@ private:
 	StringBuilder& operator=(const StringBuilder&);
 	ThisType& append_(uint64_t n, bool pos);
 	enum Type { Sbo = 0u, Str = 64u, Buf = 128u };
-	enum { Own = 1u, SboCap = 63u };
+	static constexpr uint8_t Own = 1u;
+	static constexpr uint8_t SboCap = 63u;
 	struct Buffer {
 		std::size_t free() const { return size - used; }
 		char*       pos()  const { return head + used; }

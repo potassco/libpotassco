@@ -112,7 +112,8 @@ int Application::setAlarm(unsigned sec) {
 int Application::main(int argc, char** argv) {
 	initInstance(*this); // singleton instance used for signal handling
 	exitCode_ = EXIT_FAILURE;
-	blocked_  = pending_ = 0;
+	blocked_  = 0;
+	pending_  = 0;
 	if (getOptions(argc, argv)) {
 		// install signal handlers
 		for (const int* sig = getSignals(); sig && *sig; ++sig) {

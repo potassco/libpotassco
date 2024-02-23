@@ -327,12 +327,14 @@ private:
  * with a TheoryData object so that dereferencing yields an object instead of an id.
  */
 template <class T, const T& (TheoryData::*get)(Id_t) const>
-class IteratorAdaptor : public std::iterator<std::bidirectional_iterator_tag, const T> {
+class IteratorAdaptor {
 public:
 	typedef IteratorAdaptor this_type;
-	typedef std::iterator<std::bidirectional_iterator_tag, const T> base_type;
-	typedef typename base_type::reference reference;
-	typedef typename base_type::pointer   pointer;
+	typedef std::bidirectional_iterator_tag iterator_category;
+	typedef const T value_type;
+	typedef const T& reference;
+	typedef const T* pointer;
+	typedef std::ptrdiff_t difference_type;
 	IteratorAdaptor(const TheoryData& t, const Id_t* e) : data_(&t), elem_(e) {}
 	IteratorAdaptor() : data_(nullptr), elem_(nullptr) {}
 	this_type& operator++() { ++elem_; return *this; }

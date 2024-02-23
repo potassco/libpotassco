@@ -202,7 +202,9 @@ protected:
 	const char* desc(DescType t) const;
 	Value*      desc(DescType t, const char* d);
 private:
-	enum { desc_pack = 8, level_shift = not_a_property, levels = 255/level_shift };
+	static constexpr auto desc_pack = 8u;
+	static constexpr auto level_shift = static_cast<unsigned>(not_a_property);
+	static constexpr auto levels = static_cast<unsigned>(255/level_shift);
 	byte_t state_;       // state: one of State
 	byte_t flags_;       // flag set holding properties
 	byte_t descFlag_;    // either desc_pack or one of DescType
