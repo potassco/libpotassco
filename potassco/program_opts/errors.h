@@ -26,7 +26,7 @@
 #define PROGRAM_OPTIONS_ERRORS_H_INCLUDED
 #include <stdexcept>
 #include <string>
-namespace Potassco { namespace ProgramOptions {
+namespace Potassco::ProgramOptions {
 
 //! Base class for all exceptions.
 class Error : public std::logic_error {
@@ -43,7 +43,6 @@ public:
 		invalid_format
 	};
 	SyntaxError(Type t, const std::string& key);
-	~SyntaxError() throw () override {}
 	Type               type() const { return type_; }
 	const std::string& key()  const { return key_; }
 private:
@@ -61,7 +60,6 @@ public:
 		unknown_group
 	};
 	ContextError(const std::string& ctx, Type t, const std::string& key, const std::string& desc = "");
-	~ContextError() throw () override {}
 	Type               type() const { return type_; }
 	const std::string& key()  const { return key_; }
 	const std::string& ctx()  const { return ctx_; }
@@ -74,17 +72,14 @@ private:
 class DuplicateOption : public ContextError {
 public:
 	DuplicateOption(const std::string& ctx, const std::string& key) : ContextError(ctx, ContextError::duplicate_option, key) {}
-	~DuplicateOption() throw () override {}
 };
 class UnknownOption : public ContextError {
 public:
 	UnknownOption(const std::string& ctx, const std::string& key) : ContextError(ctx, ContextError::unknown_option, key) {}
-	~UnknownOption() throw () override {}
 };
 class AmbiguousOption : public ContextError {
 public:
 	AmbiguousOption(const std::string& ctx, const std::string& key, const std::string& alt) : ContextError(ctx, ContextError::ambiguous_option, key, alt) {}
-	~AmbiguousOption() throw () override {}
 };
 
 //! Used for signaling validation errors when trying to assign option values.
@@ -96,7 +91,6 @@ public:
 		invalid_value
 	};
 	ValueError(const std::string& ctx, Type t, const std::string& opt, const std::string& value);
-	~ValueError() throw () override {}
 	Type               type() const { return type_; }
 	const std::string& key()  const { return key_; }
 	const std::string& ctx()  const { return ctx_; }
@@ -108,7 +102,6 @@ private:
 	Type        type_;
 };
 
+} // namespace Potassco::ProgramOptions
 
-} // namespace ProgramOptions
-} // namespace Potassco
 #endif

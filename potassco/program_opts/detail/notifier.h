@@ -26,7 +26,7 @@
 #ifndef PROGRAM_OPTIONS_NOTIFIER_H_INCLUDED
 #define PROGRAM_OPTIONS_NOTIFIER_H_INCLUDED
 
-namespace Potassco { namespace ProgramOptions { namespace detail {
+namespace Potassco::ProgramOptions::detail {
 
 ///////////////////////////////////////////////////////////////////////////////
 // Notifier
@@ -59,7 +59,5 @@ struct Notify {
 	typedef bool (*type)(ObjT*, const std::string& name, ParamT);
 };
 
-} // namespace detail
-} // namespace ProgramOptions
-} // namespace Potassco
+} // namespace Potassco::ProgramOptions::detail
 #endif

@@ -41,7 +41,7 @@
 #include <cctype>
 using namespace std;
 
-namespace Potassco { namespace ProgramOptions {
+namespace Potassco::ProgramOptions {
 ///////////////////////////////////////////////////////////////////////////////
 // DefaultFormat
 ///////////////////////////////////////////////////////////////////////////////
@@ -230,7 +230,6 @@ bool Option::assignDefault() const {
 // class OptionGroup
 ///////////////////////////////////////////////////////////////////////////////
 OptionGroup::OptionGroup(const std::string& caption, DescriptionLevel hl) : caption_(caption), level_(hl) {}
-OptionGroup::~OptionGroup() {}
 
 OptionInitHelper OptionGroup::addOptions() {
 	return OptionInitHelper(*this);
@@ -242,18 +241,18 @@ void OptionGroup::addOption(const SharedOptPtr& option) {
 
 std::size_t OptionGroup::maxColumn(DescriptionLevel level) const {
 	std::size_t maxW = 0;
-	for (option_iterator it = options_.begin(), end = options_.end(); it != end; ++it) {
-		if ((*it)->descLevel() <= level) {
-			maxW = std::max(maxW, (*it)->maxColumn());
+	for (const auto& opt : options_) {
+		if (opt->descLevel() <= level) {
+			maxW = std::max(maxW, opt->maxColumn());
 		}
 	}
 	return maxW;
 }
 
 void OptionGroup::format(OptionOutput& out, size_t maxW, DescriptionLevel dl) const {
-	for (option_iterator it = options_.begin(), end = options_.end(); it != end; ++it) {
-		if ((*it)->descLevel() <= dl) {
-			out.printOption(**it, maxW);
+	for (const auto& opt : options_) {
+		if (opt->descLevel() <= dl) {
+			out.printOption(*opt, maxW);
 		}
 	}
 }
@@ -312,8 +311,7 @@ OptionContext::OptionContext(const std::string& cap, DescriptionLevel def)
 	: caption_(cap)
 	, descLevel_(def) {
 }
-OptionContext::~OptionContext() {
-}
+
 const std::string& OptionContext::caption() const {
 	return caption_;
 }
@@ -334,8 +332,8 @@ OptionContext& OptionContext::add(const OptionGroup& options) {
 		k = groups_.size();
 		groups_.push_back(OptionGroup(options.caption(), options.descLevel()));
 	}
-	for (option_iterator it = options.begin(), end = options.end(); it != end; ++it) {
-		insertOption(k, *it);
+	for (const auto& opt : options) {
+		insertOption(k, opt);
 	}
 	groups_[k].setDescriptionLevel(std::min(options.descLevel(), groups_[k].descLevel()));
 	return *this;
@@ -361,8 +359,8 @@ const OptionGroup* OptionContext::tryFindGroup(const std::string& name) const {
 
 OptionContext& OptionContext::add(const OptionContext& other) {
 	if (this == &other) return *this;
-	for (size_t g = 0; g != other.groups_.size(); ++g) {
-		add(other.groups_[g]);
+	for (const auto& grp : other.groups_) {
+		add(grp);
 	}
 	return *this;
 }
@@ -401,8 +399,8 @@ OptionContext::PrefixRange OptionContext::findImpl(const char* key, FindType t, 
 		k += k[0];
 		k[0] = '-';
 	}
-	index_iterator it = index_.lower_bound(k);
-	index_iterator up = it;
+	auto it = index_.lower_bound(k);
+	auto up = it;
 	if (it != index_.end()) {
 		if ((it->first == k) && ((t & (find_alias|find_name)) != 0)) {
 			++up;
@@ -425,15 +423,15 @@ OptionContext::PrefixRange OptionContext::findImpl(const char* key, FindType t, 
 			throw AmbiguousOption(eCtx, k, str);
 		}
 	}
-	return PrefixRange(it, up);
+	return {it, up};
 }
 
 OptionOutput& OptionContext::description(OptionOutput& out) const {
 	DescriptionLevel dl = descLevel_;
 	if (out.printContext(*this)) {
 		size_t maxW = 23;
-		for (size_t i = 0; i != groups(); ++i) {
-			maxW = std::max(maxW, groups_[i].maxColumn(dl));
+		for (const auto& grp : groups_) {
+			maxW = std::max(maxW, grp.maxColumn(dl));
 		}
 		// print all visible groups
 		for (std::size_t i = 1; i < groups_.size(); ++i) {
@@ -458,8 +456,8 @@ std::string OptionContext::defaults(std::size_t n) const {
 		// print all sub-groups followed by main group
 		for (std::size_t i = (g == 0), end = (g == 0) ? groups_.size() : 1; i < end; ++i) {
 			if (groups_[i].descLevel() <= dl) {
-				for (option_iterator it = groups_[i].begin(), oEnd = groups_[i].end(); it != oEnd; ++it) {
-					const Option& o = **it;
+				for (const auto& optPtr : groups_[i]) {
+					const Option& o = *optPtr;
 					if (o.value()->defaultsTo() && o.descLevel() <= dl) {
 						((((opt += "--") += o.name()) += "=") += o.value()->defaultsTo());
 						if (line + opt.size() > 78) {
@@ -485,8 +483,8 @@ std::ostream& operator<<(std::ostream& os, const OptionContext& grp) {
 }
 
 bool OptionContext::assignDefaults(const ParsedOptions& opts) const {
-	for (option_iterator it = begin(), end = this->end(); it != end; ++it) {
-		const Option& o = **it;
+	for (const auto& optPtr : *this) {
+		const Option& o = *optPtr;
 		if (opts.count(o.name()) == 0 && !o.assignDefault()) {
 			throw ValueError(caption(), ValueError::invalid_default, o.name(), o.value()->defaultsTo());
 		}
@@ -496,7 +494,7 @@ bool OptionContext::assignDefaults(const ParsedOptions& opts) const {
 ///////////////////////////////////////////////////////////////////////////////
 // class ParsedOptions
 ///////////////////////////////////////////////////////////////////////////////
-ParsedOptions::ParsedOptions() {}
+ParsedOptions::ParsedOptions() = default;
 ParsedOptions::~ParsedOptions() { parsed_.clear(); }
 bool ParsedOptions::assign(const ParsedValues& p, const ParsedOptions* exclude) {
 	if (!p.ctx) return false;
@@ -505,7 +503,7 @@ bool ParsedOptions::assign(const ParsedValues& p, const ParsedOptions* exclude) 
 		void assign(const ParsedValues& p) {
 			begin = it = p.begin();
 			// assign parsed values
-			for (ParsedValues::iterator end = p.end(); it != end; ++it) {
+			for (auto end = p.end(); it != end; ++it) {
 				const Option& o = *it->first;
 				if (ignore && ignore->count(o.name()) != 0 && !o.value()->isComposing()) {
 					continue;
@@ -516,7 +514,7 @@ bool ParsedOptions::assign(const ParsedValues& p, const ParsedOptions* exclude) 
 			}
 		}
 		~Assign() {
-			for (ParsedValues::iterator x = begin, end = this->it; x != end; ++x) {
+			for (auto x = begin, end = this->it; x != end; ++x) {
 				const Option& o = *x->first;
 				assert(o.value()->state() == Value::value_fixed || self->parsed_.count(o.name()) != 0 || ignore->count(o.name()) != 0);
 				if (o.value()->state() == Value::value_fixed) {
@@ -558,8 +556,7 @@ struct LessFirst {
 };
 } // namespace
 void ParsedValues::add(const std::string& name, const std::string& value) {
-	OptionContext::option_iterator it = ctx->tryFind(name.c_str());
-	if (it != ctx->end()) {
+	if (auto it = ctx->tryFind(name.c_str()); it != ctx->end()) {
 		add(*it, value);
 	}
 }
@@ -570,14 +567,13 @@ OptionParser::OptionParser(ParseContext& o)
 	: ctx_(&o) {
 }
 
-OptionParser::~OptionParser() {
-}
+OptionParser::~OptionParser() = default;
 
 ParseContext& OptionParser::parse() {
 	doParse();
 	return *ctx_;
 }
-ParseContext::~ParseContext() {}
+ParseContext::~ParseContext() = default;
 namespace {
 ///////////////////////////////////////////////////////////////////////////////
 // class CommandLineParser
@@ -621,7 +617,7 @@ private:
 			curr = next();
 		}
 	}
-	OptionType getOptionType(const char* o) const {
+	static OptionType getOptionType(const char* o) {
 		if (strncmp(o, "--", 2) == 0) {
 			return o[2] ? long_opt : end_opt;
 		}
@@ -731,6 +727,8 @@ public:
 		, cmd_(cmd ? cmd : "") {
 		tok_.reserve(80);
 	}
+	CommandStringParser& operator=(const CommandStringParser&) = delete;
+
 private:
 	const char* next() override {
 		// skip leading white
@@ -747,7 +745,6 @@ private:
 		}
 		return tok_.c_str();
 	}
-	CommandStringParser& operator=(const CommandStringParser&);
 	const char* cmd_;
 	std::string tok_;
 };
@@ -964,5 +961,5 @@ ValueError::ValueError(const std::string& ctx, Type t, const std::string& opt, c
 	, value_(value)
 	, type_(t) {
 }
-} // namespace ProgramOptions
-} // namespace Potassco
+} // namespace Potassco::ProgramOptions
+

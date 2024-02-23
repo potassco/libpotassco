@@ -25,7 +25,7 @@
 //
 #include <potassco/program_opts/value_store.h>
 #include <algorithm>
-namespace Potassco { namespace ProgramOptions {
+namespace Potassco::ProgramOptions {
 
 ValueStore::ValueStore()
 	: vptr_(nullptr)
@@ -81,6 +81,4 @@ void* ValueStore::extract(void** v) const {
 	}
 	return reinterpret_cast<void*>(v);
 }
-} // namespace ProgramOptions
-} // namespace Potassco
-
+} // namespace Potassco::ProgramOptions

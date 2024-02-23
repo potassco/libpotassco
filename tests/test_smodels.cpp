@@ -29,9 +29,7 @@
 #include <cstring>
 #include <map>
 #include <unordered_map>
-namespace Potassco {
-namespace Test {
-namespace Smodels {
+namespace Potassco::Test::Smodels {
 using AtomTab = std::vector<std::string>;
 using LitVec = std::vector<Lit_t>;
 using RawRule = std::vector<int>;
@@ -452,7 +450,7 @@ TEST_CASE("Convert to smodels", "[convert]") {
 		convert.minimize(3, {begin(m2), 2});
 		convert.minimize(10, {begin(m1), m1.size()});
 		convert.minimize(3, {begin(m2)+2, 2});
-		REQUIRE(observer.rules[Rule_t::Optimize].size() == 0);
+		REQUIRE(observer.rules[Rule_t::Optimize].empty());
 		convert.endStep();
 		REQUIRE(observer.rules[Rule_t::Optimize].size() == 2);
 
@@ -553,8 +551,8 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
 	SECTION("_edge(X,Y) atoms are converted to edges directives") {
 		Lit_t a = 1, b = 2, c = 3;
 		writer.output(toSpan("_edge(1,2)"), toSpan(&a, 1));
-		writer.output(toSpan("_edge(\"1,2\",\"2,1\")"), toSpan(&b, 1));
-		writer.output(toSpan("_edge(\"2,1\",\"1,2\")"), toSpan(&c, 1));
+		writer.output(toSpan(R"(_edge("1,2","2,1"))"), toSpan(&b, 1));
+		writer.output(toSpan(R"(_edge("2,1","1,2"))"), toSpan(&c, 1));
 		writer.endStep();
 		REQUIRE(readSmodels(str, observer, nullptr, opts) == 0);
 		REQUIRE(observer.edges.size() == 3);
@@ -604,4 +602,4 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
 	}
 }
 
-}}}
+}

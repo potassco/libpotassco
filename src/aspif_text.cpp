@@ -39,6 +39,7 @@ struct AspifTextInput::Data {
 	std::string symbol;
 };
 AspifTextInput::AspifTextInput(AbstractProgram* out) : out_(out), data_(nullptr) {}
+void AspifTextInput::setOutput(AbstractProgram& out) { out_ = &out; }
 bool AspifTextInput::doAttach(bool& inc) {
 	char n = peek(true);
 	if (out_ && (!n || std::islower(static_cast<unsigned char>(n)) || std::strchr(".#%{:", n))) {
@@ -461,19 +462,19 @@ void AspifTextOutput::writeDirectives() {
 		switch (x) {
 			case Directive_t::Rule:
 				if (get<uint32_t>() != 0) { os_ << "{"; term = "}"; }
-				for (uint32_t n = get<uint32_t>(); n--; sep = !*term ? "|" : ";") { printName(os_ << sep, get<Atom_t>()); }
+				for (auto n = get<uint32_t>(); n--; sep = !*term ? "|" : ";") { printName(os_ << sep, get<Atom_t>()); }
 				if (*sep) { os_ << term; sep = " :- "; }
 				else      { os_ << ":- "; }
 				term = ".";
-				switch (uint32_t bt = get<uint32_t>()) {
+				switch (auto bt = get<uint32_t>()) {
 					case Body_t::Normal:
-						for (uint32_t n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
+						for (auto n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
 						break;
 					case Body_t::Count: // fall through
 					case Body_t::Sum:
 						os_ << sep << get<Weight_t>();
 						sep = "{";
-						for (uint32_t n = get<uint32_t>(); n--; sep = "; ") {
+						for (auto n = get<uint32_t>(); n--; sep = "; ") {
 							printName(os_ << sep, get<Lit_t>());
 							if (bt == Body_t::Sum) { os_ << "=" << get<Weight_t>(); }
 						}
@@ -483,7 +484,7 @@ void AspifTextOutput::writeDirectives() {
 				break;
 			case Directive_t::Minimize:
 				sep = "#minimize{"; term = ".";
-				for (uint32_t n = get<uint32_t>(); n--; sep = "; ") {
+				for (auto n = get<uint32_t>(); n--; sep = "; ") {
 					printName(os_ << sep, get<Lit_t>());
 					os_ << "=" << get<Weight_t>();
 				}
@@ -491,12 +492,12 @@ void AspifTextOutput::writeDirectives() {
 				break;
 			case Directive_t::Project:
 				sep = "#project{"; term = "}.";
-				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
+				for (auto n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
 				break;
 			case Directive_t::Output:
 				sep = " : "; term = ".";
 				os_ << "#show " << data_->strings[get<uint32_t>()];
-				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") {
+				for (auto n = get<uint32_t>(); n--; sep = ", ") {
 					printName(os_ << sep, get<Lit_t>());
 				}
 				break;
@@ -512,22 +513,22 @@ void AspifTextOutput::writeDirectives() {
 				break;
 			case Directive_t::Assume:
 				sep = "#assume{"; term = "}.";
-				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
+				for (auto n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
 				break;
 			case Directive_t::Heuristic:
 				sep = " : "; term = "";
 				os_ << "#heuristic ";
 				printName(os_, get<Atom_t>());
-				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
+				for (auto n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
 				os_ << ". [" << get<int32_t>();
-				if (uint32_t p = get<uint32_t>()) { os_ << "@" << p; }
+				if (auto p = get<uint32_t>()) { os_ << "@" << p; }
 				os_ << ", " << toString(static_cast<Heuristic_t>(get<uint32_t>())) << "]";
 				break;
 			case Directive_t::Edge:
 				sep = " : "; term = ".";
 				os_ << "#edge(" << get<int32_t>() << ",";
 				os_ << get<int32_t>() << ")";
-				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
+				for (auto n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
 				break;
 			default: break;
 		}

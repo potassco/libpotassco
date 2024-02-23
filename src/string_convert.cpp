@@ -278,8 +278,7 @@ string& xconvert(string& out, double d) {
 	return (StringBuilder(out).append(d), out);
 }
 
-bad_string_cast::~bad_string_cast() throw() {}
-const char* bad_string_cast::what() const throw() { return "bad_string_cast"; }
+const char* bad_string_cast::what() const noexcept { return "bad_string_cast"; }
 
 StringBuilder::StringBuilder() {
 	sbo_[0] = 0; setTag(uint8_t(SboCap));
@@ -426,10 +425,10 @@ StringBuilder& StringBuilder::appendFormat(const char* fmt, ...) {
 StringBuilder& StringBuilder::append_(uint64_t n, bool pos) {
 	char temp[22];
 	if (!pos) { n = ~n + 1; }
-	uint32_t p = static_cast<uint32_t>(sizeof(temp) - 1);
+	auto p = static_cast<uint32_t>(sizeof(temp) - 1);
 	while (n >= 10) {
 		uint64_t const q = n / 10;
-		uint32_t const r = static_cast<uint32_t>(n % 10);
+		auto const r = static_cast<uint32_t>(n % 10);
 		temp[p--] = static_cast<char>('0' + r);
 		n = q;
 	}

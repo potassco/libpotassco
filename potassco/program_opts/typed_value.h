@@ -34,7 +34,7 @@
 #include <potassco/string_convert.h>
 #include <potassco/program_opts/detail/notifier.h>
 #include <potassco/program_opts/errors.h>
-namespace Potassco { namespace ProgramOptions { namespace detail {
+namespace Potassco::ProgramOptions { namespace detail {
 template <class T>
 struct Parser { typedef bool(*type)(const std::string&, T&); };
 } // end namespace detail
@@ -47,7 +47,7 @@ struct ValueMappingBase : private std::vector<std::pair<const char*, int> > {
 	using base_type::empty;
 	void       add(const char* strVal, int eVal) { push_back(value_type(strVal, eVal)); }
 	const int* get(const char* strVal) const {
-		for (const_iterator it = begin(), end = this->end(); it != end; ++it) {
+		for (auto it = begin(), end = this->end(); it != end; ++it) {
 			if (strcasecmp(strVal, it->first) == 0) { return &it->second; }
 		}
 		return nullptr;
@@ -248,6 +248,6 @@ template <class ParamT>
 inline CustomValue* notify(ParamT* p0, typename detail::Notify<const std::string&, ParamT>::type nf) {
 	return new CustomValue(detail::Notifier<const std::string&>(p0, nf));
 }
-} // namespace ProgramOptions
-} // namespace Potassco
+} // namespace Potassco::ProgramOptions
+
 #endif

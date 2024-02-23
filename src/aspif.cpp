@@ -41,7 +41,6 @@ struct AspifInput::Extra {
 	std::string       sym;
 };
 AspifInput::AspifInput(AbstractProgram& out) : out_(out), rule_(nullptr), data_(nullptr) {}
-AspifInput::~AspifInput() {  }
 
 bool AspifInput::doAttach(bool& inc) {
 	if (!match("asp ")) { return false; }
@@ -66,7 +65,7 @@ bool AspifInput::doParse() {
 			{case CR(Rule):
 				rule.start(static_cast<Head_t>(matchPos(Head_t::eMax, "invalid head type")));
 				matchAtoms();
-				Body_t  bt = static_cast<Body_t>(matchPos(Body_t::eMax, "invalid body type"));
+				auto bt = static_cast<Body_t>(matchPos(Body_t::eMax, "invalid body type"));
 				if (bt == Body_t::Normal) {
 					matchLits();
 				}
@@ -92,7 +91,7 @@ bool AspifInput::doParse() {
 				break;}
 			case CR(External):
 				if (Atom_t atom = matchAtom()) {
-					Value_t val = static_cast<Value_t>(matchPos(Value_t::eMax, "value expected"));
+					auto val = static_cast<Value_t>(matchPos(Value_t::eMax, "value expected"));
 					out_.external(atom, val);
 				}
 				break;
@@ -101,16 +100,16 @@ bool AspifInput::doParse() {
 				out_.assume(rule.body());
 				break;
 			{case CR(Heuristic):
-				Heuristic_t type = static_cast<Heuristic_t>(matchPos(Heuristic_t::eMax, "invalid heuristic modifier"));
-				Atom_t      atom = matchAtom();
-				int         bias = matchInt();
-				unsigned    prio = matchPos(INT_MAX, "invalid heuristic priority");
+				auto type = static_cast<Heuristic_t>(matchPos(Heuristic_t::eMax, "invalid heuristic modifier"));
+				auto atom = matchAtom();
+				auto bias = matchInt();
+				auto prio = matchPos(INT_MAX, "invalid heuristic priority");
 				matchLits();
 				out_.heuristic(atom, type, bias, prio, rule.body());
 				break;}
 			{case CR(Edge):
-				unsigned start = matchPos(INT_MAX, "invalid edge, start node expected");
-				unsigned end   = matchPos(INT_MAX, "invalid edge, end node expected");
+				auto start = matchPos(INT_MAX, "invalid edge, start node expected");
+				auto end   = matchPos(INT_MAX, "invalid edge, end node expected");
 				matchLits();
 				out_.acycEdge((int)start, (int)end, rule.body());
 				break;}

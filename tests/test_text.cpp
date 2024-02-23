@@ -27,9 +27,7 @@
 #include <potassco/aspif_text.h>
 #include <potassco/aspif.h>
 #include <sstream>
-namespace Potassco {
-namespace Test {
-namespace Text {
+namespace Potassco::Test::Text {
 
 bool read(AspifTextInput& in, std::stringstream& str) {
 	return in.accept(str) && in.parse();
@@ -455,4 +453,4 @@ TEST_CASE("Text writer writes theory", "[text]") {
 			"&diff{end(2) - start(2)} <= 600.\n");
 	}
 }
-}}}
+}

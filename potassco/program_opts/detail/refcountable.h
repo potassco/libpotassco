@@ -25,7 +25,7 @@
 //
 #ifndef PROGRAM_OPTIONS_REFCOUNTABLE_H_INCLUDED
 #define PROGRAM_OPTIONS_REFCOUNTABLE_H_INCLUDED
-namespace Potassco { namespace ProgramOptions { namespace detail {
+namespace Potassco::ProgramOptions::detail {
 
 class RefCountable {
 public:
@@ -41,26 +41,26 @@ template <class T>
 class IntrusiveSharedPtr {
 public:
 	typedef T element_type;
-	explicit IntrusiveSharedPtr(T* p = 0) throw()
+	explicit IntrusiveSharedPtr(T* p = 0) noexcept
 		: ptr_(p) { /* NO add ref */
 	}
-	IntrusiveSharedPtr(const IntrusiveSharedPtr& o) throw()
+	IntrusiveSharedPtr(const IntrusiveSharedPtr& o) noexcept
 		: ptr_(o.ptr_) {
 		addRef();
 	}
-	~IntrusiveSharedPtr() throw () { release(); }
+	~IntrusiveSharedPtr() noexcept { release(); }
 	IntrusiveSharedPtr& operator=(const IntrusiveSharedPtr& other) {
 		other.addRef();
 		this->release();
 		this->ptr_ = other.ptr_;
 		return *this;
 	}
-	T&     operator*() const throw() { return *ptr_; }
-	T*     operator->() const throw() { return ptr_; }
-	T*     get() const throw() { return ptr_; }
-	void   reset() throw() { release(); ptr_ = 0; }
-	bool   unique() const throw() { return  !ptr_ || ptr_->refCount() == 1; }
-	int    count() const  throw() { return ptr_ ? ptr_->refCount() : 0; }
+	T&     operator*() const noexcept { return *ptr_; }
+	T*     operator->() const noexcept { return ptr_; }
+	T*     get() const noexcept { return ptr_; }
+	void   reset() noexcept { release(); ptr_ = 0; }
+	bool   unique() const noexcept { return  !ptr_ || ptr_->refCount() == 1; }
+	int    count() const  noexcept { return ptr_ ? ptr_->refCount() : 0; }
 	void   swap(IntrusiveSharedPtr& b) {
 		T* temp = ptr_;
 		ptr_ = b.ptr_;
@@ -76,7 +76,5 @@ private:
 	}
 };
 
-} // namespace detail
-} // namespace ProgramOptions
-} // namespace Potassco
+} // namespace Potassco::ProgramOptions::detail
 #endif

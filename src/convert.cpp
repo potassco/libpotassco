@@ -69,8 +69,8 @@ struct SmodelsConvert::SmData {
 	SmData() : next_(2) {}
 	~SmData() {
 		flushStep();
-		for (SymTab::iterator it = symTab_.begin(), end = symTab_.end(); it != end; ++it) {
-			delete [] it->second;
+		for (auto& [_, value] : symTab_) {
+			delete [] value;
 		}
 	}
 	Atom_t newAtom()   { return next_++; }
@@ -85,7 +85,7 @@ struct SmodelsConvert::SmData {
 		return atoms_[a];
 	}
 	Lit_t  mapLit(Lit_t in) {
-		Lit_t x = static_cast<Lit_t>(mapAtom(atom(in)));
+		auto x = static_cast<Lit_t>(mapAtom(atom(in)));
 		return in < 0 ? -x : x;
 	}
 	WeightLit_t mapLit(WeightLit_t in) {
@@ -158,7 +158,7 @@ AtomSpan SmodelsConvert::SmData::mapHead(const AtomSpan& h) {
 const char* SmodelsConvert::SmData::addOutput(Atom_t atom, const StringSpan& str, bool addHash) {
 	char* n = new char[str.size + 1];
 	*std::copy(begin(str), end(str), n) = 0;
-	Symbol s; s.atom = atom; s.name = n; s.hash = 0;
+	Symbol s{.atom = atom, .hash = 0, .name = n};
 	if (addHash && symTab_.insert(SymTab::value_type(atom, s.name)).second) {
 		s.hash = 1;
 	}
@@ -179,7 +179,7 @@ unsigned SmodelsConvert::maxAtom() const {
 	return data_->next_ - 1;
 }
 const char* SmodelsConvert::getName(Atom_t a) const {
-	SymTab::iterator it = data_->symTab_.find(a);
+	auto it = data_->symTab_.find(a);
 	return it != data_->symTab_.end() ? it->second : 0;
 }
 Atom_t SmodelsConvert::makeAtom(const LitSpan& cond, bool named) {
@@ -261,16 +261,16 @@ void SmodelsConvert::endStep() {
 	out_.endStep();
 }
 void SmodelsConvert::flushMinimize() {
-	for (SmData::MinMap::iterator it = data_->minimize_.begin(), end = data_->minimize_.end(); it != end; ++it) {
-		out_.minimize(it->first, data_->mapLits(toSpan(it->second), data_->wlits_));
+	for (const auto& [prio, lits] : data_->minimize_) {
+		out_.minimize(prio, data_->mapLits(toSpan(lits), data_->wlits_));
 	}
 }
 void SmodelsConvert::flushExternal() {
 	LitSpan T = toSpan<Lit_t>();
 	data_->head_.clear();
-	for (SmData::AtomVec::const_iterator it = data_->extern_.begin(), end = data_->extern_.end(); it != end; ++it) {
-		SmData::Atom& a = data_->mapAtom(*it);
-		Value_t vt = static_cast<Value_t>(a.extn);
+	for (auto ext : data_->extern_) {
+		SmData::Atom& a = data_->mapAtom(ext);
+		auto vt = static_cast<Value_t>(a.extn);
 		if (!ext_) {
 			if (a.head) { continue; }
 			Atom_t at = a;
@@ -287,8 +287,7 @@ void SmodelsConvert::flushExternal() {
 }
 void SmodelsConvert::flushHeuristic() {
 	StringBuilder buf;
-	for (SmData::HeuVec::const_iterator it = data_->heuristic_.begin(), end = data_->heuristic_.end(); it != end; ++it) {
-		const SmData::Heuristic& heu = *it;
+	for (const auto& heu : data_->heuristic_) {
 		if (!data_->mapped(heu.atom)) { continue; }
 		SmData::Atom& ma = data_->mapAtom(heu.atom);
 		const char* name = ma.show ? getName(ma.smId) : nullptr;
@@ -300,16 +299,15 @@ void SmodelsConvert::flushHeuristic() {
 		}
 		buf.clear();
 		buf.appendFormat("_heuristic(%s,%s,%d,%u)", name, toString(heu.type), heu.bias, heu.prio);
-		Lit_t c = static_cast<Lit_t>(heu.cond);
+		auto c = static_cast<Lit_t>(heu.cond);
 		out_.output(toSpan(buf), toSpan(&c, 1));
 	}
 }
 void SmodelsConvert::flushSymbols() {
 	std::sort(data_->output_.begin(), data_->output_.end());
-	for (SmData::OutVec::const_iterator it = data_->output_.begin(), end = data_->output_.end(); it != end; ++it) {
-		Lit_t x = static_cast<Lit_t>(it->atom);
-		out_.output(toSpan(it->name, std::strlen(it->name)), toSpan(&x, 1));
+	for (const auto& sym : data_->output_) {
+		auto x = static_cast<Lit_t>(sym.atom);
+		out_.output(toSpan(sym.name, std::strlen(sym.name)), toSpan(&x, 1));
 	}
 }
-
 } // namespace Potassco

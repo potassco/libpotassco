@@ -23,8 +23,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
-namespace Potassco {
-namespace Test {
+namespace Potassco::Test {
 
 TEST_CASE("String conversion", "[string]") {
 	errno = 0;
@@ -440,4 +439,4 @@ TEST_CASE("Enum test", "[enum]") {
 	}
 }
 
-}}
+}

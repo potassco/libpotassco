@@ -114,22 +114,19 @@ inline unsigned matchPos(BufferedStream& str, const char* err = "non-negative in
 }
 //! Extracts an atom (i.e. a positive integer > 0) or fails with an std::exception.
 inline Atom_t matchAtom(BufferedStream& str, unsigned aMax = atomMax, const char* err = "atom expected") {
-	int64_t x; int64_t max = static_cast<int64_t>(aMax);
+	int64_t x; auto max = static_cast<int64_t>(aMax);
 	str.require(str.match(x) && x >= atomMin && x <= max, err);
 	return static_cast<Atom_t>(x);
 }
 //! Extracts a literal (i.e. a signed integer != 0) or fails with an std::exception.
 inline Lit_t matchLit(BufferedStream& str, unsigned aMax = atomMax, const char* err = "literal expected") {
-	int64_t x; int64_t max = static_cast<int64_t>(aMax);
+	int64_t x; auto max = static_cast<int64_t>(aMax);
 	str.require(str.match(x) && x != 0 && x >= -max && x <= max, err);
 	return static_cast<Lit_t>(x);
 }
 //! Extracts a weight literal (i.e. a literal followed by an integer) or fails with an std::exception.
 inline WeightLit_t matchWLit(BufferedStream& str, unsigned aMax = atomMax, Weight_t minW = 0, const char* err = "weight literal expected") {
-	WeightLit_t wl;
-	wl.lit = matchLit(str, aMax, err);
-	wl.weight = matchInt(str, minW, INT_MAX, "invalid weight literal weight");
-	return wl;
+	return {.lit = matchLit(str, aMax, err), .weight = matchInt(str, minW, INT_MAX, "invalid weight literal weight")};
 }
 //! Returns whether input starts with word and if so sets input to input + std::strlen(word).
 bool match(const char*& input, const char* word);

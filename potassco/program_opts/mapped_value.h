@@ -38,7 +38,7 @@
 namespace std { using ::size_t; }
 #endif
 
-namespace Potassco { namespace ProgramOptions {
+namespace Potassco::ProgramOptions {
 ///////////////////////////////////////////////////////////////////////////////
 // ValueMap
 ///////////////////////////////////////////////////////////////////////////////
@@ -48,14 +48,17 @@ namespace Potassco { namespace ProgramOptions {
  */
 class ValueMap {
 public:
-	ValueMap() {}
-	~ValueMap() {}
+	ValueMap() = default;
+	~ValueMap() = default;
+	ValueMap(const ValueMap&) = delete;
+	ValueMap& operator=(const ValueMap&) = delete;
+
 	bool               empty() const { return map_.empty(); }
 	size_t             size()  const { return map_.size(); }
 	size_t             count(const std::string& name) const { return map_.count(name); }
 	void               clear() { map_.clear(); }
 	const ValueStore& operator[](const std::string& name) const {
-		MapType::const_iterator it = map_.find(name);
+		auto it = map_.find(name);
 		if (it == map_.end()) {
 			throw UnknownOption("ValueMap", name);
 		}
@@ -63,7 +66,7 @@ public:
 	}
 	template <class T>
 	static bool add(ValueMap* this_, const std::string& name, const T* value) {
-		MapType::iterator it = this_->map_.find(name);
+		auto it = this_->map_.find(name);
 		if (it == this_->map_.end()) {
 			it = this_->map_.insert(it, MapType::value_type(name, ValueStore()));
 		}
@@ -73,8 +76,6 @@ public:
 		return true;
 	}
 private:
-	ValueMap(const ValueMap&);
-	ValueMap& operator=(const ValueMap&);
 	typedef std::map<std::string, ValueStore> MapType;
 	MapType map_;
 };
@@ -93,5 +94,5 @@ inline NotifiedValue<bool>* flag(ValueMap& map, FlagAction a = store_true) {
 	return flag(&map, &ValueMap::add<bool>, a);
 }
 
-}}
+}
 #endif

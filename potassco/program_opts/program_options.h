@@ -33,7 +33,7 @@
 #include <vector>
 #include <stdexcept>
 #include <cstdio>
-namespace Potassco { namespace ProgramOptions {
+namespace Potassco::ProgramOptions {
 
 //! Represents one program option.
 /*!
@@ -97,7 +97,6 @@ public:
 	 * Creates a new group of options under the given caption.
 	 */
 	OptionGroup(const std::string& caption = "", DescriptionLevel descLevel = desc_level_default);
-	~OptionGroup();
 
 	//! Returns the caption of this group.
 	const std::string& caption() const { return caption_; }
@@ -181,7 +180,6 @@ public:
 	typedef PrefixRange                OptionRange;
 
 	OptionContext(const std::string& caption = "", DescriptionLevel desc_default = desc_level_default);
-	~OptionContext();
 
 	const std::string& caption() const;
 
@@ -526,7 +524,5 @@ ParseContext& parseCommandString(const char* cmd, ParseContext& ctx, unsigned fl
 */
 ParsedValues parseCfgFile(std::istream& is, const OptionContext& o, bool allowUnregistered);
 
-} // namespace ProgramOptions
-} // namespace Potassco
-
+} // namespace Potassco::ProgramOptions
 #endif

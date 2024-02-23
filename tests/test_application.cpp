@@ -22,8 +22,8 @@
 #include <potassco/application.h>
 #include <potassco/program_opts/typed_value.h>
 #include <signal.h>
-namespace Potassco { namespace ProgramOptions {
-namespace Test {
+
+namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
 
 struct MyApp : public Potassco::Application {
@@ -105,4 +105,4 @@ TEST_CASE("Test alarm", "[app]") {
 	app.main(argc, argv);
 	REQUIRE(app.stop == 1);
 }
-}}}
+}

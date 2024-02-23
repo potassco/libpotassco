@@ -36,7 +36,7 @@
 namespace std { using ::size_t; }
 #endif
 
-namespace Potassco { namespace ProgramOptions { namespace detail {
+namespace Potassco::ProgramOptions { namespace detail {
 template <class T>
 struct Owned {
 	~Owned() { delete obj; }
@@ -212,6 +212,5 @@ private:
 		const char** pack; // a pointer to a full pack
 	}      desc_;
 };
-} // namespace ProgramOptions
-} // namespace Potassco
+} // namespace Potassco::ProgramOptions
 #endif

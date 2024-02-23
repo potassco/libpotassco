@@ -23,9 +23,7 @@
 #include <potassco/program_opts/typed_value.h>
 #include <potassco/program_opts/errors.h>
 #include <potassco/program_opts/mapped_value.h>
-namespace Potassco {
-namespace ProgramOptions {
-namespace Test {
+namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
 TEST_CASE("Test option default value", "[options]") {
 	int x;
@@ -186,7 +184,7 @@ TEST_CASE("Test option groups", "[options]") {
 	REQUIRE_THROWS_AS(ctx.findGroup("Foo"), Po::ContextError);
 	const Po::OptionGroup& x1 = ctx.findGroup(g1.caption());
 	REQUIRE(x1.size() == g1.size());
-	for (Po::OptionGroup::option_iterator gIt = g1.begin(), xIt = x1.begin(); gIt != g1.end(); ++gIt, ++xIt) {
+	for (auto gIt = g1.begin(), xIt = x1.begin(); gIt != g1.end(); ++gIt, ++xIt) {
 		REQUIRE(((*gIt)->name() == (*xIt)->name() && (*gIt)->value() == (*xIt)->value()));
 	}
 }
@@ -235,7 +233,7 @@ TEST_CASE("Test context", "[options]") {
 		pv.add("foo", "2");
 		Po::ParsedOptions po;
 		po.assign(pv);
-		const std::vector<int>& x = Po::value_cast<std::vector<int> >(vm["foo"]);
+		const auto& x = Po::value_cast<std::vector<int> >(vm["foo"]);
 		REQUIRE((x.size() == 2 && x[0] == 1 && x[1] == 2));
 	}
 }
@@ -312,8 +310,8 @@ TEST_CASE("Test parser", "[options]") {
 			Po::OptionGroup *g;
 			PC(Po::OptionGroup& grp) : g(&grp) {}
 			Po::SharedOptPtr getOption(const char* name, FindType) override {
-				for (Po::OptionGroup::option_iterator it = g->begin(), end = g->end(); it != end; ++it) {
-					if (it->get()->name() == name) { return *it; }
+				for (const auto& opt : *g) {
+					if (opt->name() == name) { return opt; }
 				}
 				return Po::SharedOptPtr(nullptr);
 			}
@@ -363,10 +361,10 @@ TEST_CASE("Test parser", "[options]") {
 		REQUIRE(tok[4] == "\"foo");
 		REQUIRE(tok[5] == "bar\"");
 		tok.clear();
-		cmd = "\\\\\"Hallo Welt\\\\\"";
+		cmd = R"(\\"Hallo Welt\\")";
 		Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, false, &P::func));
 		REQUIRE(tok.size() == 1);
 		REQUIRE(tok[0] == "\\Hallo Welt\\");
 	}
 }
-}}}
+}

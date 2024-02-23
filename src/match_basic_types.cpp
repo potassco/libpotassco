@@ -30,7 +30,7 @@
 #include <algorithm>
 #include <cstdio>
 namespace Potassco {
-AbstractProgram::~AbstractProgram() {}
+AbstractProgram::~AbstractProgram() = default;
 void AbstractProgram::initProgram(bool) {}
 void AbstractProgram::beginStep() {}
 void AbstractProgram::project(const AtomSpan&) { throw std::logic_error("projection directive not supported"); }
@@ -85,9 +85,9 @@ void BufferedStream::underflow(bool upPos) {
 		buf_[0] = buf_[rpos_ - 1];
 		rpos_ = 1;
 	}
-	std::size_t n = ALLOC_SIZE - (1 + rpos_);
+	auto n = static_cast<std::streamsize>(ALLOC_SIZE - (1 + rpos_));
 	str_.read(buf_ + rpos_, n);
-	std::size_t r = static_cast<std::size_t>(str_.gcount());
+	auto r = static_cast<std::size_t>(str_.gcount());
 	buf_[r + rpos_] = 0;
 }
 bool BufferedStream::unget(char c) {
@@ -126,7 +126,7 @@ bool BufferedStream::match(int64_t& res, bool noSkipWs) {
 int BufferedStream::copy(char* out, int max) {
 	if (max < 0) return max;
 	std::size_t os = 0;
-	for (std::size_t n = static_cast<std::size_t>(max); n && peek();) {
+	for (auto n = static_cast<std::size_t>(max); n && peek();) {
 		std::size_t b = (ALLOC_SIZE - rpos_) - 1;
 		std::size_t m = std::min(n, b);
 		out = std::copy(buf_ + rpos_, buf_ + rpos_ + m, out);

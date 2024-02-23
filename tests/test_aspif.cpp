@@ -32,9 +32,7 @@
 #include <potassco/aspif_text.h>
 #include <sstream>
 #include <cstring>
-namespace Potassco {
-namespace Test {
-namespace Aspif {
+namespace Potassco::Test::Aspif {
 const Weight_t BOUND_NONE = -1;
 static void finalize(std::stringstream& str) {
 	str << "0\n";
@@ -600,4 +598,4 @@ TEST_CASE("TheoryData", "[aspif]") {
 	}
 }
 
-}}}
+}

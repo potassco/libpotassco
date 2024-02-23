@@ -252,8 +252,7 @@ int xconvert(const char* x, T& out, const char** errPos, double) {
 ///////////////////////////////////////////////////////////////////////////////
 class bad_string_cast : public std::bad_cast {
 public:
-	~bad_string_cast() throw() override;
-	const char* what() const throw() override;
+	const char* what() const noexcept override;
 };
 template <class T>
 bool string_cast(const char* arg, T& to) {

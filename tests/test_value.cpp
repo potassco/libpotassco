@@ -25,9 +25,7 @@
 #include <string.h>
 #include <memory>
 #include <map>
-namespace Potassco {
-namespace ProgramOptions {
-namespace Test {
+namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
 struct Counted {
 	static int count;
@@ -43,11 +41,12 @@ struct Counted {
 class ValuePtr {
 public:
 	explicit ValuePtr(Po::Value* p) : ptr_(p) {}
+	ValuePtr(const ValuePtr&) = delete;
+	ValuePtr& operator=(const ValuePtr&) = delete;
+
 	~ValuePtr() { delete ptr_; }
 	Po::Value* operator->() const { return ptr_; }
 private:
-	ValuePtr(const ValuePtr&);
-	ValuePtr& operator=(const ValuePtr&);
 	Po::Value* ptr_;
 };
 
@@ -236,5 +235,4 @@ TEST_CASE("Test enum value", "[value]") {
 
 	REQUIRE((v2->parse("", "Implicit") && y == Mode::IMP));
 }
-
-}}}
+}

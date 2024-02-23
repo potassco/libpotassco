@@ -25,8 +25,7 @@
 #define POTASSCO_TEST_COMMON_H_INCLUDED
 #include <vector>
 #include <potassco/basic_types.h>
-namespace Potassco {
-namespace Test {
+namespace Potassco::Test {
 template <class T>
 using Vec = std::vector<T>;
 
@@ -80,8 +79,5 @@ public:
 	int  nStep = 0;
 	bool incremental = false;
 };
-
-
-}}
-
+}
 #endif

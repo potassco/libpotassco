@@ -255,7 +255,7 @@ bool Application::getOptions(int argc, char** argv) {
 		if (help || version) {
 			exitCode_ = EXIT_SUCCESS;
 			if (help) {
-				DescriptionLevel x = (DescriptionLevel)(help-1);
+				auto x = (DescriptionLevel)(help-1);
 				allOpts.setActiveDescLevel(x);
 				printHelp(allOpts);
 			}

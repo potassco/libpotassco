@@ -27,7 +27,7 @@
 #define PROGRAM_OPTIONS_VALUE_STORE_H_INCLUDED
 #include <typeinfo>
 #include <new>
-namespace Potassco { namespace ProgramOptions { namespace detail {
+namespace Potassco::ProgramOptions { namespace detail {
 typedef void (*vcall_type)(const void* in, void** out);
 typedef vcall_type vtable_type[4];
 typedef vtable_type* vptr_type;
@@ -101,7 +101,7 @@ private:
 };
 
 struct bad_value_cast : std::bad_cast {
-	const char * what() const throw() override {
+	const char * what() const noexcept override {
 		return "value_cast: invalid conversion on ValueStore";
 	}
 };
@@ -152,6 +152,5 @@ T*       unsafe_value_cast(ValueStore* v, const T* p = 0) {
 
 #include "detail/value_store.h"
 
-} // namespace ProgramOptions
-} // namespace Potassco
+} // namespace Potassco::ProgramOptions
 #endif

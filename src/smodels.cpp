@@ -51,7 +51,7 @@ int isSmodelsRule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLi
 	}
 	return Cardinality;
 }
-AtomTable::~AtomTable() {}
+AtomTable::~AtomTable() = default;
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsInput
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -60,13 +60,13 @@ struct SmodelsInput::SymTab : public AtomTable{
 	void add(Atom_t id, const StringSpan& name, bool output) override {
 		atoms.insert(StrMap::value_type(std::string(Potassco::begin(name), Potassco::end(name)), id));
 		if (output) {
-			Lit_t lit = static_cast<Lit_t>(id);
+			auto lit = static_cast<Lit_t>(id);
 			out->output(name, toSpan(&lit, 1));
 		}
 	}
 	Atom_t find(const StringSpan& name) override {
 		temp.assign(Potassco::begin(name), Potassco::end(name));
-		StrMap::const_iterator it = atoms.find(temp);
+		auto it = atoms.find(temp);
 		return it != atoms.end() ? it->second : 0;
 	}
 	struct Heuristic {
@@ -213,9 +213,9 @@ bool SmodelsInput::readSymbols() {
 		if      (atoms_)  { atoms_->add(atom, toSpan(name), !filter); }
 		else if (!filter) { out_.output(toSpan(name), toSpan(&atom, 1)); }
 	}
-	for (std::vector<SymTab::Heuristic>::const_iterator it = doms.begin(), end = doms.end(); it != end; ++it) {
-		if (Atom_t x = atoms_->find(toSpan(it->atom))) {
-			out_.heuristic(x, it->type, it->bias, it->prio, toSpan(&it->cond, 1));
+	for (const auto& dom : doms) {
+		if (Atom_t x = atoms_->find(toSpan(dom.atom))) {
+			out_.heuristic(x, dom.type, dom.bias, dom.prio, toSpan(&dom.cond, 1));
 		}
 	}
 	if (!incremental()) {
@@ -317,7 +317,7 @@ void SmodelsOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
 			return SmodelsOutput::rule(ht, toSpan(&false_, 1), body);
 		}
 	}
-	SmodelsRule rt = (SmodelsRule)isSmodelsHead(ht, head);
+	auto rt = (SmodelsRule)isSmodelsHead(ht, head);
 	POTASSCO_REQUIRE(rt != End, "unsupported rule type");
 	startRule(rt).add(ht, head).add(body).endRule();
 }
@@ -328,7 +328,7 @@ void SmodelsOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const 
 		fHead_ = true;
 		return SmodelsOutput::rule(ht, toSpan(&false_, 1), bound, body);
 	}
-	SmodelsRule rt = (SmodelsRule)isSmodelsRule(ht, head, bound, body);
+	auto rt = (SmodelsRule)isSmodelsRule(ht, head, bound, body);
 	POTASSCO_REQUIRE(rt != End, "unsupported rule type");
 	startRule(rt).add(ht, head).add(bound, body, rt == Cardinality).endRule();
 }
