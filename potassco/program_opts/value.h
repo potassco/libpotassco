@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2004-2017 Benjamin Kaufmann
+// Copyright (c) 2004-2024 Benjamin Kaufmann
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
@@ -29,27 +29,19 @@
 #pragma warning (disable : 4786)
 #pragma warning (disable : 4503)
 #endif
+#include <cstddef>
+#include <memory>
 #include <string>
 #include <typeinfo>
-#include <cstddef>
-#if defined(_MSC_VER) && _MSC_VER <= 1200
-namespace std { using ::size_t; }
-#endif
 
-namespace Potassco::ProgramOptions { namespace detail {
-template <class T>
-struct Owned {
-	~Owned() { delete obj; }
-	T* obj;
-};
-} // namespace detail
+namespace Potassco::ProgramOptions {
 enum DescriptionLevel {
-	desc_level_default = 0, /**< Always shown in description */
+	desc_level_default = 0, //!< Always shown in description.
 	desc_level_e1 = 1,
 	desc_level_e2 = 2,
 	desc_level_e3 = 3,
 	desc_level_all = 4,
-	desc_level_hidden = 5 /**< Never shown in description */
+	desc_level_hidden = 5 //!< Never shown in description.
 };
 
 //! Manages the value of an option and defines how it is parsed from a string.
@@ -62,20 +54,20 @@ class Value {
 public:
 	//! Possible (tentative) states of an option value.
 	enum State {
-		value_unassigned = 0, /**< no value assigned */
-		value_defaulted = 1, /**< a default value is assigned */
-		value_fixed = 2  /**< a parsed value is assigned */
+		value_unassigned = 0, //!< no value assigned
+		value_defaulted  = 1, //!< a default value is assigned
+		value_fixed      = 2, //!< a parsed value is assigned
 	};
 	//! Possible value descriptions.
 	enum DescType {
-		desc_name = 1
-		, desc_default = 2
-		, desc_implicit = 4
+		desc_name     = 1,
+		desc_default  = 2,
+		desc_implicit = 4,
 	};
 	virtual ~Value();
 
 	//! Returns the current state of this value.
-	State state() const { return static_cast<State>(state_); }
+	[[nodiscard]] State state() const { return static_cast<State>(state_); }
 
 	/*!
 	 * Sets the (initial) state of this value to s.
@@ -90,32 +82,32 @@ public:
 	 * \note The default name is "<arg>" unless isFlag() is true in which
 	 *       case the default is "".
 	 */
-	const char* arg()          const;
-	Value*      arg(const char* n) { return desc(desc_name, n); }
+	[[nodiscard]] const char* arg() const;
+	Value* arg(const char* n) { return desc(desc_name, n); }
 
 	//! Sets an alias name for the corresponding option.
 	Value* alias(char c) { optAlias_ = c; return this; }
-	char   alias() const { return optAlias_; }
+	[[nodiscard]] char alias() const { return static_cast<char>(optAlias_); }
+
 	//! Sets a description level for the corresponding option.
 	/*!
 	 * Description levels can be used to suppress
 	 * certain options when generating option descriptions.
 	 */
 	Value* level(DescriptionLevel lev) {
-		unsigned x = (lev * level_shift);
-		flags_ = static_cast<byte_t>(x | (flags_&(level_shift-1)));
+		level_ = static_cast<byte_t>(lev);
 		return this;
 	}
 	//! Returns the description level of the corresponding option.
-	DescriptionLevel level() const { return DescriptionLevel(flags_ / level_shift); }
+	[[nodiscard]] DescriptionLevel level() const { return DescriptionLevel(level_); }
 
 	//! Returns true if this is the value of an negatable option.
 	/*!
 	 * If an option '--option' is negatable, passing '--no-option'
 	 * on the command-line will set the value of '--option' to 'no'.
 	 */
-	bool isNegatable() const { return hasProperty(property_negatable); }
-	Value* negatable() { setProperty(property_negatable); return this; }
+	[[nodiscard]] bool isNegatable() const { return negatable_ != 0; }
+	Value* negatable() { negatable_ = 1; return this; }
 
 
 	//! Returns true if value can be implicitly created from an empty string.
@@ -128,7 +120,7 @@ public:
 	 *       to use '--option=value' or '-ovalue' but *not* '--option value'
 	 *       or '-o value'.
 	 */
-	bool   isImplicit() const { return hasProperty(property_implicit); }
+	[[nodiscard]] bool isImplicit() const { return implicit_ != 0; }
 
 	//! Returns true if this is the value of an option flag.
 	/*!
@@ -137,29 +129,29 @@ public:
 	 *
 	 * Used for options like '--help' or '--version'.
 	 */
-	bool isFlag() const { return hasProperty(property_flag); }
+	[[nodiscard]] bool isFlag() const { return flag_ != 0; }
 
 	/*!
 	 * Marks the value as flag.
 	 * \see bool Value::isFlag() const
 	 */
-	Value* flag() { setProperty(property_flag); return this; }
+	Value* flag() { implicit_ = 1; flag_ = 1; return this; }
 
 
 	//! Returns true if the value of this option can be composed from multiple source.
-	bool isComposing() const { return hasProperty(property_composing); }
+	[[nodiscard]] bool isComposing() const { return composing_ != 0; }
 	/*!
 	 * Marks the value as composing.
 	 * \see Value::isComposing()
 	 */
-	Value* composing() { setProperty(property_composing); return this; }
+	Value* composing() { composing_ = 1; return this; }
 
 	/*!
 	 * Sets a default value for this value.
 	 */
 	Value* defaultsTo(const char* v) { return desc(desc_default, v); }
 	//! Returns the default value of this or 0 none exists
-	const char* defaultsTo()  const { return desc(desc_default); }
+	[[nodiscard]] const char* defaultsTo()  const { return desc(desc_default); }
 	/*!
 	 * Sets an implicit value, which will be used
 	 * if option is given without an adjacent value,
@@ -168,7 +160,7 @@ public:
 	 */
 	Value* implicit(const char* str) { return desc(desc_implicit, str); }
 	//! Returns the implicit value of this or 0 if isImplicit() == false.
-	const char* implicit() const;
+	[[nodiscard]] const char* implicit() const;
 
 	//! Parses the given string and updates the value's state.
 	/*!
@@ -183,36 +175,31 @@ public:
 	 * \post if true is returned, state() is st
 	 */
 	bool parse(const std::string& name, const std::string& value, State st = value_fixed);
+
 protected:
-	typedef unsigned char byte_t;
-	enum Property {
-		property_implicit = 1 // implicit value?
-		, property_flag = 3 // implicit and type bool?
-		, property_composing = 4 // multiple values allowed?
-		, property_negatable = 8 // negatable form allowed?
-		, property_location = 16 // fixed storage location?
-		, not_a_property = 32
-	};
-	Value(byte_t flagSet, State initial = value_unassigned);
-	void setProperty(Property f) { flags_ |= byte_t(f); }
-	void clearProperty(Property f) { flags_ &= ~byte_t(f); }
-	bool hasProperty(Property f)const { return (flags_ & byte_t(f)) == f; }
+	explicit Value(State initial = value_unassigned);
+	[[nodiscard]] const char* desc(DescType t) const;
+
 	bool state(bool b, State s) { if (b) { state_ = static_cast<byte_t>(s); } return b; }
+	Value* desc(DescType t, const char* d);
+
 	virtual bool doParse(const std::string& name, const std::string& value) = 0;
-	const char* desc(DescType t) const;
-	Value*      desc(DescType t, const char* d);
+
 private:
+	using byte_t = unsigned char;
 	static constexpr auto desc_pack = 8u;
-	static constexpr auto level_shift = static_cast<unsigned>(not_a_property);
-	static constexpr auto levels = static_cast<unsigned>(255/level_shift);
-	byte_t state_;       // state: one of State
-	byte_t flags_;       // flag set holding properties
-	byte_t descFlag_;    // either desc_pack or one of DescType
-	byte_t optAlias_;    // alias name of option
 	union ValueDesc {    // optional value descriptions either
 		const char*  value;// a single value or
 		const char** pack; // a pointer to a full pack
 	}      desc_;
+	byte_t state_;          // state: one of State
+	byte_t descFlag_;      // either desc_pack or one of DescType
+	byte_t optAlias_;      // alias name of option
+	byte_t implicit_  : 1; // implicit value?
+	byte_t flag_      : 1; // implicit and type bool?
+	byte_t composing_ : 1; // multiple values allowed?
+	byte_t negatable_ : 1; // negatable form allowed?
+	byte_t level_     : 4; // help level
 };
 } // namespace Potassco::ProgramOptions
 #endif

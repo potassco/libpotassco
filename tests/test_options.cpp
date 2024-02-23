@@ -25,6 +25,51 @@
 #include <potassco/program_opts/mapped_value.h>
 namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
+
+TEST_CASE("Test intrusive pointer", "[options]") {
+	int count = 0;
+	struct Foo : Po::detail::RefCountable {
+		explicit Foo(int& c)  : count(&c) { ++*count; }
+		~Foo() { --*count; }
+		Foo(const Foo&)  = delete;
+		Foo& operator=(const Foo&) = delete;
+		int x = 12;
+		int* count = nullptr;
+	};
+
+	Po::detail::IntrusiveSharedPtr<Foo> ptr(new Foo(count));
+	CHECK(ptr->refCount() == 1);
+	CHECK(count == 1);
+
+	SECTION("copy") {
+		auto ptr2 = ptr;
+		CHECK(ptr2->refCount() == 2);
+		Po::detail::IntrusiveSharedPtr<Foo> ptr3;
+		ptr3 = ptr2;
+		CHECK(ptr3->refCount() == 3);
+		ptr2 = ptr3;
+		CHECK(ptr2->refCount() == 3);
+		ptr2->x = 77;
+	}
+
+	SECTION("move") {
+		auto ptr2 = std::move(ptr);
+		CHECK(ptr2->refCount() == 1);
+		CHECK(ptr.get() == nullptr);
+		Po::detail::IntrusiveSharedPtr<Foo> ptr3;
+		ptr3 = std::move(ptr2);
+		CHECK(ptr3->refCount() == 1);
+		CHECK(ptr2.get() == nullptr);
+		ptr = std::move(ptr3);
+		CHECK(ptr.get() != nullptr);
+		ptr->x = 77;
+	}
+	CHECK(count == 1);
+	CHECK(ptr->x == 77);
+	ptr.reset();
+	CHECK(count == 0);
+}
+
 TEST_CASE("Test option default value", "[options]") {
 	int x;
 	SECTION("options don't have defaults by default") {
@@ -90,7 +135,7 @@ TEST_CASE("Test negatable options", "[options]") {
 			;
 		ctx.add(g);
 		std::string help;
-		Po::StringOut out(help);
+		Po::OptionPrinter out(help);
 		ctx.description(out);
 		REQUIRE(help.find("[no-]flag") != std::string::npos);
 		REQUIRE(help.find("<n>|no") != std::string::npos);
@@ -165,12 +210,12 @@ TEST_CASE("Test parsed options", "[options]") {
 		ctx.add(g2);
 		Po::ParsedOptions po;
 		po.assign(Po::parseCommandString("--int1=2 --flag --int3=3", ctx));
-		REQUIRE((i1 == 2 && b1 == true && Po::value_cast<int>(vm["int3"]) == 3));
+		REQUIRE((i1 == 2 && b1 == true && std::any_cast<int>(vm["int3"]) == 3));
 		Po::ParsedOptions p1(po), p2;
 		p1.assign(Po::parseCommandString("--int1=3 --no-flag --int2=4 --int3=5", ctx));
-		REQUIRE((i1 == 2 && b1 == true && i2 == 4 && Po::value_cast<int>(vm["int3"]) == 3));
+		REQUIRE((i1 == 2 && b1 == true && i2 == 4 && std::any_cast<int>(vm["int3"]) == 3));
 		p2.assign(Po::parseCommandString("--int1=3 --no-flag --int2=5 --int3=5", ctx));
-		REQUIRE((i1 == 3 && b1 == false && i2 == 5 && Po::value_cast<int>(vm["int3"]) == 5));
+		REQUIRE((i1 == 3 && b1 == false && i2 == 5 && std::any_cast<int>(vm["int3"]) == 5));
 	}
 }
 
@@ -211,7 +256,7 @@ TEST_CASE("Test context", "[options]") {
 		int x;
 		g.addOptions()("number", Po::storeTo(x)->arg("<n>"), "Some int %A in %%");
 		std::string ex;
-		Po::StringOut out(ex);
+		Po::OptionPrinter out(ex);
 		g.format(out, 20);
 		REQUIRE(ex.find("Some int <n> in %") != std::string::npos);
 	}
@@ -219,7 +264,7 @@ TEST_CASE("Test context", "[options]") {
 		int x;
 		g.addOptions()("foo", Po::storeTo(x)->defaultsTo("99"), "Some int (Default: %D)");
 		std::string ex;
-		Po::StringOut out(ex);
+		Po::OptionPrinter out(ex);
 		g.format(out, 20);
 		REQUIRE(ex.find("Some int (Default: 99)") != std::string::npos);
 	}
@@ -233,7 +278,7 @@ TEST_CASE("Test context", "[options]") {
 		pv.add("foo", "2");
 		Po::ParsedOptions po;
 		po.assign(pv);
-		const auto& x = Po::value_cast<std::vector<int> >(vm["foo"]);
+		const auto& x = std::any_cast<const std::vector<int>&>(vm["foo"]);
 		REQUIRE((x.size() == 2 && x[0] == 1 && x[1] == 2));
 	}
 }
@@ -367,4 +412,38 @@ TEST_CASE("Test parser", "[options]") {
 		REQUIRE(tok[0] == "\\Hallo Welt\\");
 	}
 }
+
+TEST_CASE("Test gringo example", "[options]") {
+	Po::OptionContext ctx;
+	Po::OptionGroup gringo("Gringo Options");
+	struct GringoOpts {
+		enum class Debug {NONE, TEXT, TRANSLATE, ALL};
+		std::string outputFormat;
+		std::vector<std::string> defines;
+		Debug outputDebug = Debug::NONE;
+	};
+	GringoOpts opts;
+	gringo.addOptions()
+		("text,t", parse([&](const std::string&){ opts.outputFormat = "text"; return true; })->flag(), "Print plain text format")
+		("const,c", parse([&](const std::string& v){ opts.defines.push_back(v); return true; })->composing()->arg("<id>=<term>"), "Replace term occurrences of <id> with <term>")
+		("output-debug", storeTo(opts.outputDebug = GringoOpts::Debug::NONE, values<GringoOpts::Debug>({
+			{"none", GringoOpts::Debug::NONE},
+			{"text", GringoOpts::Debug::TEXT},
+			{"translate", GringoOpts::Debug::TRANSLATE},
+			{"all", GringoOpts::Debug::ALL}
+			})),
+			"Print debug information during output:\n"
+			"      none     : no additional info\n"
+			"      text     : print rules as plain text (prefix %%)\n"
+			"      translate: print translated rules as plain text (prefix %%%%)\n"
+			"      all      : combines text and translate")
+		;
+	ctx.add(gringo);
+	REQUIRE_NOTHROW(Po::ParsedOptions().assign(Po::parseCommandString("--text -c a=b -c x=y --output-debug=translate", ctx)));
+
+	CHECK(opts.outputFormat == "text");
+	CHECK(opts.outputDebug == GringoOpts::Debug::TRANSLATE);
+	CHECK(opts.defines == std::vector<std::string>({"a=b", "x=y"}));
+}
+
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2010-2017 Benjamin Kaufmann
+// Copyright (c) 2010-2024 Benjamin Kaufmann
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
@@ -29,14 +29,13 @@
 #pragma warning (disable : 4786)
 #pragma warning (disable : 4503)
 #endif
+
 #include <potassco/program_opts/typed_value.h>
-#include <potassco/program_opts/value_store.h>
-#include <string>
+
+#include <any>
 #include <cstddef>
 #include <map>
-#if defined(_MSC_VER) && _MSC_VER <= 1200
-namespace std { using ::size_t; }
-#endif
+#include <string>
 
 namespace Potassco::ProgramOptions {
 ///////////////////////////////////////////////////////////////////////////////
@@ -52,31 +51,39 @@ public:
 	~ValueMap() = default;
 	ValueMap(const ValueMap&) = delete;
 	ValueMap& operator=(const ValueMap&) = delete;
+	using value_type = std::any;
 
-	bool               empty() const { return map_.empty(); }
-	size_t             size()  const { return map_.size(); }
-	size_t             count(const std::string& name) const { return map_.count(name); }
-	void               clear() { map_.clear(); }
-	const ValueStore& operator[](const std::string& name) const {
+	[[nodiscard]] bool   empty() const { return map_.empty(); }
+	[[nodiscard]] size_t size()  const { return map_.size(); }
+	[[nodiscard]] size_t count(std::string_view name) const { return map_.count(name); }
+
+	const value_type& operator[](std::string_view name) const {
 		auto it = map_.find(name);
 		if (it == map_.end()) {
-			throw UnknownOption("ValueMap", name);
+			throw UnknownOption("ValueMap", std::string(name));
 		}
 		return it->second;
 	}
-	template <class T>
-	static bool add(ValueMap* this_, const std::string& name, const T* value) {
-		auto it = this_->map_.find(name);
-		if (it == this_->map_.end()) {
-			it = this_->map_.insert(it, MapType::value_type(name, ValueStore()));
-		}
-		if (it->second.extract_raw() != value) {
-			it->second.assimilate(const_cast<T*>(value));
-		}
-		return true;
+
+	template <typename T>
+	const T& get(std::string_view name) const {
+		const auto& a = this->operator[](name);
+		return std::any_cast<const std::remove_reference_t<T>&>(a);
 	}
+
+	value_type& getOrAdd(const std::string& name) {
+		return map_[name];
+	}
+
+	void erase(std::string_view name) {
+		if (auto it = map_.find(name); it != map_.end())
+			map_.erase(it);
+	}
+
+	void clear() { map_.clear(); }
+
 private:
-	typedef std::map<std::string, ValueStore> MapType;
+	using MapType = std::map<std::string, std::any, std::less<>>;
 	MapType map_;
 };
 
@@ -86,12 +93,23 @@ private:
  * \see OptionGroup::addOptions()
  */
 template <class T>
-inline NotifiedValue<T>* store(ValueMap& map, typename detail::Parser<T>::type p = &string_cast<T>) {
-	return notify<T>(&map, &ValueMap::add<T>, p);
+inline Value* store(ValueMap& map, typename detail::Parser<T>::type p = &string_cast<T>) {
+	return new TypedValue{[map = &map, parser = p](const std::string& n, const std::string& value){
+		auto& x       = map->getOrAdd(n);
+		bool wasEmpty = !x.has_value();
+		if (wasEmpty)
+			x.emplace<T>();
+		T& val = std::any_cast<T&>(x);
+		auto ok = parser(value, val);
+		if (!ok && wasEmpty) {
+			map->erase(n);
+		}
+		return ok;
+	}};
 }
 
-inline NotifiedValue<bool>* flag(ValueMap& map, FlagAction a = store_true) {
-	return flag(&map, &ValueMap::add<bool>, a);
+inline auto flag(ValueMap& map, detail::Parser<bool>::type x = store_true) {
+	return store<bool>(map, x)->flag();
 }
 
 }

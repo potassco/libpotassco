@@ -52,7 +52,7 @@ struct MyApp : public Potassco::Application {
 	void validateOptions(const Po::OptionContext&, const Po::ParsedOptions&, const Po::ParsedValues&) override {}
 	void printHelp(const Po::OptionContext& ctx) override {
 		desc.clear();
-		Po::StringOut out(desc);
+		Po::OptionPrinter out(desc);
 		ctx.description(out);
 	}
 	static bool parsePos(const std::string&, std::string& opt) {

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2004-2017 Benjamin Kaufmann
+// Copyright (c) 2004-2024 Benjamin Kaufmann
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
@@ -109,24 +109,20 @@ std::size_t DefaultFormat::format(std::vector<char>& buffer, const OptionGroup& 
 	}
 	return buffer.size();
 }
-void OstreamWriter::write(const std::vector<char>& buf, std::size_t n) {
-	if (n) { out.write(&buf[0], n); }
-}
-void StringWriter::write(const std::vector<char>& buf, std::size_t n) {
-	if (n) { out.append(&buf[0], n); }
-}
-void FileWriter::write(const std::vector<char>& buf, std::size_t n) {
-	if (n) { fwrite(&buf[0], 1, n, out); }
-}
 ///////////////////////////////////////////////////////////////////////////////
 // class Value
 ///////////////////////////////////////////////////////////////////////////////
-Value::Value(byte_t flagSet, State initial)
+Value::Value(State initial)
 	: state_(static_cast<byte_t>(initial))
-	, flags_(flagSet)
 	, descFlag_(0)
-	, optAlias_(0) {
+	, optAlias_(0)
+	, implicit_(0)
+	, flag_(0)
+	, composing_(0)
+	, negatable_(0)
+	, level_(0) {
 	desc_.value = nullptr;
+	static_assert(sizeof(Value) == sizeof(void*)*3, "unexpected size");
 }
 
 Value::~Value() {
@@ -144,7 +140,7 @@ const char* Value::arg() const {
 Value* Value::desc(DescType t, const char* n) {
 	if (n == nullptr) return this;
 	if (t == desc_implicit) {
-		setProperty(property_implicit);
+		implicit_ = 1;
 		if (!*n) return this;
 	}
 	if (descFlag_ == 0 || descFlag_ == t) {
@@ -173,7 +169,7 @@ const char* Value::desc(DescType t) const {
 }
 
 const char* Value::implicit() const {
-	if (!hasProperty(property_implicit)) return nullptr;
+	if (implicit_ == 0) return nullptr;
 	const char* x = desc(desc_implicit);
 	return x ? x : "1";
 }
@@ -196,9 +192,6 @@ Option::Option(const string& longName, char alias, const char* desc, Value* v)
 	value_->alias(alias);
 }
 
-Option::~Option() {
-	delete value_;
-}
 std::size_t Option::maxColumn() const {
 	std::size_t col = 4 + name_.size(); //  --name
 	if (alias()) {
@@ -264,7 +257,7 @@ OptionInitHelper::OptionInitHelper(OptionGroup& owner)
 }
 
 OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, const char* desc) {
-	detail::Owned<Value> exit = {val};
+	std::unique_ptr<Value> cleanup(val);
 	if (!name || !*name || *name == ',' || *name == '!') {
 		throw Error("Invalid empty option name");
 	}
@@ -301,7 +294,7 @@ OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, con
 		else     longName += '!';
 	}
 	owner_->addOption(SharedOptPtr(new Option(longName, shortName, desc, val)));
-	exit.obj = nullptr;
+	cleanup.release();
 	return *this;
 }
 ///////////////////////////////////////////////////////////////////////////////
@@ -477,19 +470,18 @@ std::string OptionContext::defaults(std::size_t n) const {
 	return defs;
 }
 std::ostream& operator<<(std::ostream& os, const OptionContext& grp) {
-	StreamOut out(os);
+	OptionPrinter out(os);
 	grp.description(out);
 	return os;
 }
 
-bool OptionContext::assignDefaults(const ParsedOptions& opts) const {
+void OptionContext::assignDefaults(const ParsedOptions& opts) const {
 	for (const auto& optPtr : *this) {
 		const Option& o = *optPtr;
 		if (opts.count(o.name()) == 0 && !o.assignDefault()) {
 			throw ValueError(caption(), ValueError::invalid_default, o.name(), o.value()->defaultsTo());
 		}
 	}
-	return true;
 }
 ///////////////////////////////////////////////////////////////////////////////
 // class ParsedOptions
@@ -547,14 +539,6 @@ int ParsedOptions::assign(const Option& o, const std::string& value) {
 ///////////////////////////////////////////////////////////////////////////////
 // class ParsedValues
 ///////////////////////////////////////////////////////////////////////////////
-namespace {
-template <class P>
-struct LessFirst {
-	bool operator()(const P& lhs, const P& rhs) const {
-		return lhs.first.get() < rhs.first.get();
-	}
-};
-} // namespace
 void ParsedValues::add(const std::string& name, const std::string& value) {
 	if (auto it = ctx->tryFind(name.c_str()); it != ctx->end()) {
 		add(*it, value);

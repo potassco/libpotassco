@@ -26,6 +26,7 @@
 #define PROGRAM_OPTIONS_ERRORS_H_INCLUDED
 #include <stdexcept>
 #include <string>
+
 namespace Potassco::ProgramOptions {
 
 //! Base class for all exceptions.
@@ -43,8 +44,9 @@ public:
 		invalid_format
 	};
 	SyntaxError(Type t, const std::string& key);
-	Type               type() const { return type_; }
-	const std::string& key()  const { return key_; }
+	[[nodiscard]] Type               type() const { return type_; }
+	[[nodiscard]] const std::string& key()  const { return key_; }
+
 private:
 	std::string key_;
 	Type        type_;
@@ -60,9 +62,10 @@ public:
 		unknown_group
 	};
 	ContextError(const std::string& ctx, Type t, const std::string& key, const std::string& desc = "");
-	Type               type() const { return type_; }
-	const std::string& key()  const { return key_; }
-	const std::string& ctx()  const { return ctx_; }
+	[[nodiscard]] Type               type() const { return type_; }
+	[[nodiscard]] const std::string& key()  const { return key_; }
+	[[nodiscard]] const std::string& ctx()  const { return ctx_; }
+
 private:
 	std::string ctx_;
 	std::string key_;
@@ -91,10 +94,11 @@ public:
 		invalid_value
 	};
 	ValueError(const std::string& ctx, Type t, const std::string& opt, const std::string& value);
-	Type               type() const { return type_; }
-	const std::string& key()  const { return key_; }
-	const std::string& ctx()  const { return ctx_; }
-	const std::string& value()const { return value_; }
+	[[nodiscard]] Type               type() const { return type_; }
+	[[nodiscard]] const std::string& key()  const { return key_; }
+	[[nodiscard]] const std::string& ctx()  const { return ctx_; }
+	[[nodiscard]] const std::string& value()const { return value_; }
+
 private:
 	std::string ctx_;
 	std::string key_;

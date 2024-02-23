@@ -278,7 +278,7 @@ bool Application::getOptions(int argc, char** argv) {
 void Application::printHelp(const OptionContext& root) {
 	printf("%s version %s\n", getName(), getVersion());
 	printUsage();
-	ProgramOptions::FileOut out(stdout);
+	ProgramOptions::OptionPrinter out(stdout);
 	root.description(out);
 	printf("\n");
 	printUsage();

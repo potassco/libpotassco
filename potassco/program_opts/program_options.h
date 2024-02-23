@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2004-2017 Benjamin Kaufmann
+// Copyright (c) 2004-2024 Benjamin Kaufmann
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
@@ -27,12 +27,17 @@
 #define PROGRAM_OPTIONS_PROGRAM_OPTIONS_H_INCLUDED
 #include <potassco/program_opts/value.h>
 #include <potassco/program_opts/detail/refcountable.h>
-#include <iosfwd>
-#include <set>
-#include <map>
-#include <vector>
-#include <stdexcept>
+
 #include <cstdio>
+#include <functional>
+#include <iosfwd>
+#include <map>
+#include <memory>
+#include <set>
+#include <stdexcept>
+#include <string_view>
+#include <vector>
+
 namespace Potassco::ProgramOptions {
 
 //! Represents one program option.
@@ -58,23 +63,22 @@ public:
 	Option(const std::string& longName, char shortName,
 		const char* description, Value* value);
 
-	~Option();
+	[[nodiscard]] const std::string& name()           const { return name_; }
+	[[nodiscard]] char               alias()          const { return value_->alias(); }
+	[[nodiscard]] Value*             value()          const { return value_.get(); }
+	[[nodiscard]] const char*        description()    const { return description_; }
+	[[nodiscard]] const char*        argName()        const { return value_->arg(); }
+	[[nodiscard]] bool               assignDefault()  const;
+	[[nodiscard]] std::size_t        maxColumn()      const;
+	[[nodiscard]] DescriptionLevel   descLevel()      const { return value_->level(); }
 
-	const std::string& name()           const { return name_; }
-	char               alias()          const { return value_->alias(); }
-	Value*             value()          const { return value_; }
-	const char*        description()    const { return description_; }
-	const char*        argName()        const { return value_->arg(); }
-	bool               assignDefault()  const;
-	std::size_t        maxColumn()      const;
-	DescriptionLevel   descLevel()      const { return value_->level(); }
 private:
-	std::string name_;        // name (and unique key) of option
-	const char* description_; // description of the option (used for --help)
-	Value*      value_;       // the option's value manager
+	std::string            name_;        // name (and unique key) of option
+	const char*            description_; // description of the option (used for --help)
+	std::unique_ptr<Value> value_;       // the option's value manager
 };
 
-typedef detail::IntrusiveSharedPtr<Option> SharedOptPtr;
+using SharedOptPtr = detail::IntrusiveSharedPtr<Option>;
 
 class OptionInitHelper;
 class OptionContext;
@@ -90,8 +94,8 @@ class OptionOutput;
  */
 class OptionGroup {
 public:
-	typedef std::vector<SharedOptPtr>  OptionList;
-	typedef OptionList::const_iterator option_iterator;
+	using OptionList      = std::vector<SharedOptPtr>;
+	using option_iterator = OptionList::const_iterator;
 
 	/*!
 	 * Creates a new group of options under the given caption.
@@ -99,13 +103,13 @@ public:
 	OptionGroup(const std::string& caption = "", DescriptionLevel descLevel = desc_level_default);
 
 	//! Returns the caption of this group.
-	const std::string& caption() const { return caption_; }
+	[[nodiscard]] const std::string& caption() const { return caption_; }
 
-	std::size_t      size()     const { return options_.size(); }
-	bool             empty()    const { return options_.empty(); }
-	option_iterator  begin()    const { return options_.begin(); }
-	option_iterator  end()      const { return options_.end(); }
-	DescriptionLevel descLevel()const { return level_; }
+	[[nodiscard]] std::size_t      size()     const { return options_.size(); }
+	[[nodiscard]] bool             empty()    const { return options_.empty(); }
+	[[nodiscard]] option_iterator  begin()    const { return options_.begin(); }
+	[[nodiscard]] option_iterator  end()      const { return options_.end(); }
+	[[nodiscard]] DescriptionLevel descLevel()const { return level_; }
 
 	//! Returns an object that can be used to add options.
 	/*!
@@ -130,7 +134,7 @@ public:
 	//! Creates a formated description of all options with level() <= level in this group.
 	void format(OptionOutput& out, size_t maxW, DescriptionLevel level = desc_level_default) const;
 
-	std::size_t maxColumn(DescriptionLevel level) const;
+	[[nodiscard]] std::size_t maxColumn(DescriptionLevel level) const;
 private:
 	friend class OptionContext;
 	std::string      caption_;
@@ -168,20 +172,20 @@ private:
  */
 class OptionContext {
 private:
-	typedef std::size_t                               key_type;
-	typedef std::map<std::string, key_type>           Name2Key;
-	typedef std::vector<OptionGroup>                  GroupList;
-	typedef Name2Key::const_iterator                  index_iterator;
-	typedef std::pair<index_iterator, index_iterator> PrefixRange;
-	typedef OptionGroup::OptionList                   OptionList;
+	using key_type       = std::size_t;
+	using Name2Key       = std::map<std::string, key_type>;
+	using GroupList      = std::vector<OptionGroup>;
+	using index_iterator = Name2Key::const_iterator;
+	using PrefixRange    = std::pair<index_iterator, index_iterator>;
+	using OptionList     = OptionGroup::OptionList;
 public:
 	//! Type for identifying an option within a context
-	typedef OptionList::const_iterator option_iterator;
-	typedef PrefixRange                OptionRange;
+	using option_iterator = OptionList::const_iterator;
+	using OptionRange     = PrefixRange;
 
 	OptionContext(const std::string& caption = "", DescriptionLevel desc_default = desc_level_default);
 
-	const std::string& caption() const;
+	[[nodiscard]] const std::string& caption() const;
 
 	//! Adds the given group of options to this context.
 	/*!
@@ -210,13 +214,13 @@ public:
 	 */
 	OptionContext& add(const OptionContext& other);
 
-	option_iterator begin() const { return options_.begin(); }
-	option_iterator end()   const { return options_.end(); }
+	[[nodiscard]] option_iterator begin() const { return options_.begin(); }
+	[[nodiscard]] option_iterator end()   const { return options_.end(); }
 
 	//! Returns the number of options in this context.
-	std::size_t    size()   const { return options_.size(); }
+	[[nodiscard]] std::size_t    size()   const { return options_.size(); }
 	//! Returns the number of groups in this context
-	std::size_t    groups() const { return groups_.size(); }
+	[[nodiscard]] std::size_t    groups() const { return groups_.size(); }
 
 	enum FindType { find_name = 1, find_prefix = 2, find_name_or_prefix = find_name|find_prefix, find_alias = 4 };
 
@@ -244,22 +248,22 @@ public:
 	OptionRange findImpl(const char* key, FindType t, unsigned eMask = unsigned(-1)) const { return findImpl(key, t, eMask, caption()); }
 	OptionRange findImpl(const char* key, FindType t, unsigned eMask, const std::string& eCtx) const;
 
-	const OptionGroup& findGroup(const std::string& caption) const;
-	const OptionGroup* tryFindGroup(const std::string& caption) const;
+	[[nodiscard]] const OptionGroup& findGroup(const std::string& caption) const;
+	[[nodiscard]] const OptionGroup* tryFindGroup(const std::string& caption) const;
 
 	//! Sets the description level to be used when generating description.
 	/*!
 	 * Once set, functions generating descriptions will only consider groups
 	 * and options with description level <= std::min(level, desc_level_all).
 	 */
-	void             setActiveDescLevel(DescriptionLevel level);
-	DescriptionLevel getActiveDescLevel() const { return descLevel_; }
+	void setActiveDescLevel(DescriptionLevel level);
+	[[nodiscard]] DescriptionLevel getActiveDescLevel() const { return descLevel_; }
 
 	//! Writes a formatted description of options in this context.
 	OptionOutput& description(OptionOutput& out) const;
 
 	//! Returns the default command-line of this context.
-	std::string defaults(std::size_t prefixSize = 0) const;
+	[[nodiscard]] std::string defaults(std::size_t prefixSize = 0) const;
 
 	//! Writes a formatted description of options in this context to os.
 	friend std::ostream& operator<<(std::ostream& os, const OptionContext& ctx);
@@ -268,10 +272,11 @@ public:
 	/*!
 	 * \throw ValueError if some default value is actually invalid for its option.
 	 */
-	bool assignDefaults(const ParsedOptions& exclude) const;
+	void assignDefaults(const ParsedOptions& exclude) const;
+
 private:
-	void        insertOption(size_t groupId, const SharedOptPtr& o);
-	size_t      findGroupKey(const std::string& name) const;
+	void insertOption(size_t groupId, const SharedOptPtr& o);
+	[[nodiscard]] size_t findGroupKey(const std::string& name) const;
 
 	Name2Key         index_;
 	OptionList       options_;
@@ -288,10 +293,11 @@ class ParsedOptions {
 public:
 	ParsedOptions();
 	~ParsedOptions();
-	bool        empty()                        const { return parsed_.empty(); }
-	std::size_t size()                         const { return parsed_.size(); }
-	std::size_t count(const std::string& name) const { return parsed_.count(name); }
-	void        add(const std::string& name) { parsed_.insert(name); }
+	[[nodiscard]] bool        empty()                        const { return parsed_.empty(); }
+	[[nodiscard]] std::size_t size()                         const { return parsed_.size(); }
+	[[nodiscard]] std::size_t count(const std::string& name) const { return parsed_.count(name); }
+
+	void add(const std::string& name) { parsed_.insert(name); }
 
 	//! Assigns the parsed values in p to their options.
 	/*!
@@ -305,7 +311,8 @@ public:
 	 *        for a non-composing option or if p contains a value that is
 	 *        invalid for its option.
 	 */
-	bool        assign(const ParsedValues& p, const ParsedOptions* exclude = nullptr);
+	bool assign(const ParsedValues& p, const ParsedOptions* exclude = nullptr);
+
 private:
 	std::set<std::string> parsed_;
 	int assign(const Option& o, const std::string& value);
@@ -316,9 +323,9 @@ private:
 */
 class ParsedValues {
 public:
-	typedef std::pair<SharedOptPtr, std::string> OptionAndValue;
-	typedef std::vector<OptionAndValue> Values;
-	typedef Values::const_iterator iterator;
+	using OptionAndValue = std::pair<SharedOptPtr, std::string>;
+	using Values         = std::vector<OptionAndValue>;
+	using iterator       = Values::const_iterator;
 
 	/*!
 	* \param a_ctx The OptionContext for which this object stores raw-values.
@@ -330,20 +337,21 @@ public:
 	//! Adds a value for option opt.
 	void add(const std::string& opt, const std::string& value);
 	void add(const SharedOptPtr& opt, const std::string& value) {
-		parsed_.push_back(OptionAndValue(opt, value));
+		parsed_.emplace_back(opt, value);
 	}
 
-	iterator begin() const { return parsed_.begin(); }
-	iterator end()   const { return parsed_.end(); }
+	[[nodiscard]] iterator begin() const { return parsed_.begin(); }
+	[[nodiscard]] iterator end()   const { return parsed_.end(); }
 
 	void clear() { parsed_.clear(); }
+
 private:
 	Values parsed_;
 };
 
 class ParseContext {
 public:
-	typedef OptionContext::FindType FindType;
+	using FindType = OptionContext::FindType;
 	virtual ~ParseContext();
 	virtual SharedOptPtr getOption(const char* name, FindType ft) = 0;
 	virtual SharedOptPtr getOption(int posKey, const char* tok) = 0;
@@ -353,7 +361,7 @@ public:
 //! Base class for options parsers.
 class OptionParser {
 public:
-	typedef OptionContext::FindType FindType;
+	using FindType = OptionContext::FindType;
 	explicit OptionParser(ParseContext& ctx);
 	virtual ~OptionParser();
 	ParseContext& parse();
@@ -385,61 +393,55 @@ struct DefaultFormat {
 //! Base class for printing options.
 class OptionOutput {
 public:
-	OptionOutput() {}
-	virtual ~OptionOutput() {}
+	OptionOutput() = default;
+	virtual ~OptionOutput() = default;
 	virtual bool printContext(const OptionContext& ctx) = 0;
 	virtual bool printGroup(const OptionGroup& group) = 0;
 	virtual bool printOption(const Option& opt, std::size_t maxW) = 0;
 };
 
 //! Implementation class for printing options.
-template <class Writer, class Formatter = DefaultFormat>
+template <typename Formatter = DefaultFormat>
 class OptionOutputImpl : public OptionOutput {
 public:
-	OptionOutputImpl(const Writer& w = Writer(), const Formatter& form = Formatter())
-		: writer_(w)
+	using Sink = std::function<void(std::string_view)>;
+	//! Writes formatted option descriptions to given FILE.
+	explicit OptionOutputImpl(FILE* f, const Formatter& form = Formatter())
+		: OptionOutputImpl([f](std::string_view view){ fwrite(view.data(), 1, view.size(), f);; }, form) {}
+	//! Writes formatted option descriptions to given std::string.
+	explicit OptionOutputImpl(std::string& str, const Formatter& form = Formatter())
+		: OptionOutputImpl([&str](std::string_view view) { str.append(view.data(), view.size()); }, form) {}
+	//! Writes formatted option descriptions to given std::ostream.
+	explicit OptionOutputImpl(std::ostream& os, const Formatter& form = Formatter())
+		: OptionOutputImpl([&os](std::string_view view) { os.write(view.data(), view.size()); }, form) {}
+	//! Writes formatted option descriptions to given sink.
+	explicit OptionOutputImpl(Sink sink, const Formatter& form = Formatter())
+		: sink_(std::move(sink))
 		, formatter_(form) {}
+
 	bool printContext(const OptionContext& ctx) override {
-		writer_.write(buffer_, formatter_.format(buffer_, ctx));
+		writeBuffer(formatter_.format(buffer_, ctx));
 		return true;
 	}
 	bool printGroup(const OptionGroup& group) override {
-		writer_.write(buffer_, formatter_.format(buffer_, group));
+		writeBuffer(formatter_.format(buffer_, group));
 		return true;
 	}
 	bool printOption(const Option& opt, std::size_t maxW) override {
-		writer_.write(buffer_, formatter_.format(buffer_, opt, maxW));
-		writer_.write(buffer_, formatter_.format(buffer_, opt.description(), *opt.value(), maxW));
+		writeBuffer(formatter_.format(buffer_, opt, maxW));
+		writeBuffer(formatter_.format(buffer_, opt.description(), *opt.value(), maxW));
 		return true;
 	}
 private:
+	void writeBuffer(std::size_t n) {
+		if (sink_ && n)
+			sink_(std::string_view{buffer_.data(), n});
+	}
 	std::vector<char> buffer_;
-	Writer            writer_;
+	Sink              sink_;
 	Formatter         formatter_;
 };
-//! Writes formatted option descriptions to an std::ostream.
-struct OstreamWriter {
-	OstreamWriter(std::ostream& os) : out(os) {}
-	void write(const std::vector<char>& buf, std::size_t num);
-	std::ostream& out;
-	void operator=(const OstreamWriter&) = delete;
-};
-//! Writes formatted option descriptions to an std::string.
-struct StringWriter {
-	StringWriter(std::string& str) : out(str) {}
-	void write(const std::vector<char>& buf, std::size_t num);
-	std::string& out;
-	void operator=(const StringWriter&) = delete;
-};
-//! Writes formatted option descriptions to a FILE.
-struct FileWriter {
-	FileWriter(FILE* f) : out(f) {}
-	void write(const std::vector<char>& buf, std::size_t num);
-	FILE* out;
-};
-typedef OptionOutputImpl<OstreamWriter> StreamOut;
-typedef OptionOutputImpl<StringWriter>  StringOut;
-typedef OptionOutputImpl<FileWriter>    FileOut;
+using OptionPrinter = OptionOutputImpl<>;
 ///////////////////////////////////////////////////////////////////////////////
 // parse functions
 ///////////////////////////////////////////////////////////////////////////////
@@ -449,7 +451,7 @@ typedef OptionOutputImpl<FileWriter>    FileOut;
  * and store the name of the option that should receive the token as value
  * in its second argument or return false to signal an error.
  */
-typedef bool(*PosOption)(const std::string&, std::string&);
+using PosOption = bool(*)(const std::string&, std::string&);
 
 enum CommandLineFlags {
 	command_line_allow_flag_value = 1u

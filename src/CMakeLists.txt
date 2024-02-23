@@ -2,16 +2,13 @@ set(header_path      ${LIB_POTASSCO_SOURCE_DIR}/potassco)
 set(opts_header_path ${header_path}/program_opts)
 
 set(detail_header
-	${opts_header_path}/detail/notifier.h
-	${opts_header_path}/detail/refcountable.h
-	${opts_header_path}/detail/value_store.h)
+	${opts_header_path}/detail/refcountable.h)
 set(opts_header
 	${opts_header_path}/errors.h
 	${opts_header_path}/mapped_value.h
 	${opts_header_path}/program_options.h
 	${opts_header_path}/typed_value.h
-	${opts_header_path}/value.h
-	${opts_header_path}/value_store.h)
+	${opts_header_path}/value.h)
 set(header
 	${header_path}/application.h
 	${header_path}/aspif.h
@@ -40,8 +37,7 @@ set(src
 	rule_utils.cpp
 	smodels.cpp
 	string_convert.cpp
-	theory_data.cpp
-	value_store.cpp)
+	theory_data.cpp)
 
 add_library(libpotassco ${detail_header} ${opts_header} ${header} ${src})
 set_target_properties(libpotassco PROPERTIES VERSION ${PROJECT_VERSION})

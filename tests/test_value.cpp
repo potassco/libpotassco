@@ -19,7 +19,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 #include "catch.hpp"
-#include <potassco/program_opts/value_store.h>
 #include <potassco/program_opts/mapped_value.h>
 #include <potassco/program_opts/typed_value.h>
 #include <string.h>
@@ -27,82 +26,8 @@
 #include <map>
 namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
-struct Counted {
-	static int count;
-	int parsed;
-	Counted() : parsed(0) { ++count; }
-	~Counted() { --count; }
-	Counted(const Counted& o) : parsed(o.parsed) { ++count; }
-	static bool parse(const std::string&, Counted& out) {
-		++out.parsed;
-		return true;
-	}
-};
-class ValuePtr {
-public:
-	explicit ValuePtr(Po::Value* p) : ptr_(p) {}
-	ValuePtr(const ValuePtr&) = delete;
-	ValuePtr& operator=(const ValuePtr&) = delete;
+using ValuePtr = std::unique_ptr<Value>;
 
-	~ValuePtr() { delete ptr_; }
-	Po::Value* operator->() const { return ptr_; }
-private:
-	Po::Value* ptr_;
-};
-
-int Counted::count = 0;
-struct Notified {
-	Notified() : notifications(0), reused(0), loc(nullptr), ret(false) {}
-	~Notified() { delete loc; }
-	static bool notifyInt(Notified* this_, const std::string& name, const int* loc) {
-		++this_->notifications;
-		this_->opts.insert(std::map<std::string, int>::value_type(name, *loc));
-		if (this_->loc == loc) {
-			++this_->reused;
-		}
-		if (this_->ret) {
-			this_->loc = loc;
-		}
-		return this_->ret;
-	}
-	static bool notifyUntyped(Notified* this_, const std::string& name, const std::string& value) {
-		++this_->notifications;
-		int temp;
-		if (Potassco::string_cast<int>(value, temp)) {
-			this_->opts[name] = temp;
-			return true;
-		}
-		return false;
-	}
-	std::map<std::string, int> opts;
-	int notifications, reused;
-	const int* loc;
-	bool ret;
-};
-
-TEST_CASE("Test value store", "[value]") {
-	SECTION("default is empty") {
-		Po::ValueStore x;
-		REQUIRE(x.empty());
-	}
-	SECTION("values are copied into store") {
-		Po::ValueStore x;
-		Po::ValueStore y((Counted()));
-		x = y;
-		REQUIRE(Counted::count == 2);
-	}
-	SECTION("store supports swap") {
-		Po::ValueStore x((Counted())), y((Counted()));
-		Po::value_cast<Counted>(x).parsed = 0;
-		Po::value_cast<Counted>(y).parsed = 10;
-		x.swap(y);
-		REQUIRE(Po::value_cast<Counted>(x).parsed == 10);
-		REQUIRE(Po::value_cast<Counted>(y).parsed == 0);
-		x.clear();
-		REQUIRE(Po::unsafe_value_cast<Counted>(&x) == static_cast<Counted*>(nullptr));
-	}
-	REQUIRE(Counted::count == 0);
-}
 
 TEST_CASE("Test flag", "[value]") {
 	bool loud;
@@ -157,47 +82,52 @@ TEST_CASE("Test storeTo", "[value]") {
 		REQUIRE(y == false);
 	}
 	SECTION("parse int as implicit") {
-		v1->implicit(LIT_TO_STRING(102));
+		v1->implicit(POTASSCO_STRING(102));
 		REQUIRE(v1->isImplicit());
 		REQUIRE((v1->parse("", "") && x == 102));
 	}
 
 	SECTION("test custom parser") {
-		Counted c;
-		ValuePtr vc(Po::storeTo(c, &Counted::parse)->implicit(""));
+		bool parsed = false;
+		ValuePtr vc(Po::storeTo(parsed, +[](const std::string&, bool& p){ p = true; return true; })->implicit(""));
 		REQUIRE(vc->parse("", ""));
-		REQUIRE(c.parsed == 1);
+		REQUIRE(parsed);
 	}
 }
 
-TEST_CASE("Test custom value", "[value]") {
-	Notified n;
-	SECTION("with typed value creation") {
-		ValuePtr v(Po::notify<int>(&n, &Notified::notifyInt));
-		v->parse("foo", "123");
-		n.ret = true;
-		v->parse("bar", "342");
-		v->parse("jojo", "999");
-		REQUIRE(n.notifications == 3);
-		REQUIRE(n.reused == 1);
-		REQUIRE(n.opts["foo"] == 123);
-		REQUIRE(n.opts["bar"] == 342);
-		REQUIRE(*n.loc == 999);
-	}
-	SECTION("with untyped value") {
-		ValuePtr v(Po::notify(&n, &Notified::notifyUntyped));
-		REQUIRE(v->parse("foo", "123"));
-		REQUIRE(v->parse("bar", "342"));
-		REQUIRE(v->parse("jojo", "999"));
-		REQUIRE(!v->parse("kaputt", "x12"));
-		REQUIRE(n.reused == 0);
-		REQUIRE(n.notifications == 4);
-		REQUIRE(n.opts["foo"] == 123);
-		REQUIRE(n.opts["bar"] == 342);
-		REQUIRE(n.opts["jojo"] == 999);
-		REQUIRE(n.opts.count("kaputt") == 0);
-	}
+TEST_CASE("Test action value", "[value]") {
+	std::map<std::string, int> m;
+	ValuePtr v1(Po::action<int>([&](const std::string& name, int v){ m[name] = v; }));
+	ValuePtr v2(Po::action<int>([&](int v){ m["v2"] = v; }));
+	CHECK(v1->parse("foo", "123"));
+	CHECK(v1->parse("bar", "342"));
+	CHECK(v2->parse("jojo", "999"));
+	REQUIRE(m.size() == 3);
+	REQUIRE(m["foo"] == 123);
+	REQUIRE(m["bar"] == 342);
+	REQUIRE(m["v2"] == 999);
 }
+TEST_CASE("Test custom value", "[value]") {
+	std::map<std::string, int> m;
+	auto parser = [&](const std::string& name, const std::string& v){
+		if (int temp; Potassco::string_cast<int>(v, temp)) {
+			m[name] = temp;
+			return true;
+		}
+		return false;
+	};
+	ValuePtr v1(Po::parse(parser));
+	ValuePtr v2(Po::parse([&](const std::string& v){ return parser("v2", v); }));
+	REQUIRE(v1->parse("foo", "123"));
+	REQUIRE(v2->parse("", "342"));
+	REQUIRE(v1->parse("jojo", "999"));
+	REQUIRE_FALSE(v1->parse("kaputt", "x12"));
+	REQUIRE(m.size() == 3);
+	REQUIRE(m["foo"] == 123);
+	REQUIRE(m["jojo"] == 999);
+	REQUIRE(m["v2"] == 342);
+}
+
 TEST_CASE("Test mapped value", "[value]") {
 	Po::ValueMap vm;
 	ValuePtr v1(Po::store<int>(vm));
@@ -206,12 +136,12 @@ TEST_CASE("Test mapped value", "[value]") {
 	v1->parse("foo", "22");
 	v2->parse("bar", "99.2");
 	v3->parse("help", "false");
-	REQUIRE(Po::value_cast<int>(vm["foo"]) == 22);
-	REQUIRE(Po::value_cast<double>(vm["bar"]) == 99.2);
-	REQUIRE(Po::value_cast<bool>(vm["help"]) == false);
+	REQUIRE(vm.get<int>("foo") == 22);
+	REQUIRE(vm.get<double>("bar") == 99.2);
+	REQUIRE(vm.get<bool>("help") == false);
 
 	v1->parse("foo", "27");
-	REQUIRE(Po::value_cast<int>(vm["foo"]) == 27);
+	REQUIRE(vm.get<int>("foo") == 27);
 }
 struct Color { enum Value { RED = 2, GREEN = 10, BLUE = 20 }; };
 struct Mode  { enum Value { DEF, IMP, EXP }; };
@@ -219,15 +149,13 @@ TEST_CASE("Test enum value", "[value]") {
 	int x;
 	Mode::Value y;
 
-	ValuePtr v1(Po::storeTo(x, Po::values<Color::Value>()
-		("Red", Color::RED)
-		("Green", Color::GREEN)
-		("Blue", Color::BLUE)));
+	ValuePtr v1(Po::storeTo(x, Po::values<Color::Value>({{"Red", Color::RED},
+	                                                     {"Green", Color::GREEN},
+	                                                     {"Blue", Color::BLUE}})));
 
-	ValuePtr v2(Po::storeTo(y, Po::values<Mode::Value>()
-		("Default", Mode::DEF)
-		("Implicit", Mode::IMP)
-		("Explicit", Mode::EXP)));
+	ValuePtr v2(Po::storeTo(y, Po::values<Mode::Value>({
+		{"Default", Mode::DEF}, {"Implicit", Mode::IMP}, {"Explicit", Mode::EXP}
+	})));
 
 	REQUIRE((v1->parse("", "Red") && x == 2));
 	REQUIRE((v1->parse("", "GREEN") && x == Color::GREEN));
