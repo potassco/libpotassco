@@ -27,8 +27,8 @@
 #include <string>
 #include <cstring>
 #include <vector>
-#include POTASSCO_EXT_INCLUDE(unordered_map)
-typedef POTASSCO_EXT_NS::unordered_map<std::string, Potassco::Id_t> StrMap;
+#include <unordered_map>
+typedef std::unordered_map<std::string, Potassco::Id_t> StrMap;
 namespace Potassco {
 
 enum SmodelsRule {

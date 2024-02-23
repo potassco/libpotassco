@@ -153,18 +153,6 @@ POTASSCO_ATTR_NORETURN extern void fail(int ec, const char* file, unsigned line,
 #define POTASSCO_EXPECT(exp, ...)  POTASSCO_CHECK(exp, Potassco::error_runtime, ## __VA_ARGS__)
 ///@}
 
-#if (defined(__cplusplus) && __cplusplus >= 201103L) || defined(_MSC_VER) || defined(_LIBCPP_VERSION)
-#define POTASSCO_EXT_INCLUDE(x) <x>
-#if !defined(_MSC_VER) || _MSC_VER > 1500
-#define POTASSCO_EXT_NS std
-#else
-#define POTASSCO_EXT_NS std::tr1
-#endif
-#else
-#define POTASSCO_EXT_INCLUDE(x) <tr1/x>
-#define POTASSCO_EXT_NS std::tr1
-#endif
-
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #elif defined(__clang__)

@@ -28,8 +28,8 @@
 #include <vector>
 #include <map>
 #include <string>
-#include POTASSCO_EXT_INCLUDE(unordered_map)
-typedef POTASSCO_EXT_NS::unordered_map<Potassco::Atom_t, const char*> SymTab;
+#include <unordered_map>
+typedef std::unordered_map<Potassco::Atom_t, const char*> SymTab;
 #if defined(_MSC_VER)
 #pragma warning (disable : 4996)
 #endif
