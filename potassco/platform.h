@@ -120,7 +120,18 @@ enum FailType {
 	error_logic    = -2,
 	error_runtime  = -3
 };
+
+template<typename ActionT>
+struct AtScopeExit {
+    ~AtScopeExit() noexcept(false) { action(); }
+    ActionT action;
+};
+template <typename ActionT>
+AtScopeExit(ActionT)->AtScopeExit<ActionT>;
+
 POTASSCO_ATTR_NORETURN extern void fail(int ec, const char* file, unsigned line, const char* exp, const char* fmt, ...);
+
+#define POTASSCO_SCOPE_EXIT(...) Potassco::AtScopeExit POTASSCO_CONCAT(e, __COUNTER__){[&]() __VA_ARGS__}
 } // namespace Potassco
 
 /*!
