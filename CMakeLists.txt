@@ -1,14 +1,18 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.16)
 project(LIB_POTASSCO VERSION 1.0 LANGUAGES CXX)
 if (POLICY CMP0063)
 	cmake_policy(SET CMP0063 NEW)
 endif()
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # enable folders in IDEs like Visual Studio
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include(GNUInstallDirs)
-option(LIB_POTASSCO_BUILD_TESTS       "whether or not to build tests"             OFF)
-option(LIB_POTASSCO_BUILD_APP         "whether or not to build lpconvert tool"    ON)
-option(LIB_POTASSCO_INSTALL_LIB       "whether or not to install libpotassco"     OFF)
+option(LIB_POTASSCO_BUILD_TESTS       "whether to build tests"             OFF)
+option(LIB_POTASSCO_BUILD_APP         "whether to build lpconvert tool"    ON)
+option(LIB_POTASSCO_INSTALL_LIB       "whether to install libpotassco"     OFF)
 option(LIB_POTASSCO_INSTALL_VERSIONED "whether to use a versioned install layout" OFF)
 
 if (LIB_POTASSCO_INSTALL_VERSIONED)

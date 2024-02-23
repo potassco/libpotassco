@@ -11,11 +11,6 @@ target_link_libraries(test_potassco_lp libpotassco)
 target_include_directories(test_potassco_lp	 PRIVATE
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )
-set_target_properties(test_potassco_lp PROPERTIES
-	CXX_STANDARD 11
-	CXX_EXTENSIONS OFF
-	CXX_STANDARD_REQUIRED YES
-)
 set(test_opts
 	test_application.cpp
 	test_options.cpp
