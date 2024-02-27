@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2016-2017 Benjamin Kaufmann
+// Copyright (c) 2016 - present, Benjamin Kaufmann
 //
 // This file is part of Potassco.
 //
@@ -25,8 +25,10 @@
 #define POTASSCO_ASPIF_TEXT_H_INCLUDED
 #include <potassco/match_basic_types.h>
 #include <potassco/theory_data.h>
+
 #include <cstring>
 #include <string>
+
 namespace Potassco {
 //! Class for parsing logic programs in ground text format.
 /*!
@@ -34,40 +36,42 @@ namespace Potassco {
  */
 class AspifTextInput : public ProgramReader {
 public:
-	//! Creates a new object and associates it with the given output if any.
-	AspifTextInput(AbstractProgram* out);
-	//! Sets the program to which parsed elements should be output.
-	void setOutput(AbstractProgram& out);
+    //! Creates a new object and associates it with the given output if any.
+    AspifTextInput(AbstractProgram* out);
+    //! Sets the program to which parsed elements should be output.
+    void setOutput(AbstractProgram& out);
+
 protected:
-	//! Checks whether stream starts with a valid token.
-	bool doAttach(bool& inc) override;
-	//! Attempts to parses the current step or throws an exception on error.
-	/*!
-	 * The function calls beginStep()/endStep() on the associated
-	 * output object before/after parsing the current step.
-	 */
-	bool doParse() override;
-	//! Parses statements until next step directive or input is exhausted.
-	bool parseStatements();
+    //! Checks whether stream starts with a valid token.
+    bool doAttach(bool& inc) override;
+    //! Attempts to parses the current step or throws an exception on error.
+    /*!
+     * The function calls beginStep()/endStep() on the associated
+     * output object before/after parsing the current step.
+     */
+    bool doParse() override;
+    //! Parses statements until next step directive or input is exhausted.
+    bool parseStatements();
+
 private:
-	void   skipws();
-	bool   matchDirective();
-	void   matchRule(char peek);
-	void   matchAtoms(const char* seps);
-	void   matchLits();
-	void   matchCondition();
-	void   matchAgg();
-	bool   match(const char* ts, bool required = true);
-	Atom_t matchId();
-	Lit_t  matchLit();
-	int    matchInt();
-	void   matchTerm();
-	void   matchAtomArg();
-	void   matchStr();
-	void   push(char c);
-	AbstractProgram* out_;
-	struct Data;
-	Data*            data_;
+    void             skipws();
+    bool             matchDirective();
+    void             matchRule(char peek);
+    void             matchAtoms(const char* seps);
+    void             matchLits();
+    void             matchCondition();
+    void             matchAgg();
+    bool             match(const char* ts, bool required = true);
+    Atom_t           matchId();
+    Lit_t            matchLit();
+    int              matchInt();
+    void             matchTerm();
+    void             matchAtomArg();
+    void             matchStr();
+    void             push(char c);
+    AbstractProgram* out_;
+    struct Data;
+    Data* data_;
 };
 
 //! Class for writing logic programs in ground text format.
@@ -77,62 +81,74 @@ private:
  */
 class AspifTextOutput : public Potassco::AbstractProgram {
 public:
-	AspifTextOutput(std::ostream& os);
-	~AspifTextOutput() override;
-	void initProgram(bool incremental) override;
-	void beginStep() override;
-	void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override;
-	void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) override;
-	void minimize(Weight_t prio, const WeightLitSpan& lits) override;
-	void output(const StringSpan& str, const LitSpan& cond) override;
-	void external(Atom_t a, Value_t v) override;
-	void assume(const LitSpan& lits) override;
-	void project(const AtomSpan& atoms) override;
-	void acycEdge(int s, int t, const LitSpan& condition) override;
-	void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;
+    AspifTextOutput(std::ostream& os);
+    ~AspifTextOutput() override;
+    void initProgram(bool incremental) override;
+    void beginStep() override;
+    void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override;
+    void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) override;
+    void minimize(Weight_t prio, const WeightLitSpan& lits) override;
+    void output(const StringSpan& str, const LitSpan& cond) override;
+    void external(Atom_t a, Value_t v) override;
+    void assume(const LitSpan& lits) override;
+    void project(const AtomSpan& atoms) override;
+    void acycEdge(int s, int t, const LitSpan& condition) override;
+    void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;
 
-	void theoryTerm(Id_t termId, int number) override;
-	void theoryTerm(Id_t termId, const StringSpan& name) override;
-	void theoryTerm(Id_t termId, int compound, const IdSpan& args) override;
-	void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond) override;
-	void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) override;
-	void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) override;
-	void endStep() override;
+    void theoryTerm(Id_t termId, int number) override;
+    void theoryTerm(Id_t termId, const StringSpan& name) override;
+    void theoryTerm(Id_t termId, int compound, const IdSpan& args) override;
+    void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond) override;
+    void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) override;
+    void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) override;
+    void endStep() override;
 
-	void addAtom(Atom_t id, const StringSpan& str);
+    void addAtom(Atom_t id, const StringSpan& str);
+
 private:
-	std::ostream& printName(std::ostream& os, Lit_t lit) const;
-	void writeDirectives();
-	void visitTheories();
-	AspifTextOutput& push(uint32_t x);
-	AspifTextOutput& push(const AtomSpan& atoms);
-	AspifTextOutput& push(const LitSpan&  lits);
-	AspifTextOutput& push(const WeightLitSpan& wlits);
-	template <class T> T get();
-	AspifTextOutput(const AspifTextOutput&);
-	AspifTextOutput& operator=(const AspifTextOutput&);
-	std::ostream& os_;
-	struct Data;
-	TheoryData theory_;
-	Data*      data_;
-	int        step_;
+    std::ostream&    printName(std::ostream& os, Lit_t lit) const;
+    void             writeDirectives();
+    void             visitTheories();
+    AspifTextOutput& push(uint32_t x);
+    AspifTextOutput& push(const AtomSpan& atoms);
+    AspifTextOutput& push(const LitSpan& lits);
+    AspifTextOutput& push(const WeightLitSpan& wlits);
+    template <class T>
+    T get();
+    AspifTextOutput(const AspifTextOutput&);
+    AspifTextOutput& operator=(const AspifTextOutput&);
+    std::ostream&    os_;
+    struct Data;
+    TheoryData theory_;
+    Data*      data_;
+    int        step_;
 };
 
 //! Converts a given theory atom to a string.
 class TheoryAtomStringBuilder {
 public:
-	std::string toString(const TheoryData& td, const TheoryAtom& a);
-private:
-	TheoryAtomStringBuilder& add(char c) { res_.append(1, c); return *this; }
-	TheoryAtomStringBuilder& add(const char* s) { res_.append(s); return *this; }
-	TheoryAtomStringBuilder& add(const std::string& s) { res_.append(s); return *this; }
-	TheoryAtomStringBuilder& term(const TheoryData& td, const TheoryTerm& a);
-	TheoryAtomStringBuilder& element(const TheoryData& td, const TheoryElement& a);
-	bool function(const TheoryData& td, const TheoryTerm& f);
+    std::string toString(const TheoryData& td, const TheoryAtom& a);
 
-	virtual LitSpan     getCondition(Id_t condId) const = 0;
-	virtual std::string getName(Atom_t atomId)    const = 0;
-	std::string res_;
+private:
+    TheoryAtomStringBuilder& add(char c) {
+        res_.append(1, c);
+        return *this;
+    }
+    TheoryAtomStringBuilder& add(const char* s) {
+        res_.append(s);
+        return *this;
+    }
+    TheoryAtomStringBuilder& add(const std::string& s) {
+        res_.append(s);
+        return *this;
+    }
+    TheoryAtomStringBuilder& term(const TheoryData& td, const TheoryTerm& a);
+    TheoryAtomStringBuilder& element(const TheoryData& td, const TheoryElement& a);
+    bool                     function(const TheoryData& td, const TheoryTerm& f);
+
+    virtual LitSpan     getCondition(Id_t condId) const = 0;
+    virtual std::string getName(Atom_t atomId) const    = 0;
+    std::string         res_;
 };
 
 } // namespace Potassco

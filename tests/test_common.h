@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2015-2017 Benjamin Kaufmann
+// Copyright (c) 2015 - present, Benjamin Kaufmann
 //
 // This file is part of Potassco.
 //
@@ -23,61 +23,55 @@
 //
 #ifndef POTASSCO_TEST_COMMON_H_INCLUDED
 #define POTASSCO_TEST_COMMON_H_INCLUDED
-#include <vector>
 #include <potassco/basic_types.h>
+
+#include <vector>
+
 namespace Potassco::Test {
 template <class T>
 using Vec = std::vector<T>;
 
 struct Rule {
-	Head_t           ht;
-	Vec<Atom_t>      head;
-	Body_t           bt;
-	Weight_t         bnd;
-	Vec<WeightLit_t> body;
-	bool operator==(const Rule& rhs) const {
-		return ht == rhs.ht && head == rhs.head && bt == rhs.bt && bnd == rhs.bnd && body == rhs.body;
-	}
+    Head_t           ht;
+    Vec<Atom_t>      head;
+    Body_t           bt;
+    Weight_t         bnd;
+    Vec<WeightLit_t> body;
+    bool             operator==(const Rule& rhs) const {
+        return ht == rhs.ht && head == rhs.head && bt == rhs.bt && bnd == rhs.bnd && body == rhs.body;
+    }
 };
 struct Edge {
-	int s;
-	int t;
-	Vec<Lit_t> cond;
-	bool operator==(const Edge& rhs) const {
-		return s == rhs.s && t == rhs.t && cond == rhs.cond;
-	}
+    int        s;
+    int        t;
+    Vec<Lit_t> cond;
+    bool       operator==(const Edge& rhs) const { return s == rhs.s && t == rhs.t && cond == rhs.cond; }
 };
 struct Heuristic {
-	Atom_t      atom;
-	Heuristic_t type;
-	int         bias;
-	unsigned    prio;
-	Vec<Lit_t>  cond;
-	bool operator==(const Heuristic& rhs) const {
-		return atom == rhs.atom && type == rhs.type && bias == rhs.bias && prio == rhs.prio && cond == rhs.cond;
-	}
+    Atom_t      atom;
+    Heuristic_t type;
+    int         bias;
+    unsigned    prio;
+    Vec<Lit_t>  cond;
+    bool        operator==(const Heuristic& rhs) const {
+        return atom == rhs.atom && type == rhs.type && bias == rhs.bias && prio == rhs.prio && cond == rhs.cond;
+    }
 };
 
 class ReadObserver : public AbstractProgram {
 public:
-	void initProgram(bool inc) override {
-		incremental = inc;
-	}
-	void beginStep() override {
-		++nStep;
-	}
-	void endStep() override {}
+    void initProgram(bool inc) override { incremental = inc; }
+    void beginStep() override { ++nStep; }
+    void endStep() override {}
 
-	void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& cond) override {
-		heuristics.push_back({a, t, bias, prio, {begin(cond), end(cond)}});
-	}
-	void acycEdge(int s, int t, const LitSpan& cond) override {
-		edges.push_back({s, t, {begin(cond), end(cond)}});
-	}
-	Vec<Heuristic> heuristics;
-	Vec<Edge>      edges;
-	int  nStep = 0;
-	bool incremental = false;
+    void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& cond) override {
+        heuristics.push_back({a, t, bias, prio, {begin(cond), end(cond)}});
+    }
+    void acycEdge(int s, int t, const LitSpan& cond) override { edges.push_back({s, t, {begin(cond), end(cond)}}); }
+    Vec<Heuristic> heuristics;
+    Vec<Edge>      edges;
+    int            nStep       = 0;
+    bool           incremental = false;
 };
-}
+} // namespace Potassco::Test
 #endif

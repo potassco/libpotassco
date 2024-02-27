@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2015-2017 Benjamin Kaufmann
+// Copyright (c) 2015 - present, Benjamin Kaufmann
 //
 // This file is part of Potassco.
 //
@@ -25,6 +25,7 @@
 #define POTASSCO_CONVERT_H_INCLUDED
 
 #include <potassco/smodels.h>
+
 namespace Potassco {
 
 //! Converts a given program so that it can be expressed in smodels format.
@@ -33,66 +34,68 @@ namespace Potassco {
  */
 class SmodelsConvert : public AbstractProgram {
 public:
-	//! Creates a new object that passes converted programs to out.
-	/*!
-	 * The parameter enableClaspExt determines how heuristic, edge, and external
-	 * directives are handled.
-	 * If true, heuristic and edge directives are converted to _heuristic and
-	 * _edge predicates, while external directives passed to out.
-	 * Otherwise, heuristic and edge directives are not converted but
-	 * directly passed to out, while external directives are mapped to
-	 * choice rules or integrity constraints.
-	 */
-	SmodelsConvert(AbstractProgram& out, bool enableClaspExt);
-	~SmodelsConvert() override;
-	//! Calls initProgram() on the associated output program.
-	void initProgram(bool incremental) override;
-	//! Calls beginStep() on the associated output program.
-	void beginStep() override;
-	//! Converts the given rule into one or more smodels rules.
-	void rule(Head_t t, const AtomSpan& head, const LitSpan& body) override;
-	//! Converts the given rule into one or more smodels rules.
-	void rule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override;
-	//! Converts literals associated with a priority to a set of corresponding smodels minimize rules.
-	void minimize(Weight_t prio, const WeightLitSpan& lits) override;
-	//! Adds an atom named str that is equivalent to the condition to the symbol table.
-	void output(const StringSpan& str, const LitSpan& cond) override;
-	//! Marks the atom that is equivalent to a as external.
-	void external(Atom_t a, Value_t v) override;
-	//! Adds an _heuristic predicate over the given atom to the symbol table that is equivalent to condition.
-	void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;
-	//! Adds an _edge(s,t) predicate to the symbol table that is equivalent to condition.
-	void acycEdge(int s, int t, const LitSpan& condition) override;
+    //! Creates a new object that passes converted programs to out.
+    /*!
+     * The parameter enableClaspExt determines how heuristic, edge, and external
+     * directives are handled.
+     * If true, heuristic and edge directives are converted to _heuristic and
+     * _edge predicates, while external directives passed to out.
+     * Otherwise, heuristic and edge directives are not converted but
+     * directly passed to out, while external directives are mapped to
+     * choice rules or integrity constraints.
+     */
+    SmodelsConvert(AbstractProgram& out, bool enableClaspExt);
+    ~SmodelsConvert() override;
+    //! Calls initProgram() on the associated output program.
+    void initProgram(bool incremental) override;
+    //! Calls beginStep() on the associated output program.
+    void beginStep() override;
+    //! Converts the given rule into one or more smodels rules.
+    void rule(Head_t t, const AtomSpan& head, const LitSpan& body) override;
+    //! Converts the given rule into one or more smodels rules.
+    void rule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override;
+    //! Converts literals associated with a priority to a set of corresponding smodels minimize rules.
+    void minimize(Weight_t prio, const WeightLitSpan& lits) override;
+    //! Adds an atom named str that is equivalent to the condition to the symbol table.
+    void output(const StringSpan& str, const LitSpan& cond) override;
+    //! Marks the atom that is equivalent to a as external.
+    void external(Atom_t a, Value_t v) override;
+    //! Adds an _heuristic predicate over the given atom to the symbol table that is equivalent to condition.
+    void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;
+    //! Adds an _edge(s,t) predicate to the symbol table that is equivalent to condition.
+    void acycEdge(int s, int t, const LitSpan& condition) override;
 
-	//! Finalizes conversion and calls endStep() on the associated output program.
-	void endStep() override;
+    //! Finalizes conversion and calls endStep() on the associated output program.
+    void endStep() override;
 
-	//! Returns the output literal associated to in.
-	Lit_t       get(Lit_t in) const;
-	//! Returns the name associated with the given (output) smodels atom or 0 if no name exists.
-	const char* getName(Atom_t a) const;
-	//! Returns the max used smodels atom (valid atoms are [1..n]).
-	unsigned    maxAtom() const;
+    //! Returns the output literal associated to in.
+    Lit_t get(Lit_t in) const;
+    //! Returns the name associated with the given (output) smodels atom or 0 if no name exists.
+    const char* getName(Atom_t a) const;
+    //! Returns the max used smodels atom (valid atoms are [1..n]).
+    unsigned maxAtom() const;
+
 protected:
-	//! Creates a (named) atom that is equivalent to the given condition.
-	Atom_t makeAtom(const LitSpan& lits, bool named);
-	//! Processes all outstanding conversions.
-	void flush();
-	//! Converts external atoms.
-	void flushExternal();
-	//! Converts minimize statements.
-	void flushMinimize();
-	//! Converts heuristic directives to _heuristic predicates.
-	void flushHeuristic();
-	//! Converts (atom,name) pairs to output directives.
-	void flushSymbols();
+    //! Creates a (named) atom that is equivalent to the given condition.
+    Atom_t makeAtom(const LitSpan& lits, bool named);
+    //! Processes all outstanding conversions.
+    void flush();
+    //! Converts external atoms.
+    void flushExternal();
+    //! Converts minimize statements.
+    void flushMinimize();
+    //! Converts heuristic directives to _heuristic predicates.
+    void flushHeuristic();
+    //! Converts (atom,name) pairs to output directives.
+    void flushSymbols();
+
 private:
-	SmodelsConvert(const SmodelsConvert&);
-	SmodelsConvert& operator=(const SmodelsConvert&);
-	struct SmData;
-	AbstractProgram& out_;
-	SmData*          data_;
-	bool             ext_;
+    SmodelsConvert(const SmodelsConvert&);
+    SmodelsConvert& operator=(const SmodelsConvert&);
+    struct SmData;
+    AbstractProgram& out_;
+    SmData*          data_;
+    bool             ext_;
 };
 
 } // namespace Potassco

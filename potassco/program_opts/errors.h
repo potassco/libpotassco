@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2004-2017 Benjamin Kaufmann
+// Copyright (c) 2004 - present, Benjamin Kaufmann
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
@@ -24,6 +24,7 @@
 //
 #ifndef PROGRAM_OPTIONS_ERRORS_H_INCLUDED
 #define PROGRAM_OPTIONS_ERRORS_H_INCLUDED
+
 #include <stdexcept>
 #include <string>
 
@@ -32,78 +33,68 @@ namespace Potassco::ProgramOptions {
 //! Base class for all exceptions.
 class Error : public std::logic_error {
 public:
-	explicit Error(const std::string& what) : std::logic_error(what) {}
+    explicit Error(const std::string& what) : std::logic_error(what) {}
 };
 
 //! Used for signaling errors on command-line and in declaring options.
 class SyntaxError : public Error {
 public:
-	enum Type {
-		missing_value,
-		extra_value,
-		invalid_format
-	};
-	SyntaxError(Type t, const std::string& key);
-	[[nodiscard]] Type               type() const { return type_; }
-	[[nodiscard]] const std::string& key()  const { return key_; }
+    enum Type { missing_value, extra_value, invalid_format };
+    SyntaxError(Type t, const std::string& key);
+    [[nodiscard]] Type               type() const { return type_; }
+    [[nodiscard]] const std::string& key() const { return key_; }
 
 private:
-	std::string key_;
-	Type        type_;
+    std::string key_;
+    Type        type_;
 };
 
 //! Used for signaling errors in OptionContext.
 class ContextError : public Error {
 public:
-	enum Type {
-		duplicate_option,
-		unknown_option,
-		ambiguous_option,
-		unknown_group
-	};
-	ContextError(const std::string& ctx, Type t, const std::string& key, const std::string& desc = "");
-	[[nodiscard]] Type               type() const { return type_; }
-	[[nodiscard]] const std::string& key()  const { return key_; }
-	[[nodiscard]] const std::string& ctx()  const { return ctx_; }
+    enum Type { duplicate_option, unknown_option, ambiguous_option, unknown_group };
+    ContextError(const std::string& ctx, Type t, const std::string& key, const std::string& desc = "");
+    [[nodiscard]] Type               type() const { return type_; }
+    [[nodiscard]] const std::string& key() const { return key_; }
+    [[nodiscard]] const std::string& ctx() const { return ctx_; }
 
 private:
-	std::string ctx_;
-	std::string key_;
-	Type        type_;
+    std::string ctx_;
+    std::string key_;
+    Type        type_;
 };
 
 class DuplicateOption : public ContextError {
 public:
-	DuplicateOption(const std::string& ctx, const std::string& key) : ContextError(ctx, ContextError::duplicate_option, key) {}
+    DuplicateOption(const std::string& ctx, const std::string& key)
+        : ContextError(ctx, ContextError::duplicate_option, key) {}
 };
 class UnknownOption : public ContextError {
 public:
-	UnknownOption(const std::string& ctx, const std::string& key) : ContextError(ctx, ContextError::unknown_option, key) {}
+    UnknownOption(const std::string& ctx, const std::string& key)
+        : ContextError(ctx, ContextError::unknown_option, key) {}
 };
 class AmbiguousOption : public ContextError {
 public:
-	AmbiguousOption(const std::string& ctx, const std::string& key, const std::string& alt) : ContextError(ctx, ContextError::ambiguous_option, key, alt) {}
+    AmbiguousOption(const std::string& ctx, const std::string& key, const std::string& alt)
+        : ContextError(ctx, ContextError::ambiguous_option, key, alt) {}
 };
 
 //! Used for signaling validation errors when trying to assign option values.
 class ValueError : public Error {
 public:
-	enum Type {
-		multiple_occurrences,
-		invalid_default,
-		invalid_value
-	};
-	ValueError(const std::string& ctx, Type t, const std::string& opt, const std::string& value);
-	[[nodiscard]] Type               type() const { return type_; }
-	[[nodiscard]] const std::string& key()  const { return key_; }
-	[[nodiscard]] const std::string& ctx()  const { return ctx_; }
-	[[nodiscard]] const std::string& value()const { return value_; }
+    enum Type { multiple_occurrences, invalid_default, invalid_value };
+    ValueError(const std::string& ctx, Type t, const std::string& opt, const std::string& value);
+    [[nodiscard]] Type               type() const { return type_; }
+    [[nodiscard]] const std::string& key() const { return key_; }
+    [[nodiscard]] const std::string& ctx() const { return ctx_; }
+    [[nodiscard]] const std::string& value() const { return value_; }
 
 private:
-	std::string ctx_;
-	std::string key_;
-	std::string value_;
-	Type        type_;
+    std::string ctx_;
+    std::string key_;
+    std::string value_;
+    Type        type_;
 };
 
 } // namespace Potassco::ProgramOptions

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2010-2024 Benjamin Kaufmann
+// Copyright (c) 2010 - present, Benjamin Kaufmann
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
@@ -25,9 +25,10 @@
 //
 #ifndef PROGRAM_OPTIONS_MAPPED_VALUE_H_INCLUDED
 #define PROGRAM_OPTIONS_MAPPED_VALUE_H_INCLUDED
+
 #ifdef _MSC_VER
-#pragma warning (disable : 4786)
-#pragma warning (disable : 4503)
+#pragma warning(disable : 4786)
+#pragma warning(disable : 4503)
 #endif
 
 #include <potassco/program_opts/typed_value.h>
@@ -47,44 +48,42 @@ namespace Potassco::ProgramOptions {
  */
 class ValueMap {
 public:
-	ValueMap() = default;
-	~ValueMap() = default;
-	ValueMap(const ValueMap&) = delete;
-	ValueMap& operator=(const ValueMap&) = delete;
-	using value_type = std::any;
+    ValueMap()                           = default;
+    ~ValueMap()                          = default;
+    ValueMap(const ValueMap&)            = delete;
+    ValueMap& operator=(const ValueMap&) = delete;
+    using value_type                     = std::any;
 
-	[[nodiscard]] bool   empty() const { return map_.empty(); }
-	[[nodiscard]] size_t size()  const { return map_.size(); }
-	[[nodiscard]] size_t count(std::string_view name) const { return map_.count(name); }
+    [[nodiscard]] bool   empty() const { return map_.empty(); }
+    [[nodiscard]] size_t size() const { return map_.size(); }
+    [[nodiscard]] size_t count(std::string_view name) const { return map_.count(name); }
 
-	const value_type& operator[](std::string_view name) const {
-		auto it = map_.find(name);
-		if (it == map_.end()) {
-			throw UnknownOption("ValueMap", std::string(name));
-		}
-		return it->second;
-	}
+    const value_type& operator[](std::string_view name) const {
+        auto it = map_.find(name);
+        if (it == map_.end()) {
+            throw UnknownOption("ValueMap", std::string(name));
+        }
+        return it->second;
+    }
 
-	template <typename T>
-	const T& get(std::string_view name) const {
-		const auto& a = this->operator[](name);
-		return std::any_cast<const std::remove_reference_t<T>&>(a);
-	}
+    template <typename T>
+    const T& get(std::string_view name) const {
+        const auto& a = this->operator[](name);
+        return std::any_cast<const std::remove_reference_t<T>&>(a);
+    }
 
-	value_type& getOrAdd(const std::string& name) {
-		return map_[name];
-	}
+    value_type& getOrAdd(const std::string& name) { return map_[name]; }
 
-	void erase(std::string_view name) {
-		if (auto it = map_.find(name); it != map_.end())
-			map_.erase(it);
-	}
+    void erase(std::string_view name) {
+        if (auto it = map_.find(name); it != map_.end())
+            map_.erase(it);
+    }
 
-	void clear() { map_.clear(); }
+    void clear() { map_.clear(); }
 
 private:
-	using MapType = std::map<std::string, std::any, std::less<>>;
-	MapType map_;
+    using MapType = std::map<std::string, std::any, std::less<>>;
+    MapType map_;
 };
 
 /*!
@@ -94,23 +93,21 @@ private:
  */
 template <class T>
 inline Value* store(ValueMap& map, typename detail::Parser<T>::type p = &string_cast<T>) {
-	return new TypedValue{[map = &map, parser = p](const std::string& n, const std::string& value){
-		auto& x       = map->getOrAdd(n);
-		bool wasEmpty = !x.has_value();
-		if (wasEmpty)
-			x.emplace<T>();
-		T& val = std::any_cast<T&>(x);
-		auto ok = parser(value, val);
-		if (!ok && wasEmpty) {
-			map->erase(n);
-		}
-		return ok;
-	}};
+    return new TypedValue{[map = &map, parser = p](const std::string& n, const std::string& value) {
+        auto& x        = map->getOrAdd(n);
+        bool  wasEmpty = !x.has_value();
+        if (wasEmpty)
+            x.emplace<T>();
+        T&   val = std::any_cast<T&>(x);
+        auto ok  = parser(value, val);
+        if (!ok && wasEmpty) {
+            map->erase(n);
+        }
+        return ok;
+    }};
 }
 
-inline auto flag(ValueMap& map, detail::Parser<bool>::type x = store_true) {
-	return store<bool>(map, x)->flag();
-}
+inline auto flag(ValueMap& map, detail::Parser<bool>::type x = store_true) { return store<bool>(map, x)->flag(); }
 
-}
+} // namespace Potassco::ProgramOptions
 #endif

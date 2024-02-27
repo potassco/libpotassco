@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2015-2017 Benjamin Kaufmann
+// Copyright (c) 2015 - present, Benjamin Kaufmann
 //
 // This file is part of Potassco.
 //
@@ -21,19 +21,20 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 #include <potassco/clingo.h>
+
 namespace Potassco {
 AbstractAssignment::~AbstractAssignment() = default;
-bool AbstractAssignment::isTotal()          const { return unassigned() == 0u; }
-bool AbstractAssignment::isFixed(Lit_t lit) const { return value(lit) != Value_t::Free && level(lit) == 0; }
-bool AbstractAssignment::isTrue(Lit_t lit)  const { return value(lit) == Value_t::True; }
-bool AbstractAssignment::isFalse(Lit_t lit) const { return value(lit) == Value_t::False; }
+bool     AbstractAssignment::isTotal() const { return unassigned() == 0u; }
+bool     AbstractAssignment::isFixed(Lit_t lit) const { return value(lit) != Value_t::Free && level(lit) == 0; }
+bool     AbstractAssignment::isTrue(Lit_t lit) const { return value(lit) == Value_t::True; }
+bool     AbstractAssignment::isFalse(Lit_t lit) const { return value(lit) == Value_t::False; }
 uint32_t AbstractAssignment::trailEnd(uint32_t level) const {
-	return level < this->level() ? this->trailBegin(level + 1) : this->trailSize();
+    return level < this->level() ? this->trailBegin(level + 1) : this->trailSize();
 }
 
-AbstractSolver::~AbstractSolver() = default;
+AbstractSolver::~AbstractSolver()         = default;
 AbstractPropagator::~AbstractPropagator() = default;
-AbstractHeuristic::~AbstractHeuristic() = default;
+AbstractHeuristic::~AbstractHeuristic()   = default;
 AbstractStatistics::~AbstractStatistics() = default;
 
 } // namespace Potassco
