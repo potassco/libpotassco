@@ -19,7 +19,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 #include <potassco/program_opts/errors.h>
-#include <potassco/program_opts/mapped_value.h>
 #include <potassco/program_opts/program_options.h>
 #include <potassco/program_opts/typed_value.h>
 
@@ -197,17 +196,17 @@ TEST_CASE("Test parsed options", "[options]") {
     SECTION("assign options from multiple sources") {
         Po::OptionGroup g2;
         bool            b1;
-        Po::ValueMap    vm;
-        g2.addOptions()("flag!", Po::flag(b1), "A switch")("int3", Po::store<int>(vm), "Yet another int");
+        int             int3;
+        g2.addOptions()("flag!", Po::flag(b1), "A switch")("int3", Po::storeTo(int3), "Yet another int");
         ctx.add(g2);
         Po::ParsedOptions po;
         po.assign(Po::parseCommandString("--int1=2 --flag --int3=3", ctx));
-        REQUIRE((i1 == 2 && b1 == true && std::any_cast<int>(vm["int3"]) == 3));
+        REQUIRE((i1 == 2 && b1 == true && int3 == 3));
         Po::ParsedOptions p1(po), p2;
         p1.assign(Po::parseCommandString("--int1=3 --no-flag --int2=4 --int3=5", ctx));
-        REQUIRE((i1 == 2 && b1 == true && i2 == 4 && std::any_cast<int>(vm["int3"]) == 3));
+        REQUIRE((i1 == 2 && b1 == true && i2 == 4 && int3 == 3));
         p2.assign(Po::parseCommandString("--int1=3 --no-flag --int2=5 --int3=5", ctx));
-        REQUIRE((i1 == 3 && b1 == false && i2 == 5 && std::any_cast<int>(vm["int3"]) == 5));
+        REQUIRE((i1 == 3 && b1 == false && i2 == 5 && int3 == 5));
     }
 }
 
@@ -258,19 +257,6 @@ TEST_CASE("Test context", "[options]") {
         Po::OptionPrinter out(ex);
         g.format(out, 20);
         REQUIRE(ex.find("Some int (Default: 99)") != std::string::npos);
-    }
-
-    SECTION("option parsing supports mapped values") {
-        Po::ValueMap vm;
-        g.addOptions()("foo", Po::store<std::vector<int>>(vm)->composing(), "");
-        ctx.add(g);
-        Po::ParsedValues pv(ctx);
-        pv.add("foo", "1");
-        pv.add("foo", "2");
-        Po::ParsedOptions po;
-        po.assign(pv);
-        const auto& x = std::any_cast<const std::vector<int>&>(vm["foo"]);
-        REQUIRE((x.size() == 2 && x[0] == 1 && x[1] == 2));
     }
 }
 

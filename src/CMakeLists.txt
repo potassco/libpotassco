@@ -5,7 +5,6 @@ set(detail_header
 	${opts_header_path}/detail/refcountable.h)
 set(opts_header
 	${opts_header_path}/errors.h
-	${opts_header_path}/mapped_value.h
 	${opts_header_path}/program_options.h
 	${opts_header_path}/typed_value.h
 	${opts_header_path}/value.h)

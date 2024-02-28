@@ -18,14 +18,13 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
-#include <potassco/program_opts/mapped_value.h>
 #include <potassco/program_opts/typed_value.h>
 
 #include "catch.hpp"
 
+#include <cstring>
 #include <map>
 #include <memory>
-#include <string.h>
 
 namespace Potassco::ProgramOptions::Test {
 namespace Po   = ProgramOptions;
@@ -137,45 +136,27 @@ TEST_CASE("Test custom value", "[value]") {
     REQUIRE(m["v2"] == 342);
 }
 
-TEST_CASE("Test mapped value", "[value]") {
-    Po::ValueMap vm;
-    ValuePtr     v1(Po::store<int>(vm));
-    ValuePtr     v2(Po::store<double>(vm));
-    ValuePtr     v3(Po::flag(vm));
-    v1->parse("foo", "22");
-    v2->parse("bar", "99.2");
-    v3->parse("help", "false");
-    REQUIRE(vm.get<int>("foo") == 22);
-    REQUIRE(vm.get<double>("bar") == 99.2);
-    REQUIRE(vm.get<bool>("help") == false);
+enum class Color { RED = 2, GREEN = 10, BLUE = 20 };
+enum class Mode { DEF, IMP, EXP };
 
-    v1->parse("foo", "27");
-    REQUIRE(vm.get<int>("foo") == 27);
-}
-struct Color {
-    enum Value { RED = 2, GREEN = 10, BLUE = 20 };
-};
-struct Mode {
-    enum Value { DEF, IMP, EXP };
-};
 TEST_CASE("Test enum value", "[value]") {
-    int         x;
-    Mode::Value y;
+    int  x;
+    Mode y;
 
-    ValuePtr v1(Po::storeTo(x, Po::values<Color::Value>({
+    ValuePtr v1(Po::storeTo(x, Po::values<Color>({
                                    {"Red", Color::RED},
                                    {"Green", Color::GREEN},
                                    {"Blue", Color::BLUE},
                                })));
 
-    ValuePtr v2(Po::storeTo(y, Po::values<Mode::Value>({
+    ValuePtr v2(Po::storeTo(y, Po::values<Mode>({
                                    {"Default", Mode::DEF},
                                    {"Implicit", Mode::IMP},
                                    {"Explicit", Mode::EXP},
                                })));
 
     REQUIRE((v1->parse("", "Red") && x == 2));
-    REQUIRE((v1->parse("", "GREEN") && x == Color::GREEN));
+    REQUIRE((v1->parse("", "GREEN") && x == (int) Color::GREEN));
     REQUIRE(!v1->parse("", "Blu"));
 
     REQUIRE((v2->parse("", "Implicit") && y == Mode::IMP));

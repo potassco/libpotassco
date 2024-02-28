@@ -116,12 +116,12 @@ public:
      * \par usage \n
      * \code
      * OptionGroup g("Some Options");
-     * ValueMap m;
+     * int i; double d; char c;
      * g.addOptions()
-     *   ("opt1", store<int>(m), "some int value")   // <- no semicolon
-     *   ("opt2", store<double>(m))                  // <- no semicolon
-     *   ("opt3", store<char>(m))                    // <- no semicolon
-     * ;                                            // <- note the semicolon!
+     *   ("opt1", storeTo(i), "some int value") // <- no semicolon
+     *   ("opt2", storeTo(d))                   // <- no semicolon
+     *   ("opt3", storeTo(c))                   // <- no semicolon
+     * ;                                        // <- note the semicolon!
      * \endcode
      */
     OptionInitHelper addOptions();
