@@ -24,7 +24,7 @@
 
 #include <potassco/program_opts/program_options.h>
 
-#include <stdio.h>
+#include <cstdio>
 #include <string>
 #include <utility>
 namespace Potassco {
@@ -35,24 +35,24 @@ namespace Potassco {
 class Application {
 public:
     //! Description of and max value for help option.
-    typedef std::pair<const char*, unsigned> HelpOpt;
-    typedef ProgramOptions::PosOption        PosOption;
+    using HelpOpt   = std::pair<const char*, unsigned>;
+    using PosOption = ProgramOptions::PosOption;
     /*!
      * \name Basic functions.
      */
     //@{
     //! Returns the name of this application.
-    virtual const char* getName() const = 0;
+    [[nodiscard]] virtual const char* getName() const = 0;
     //! Returns the version number of this application.
-    virtual const char* getVersion() const = 0;
+    [[nodiscard]] virtual const char* getVersion() const = 0;
     //! Returns a null-terminated array of signals that this application handles.
-    virtual const int* getSignals() const { return nullptr; }
+    [[nodiscard]] virtual const int* getSignals() const { return nullptr; }
     //! Returns the usage information of this application.
-    virtual const char* getUsage() const { return "[options]"; }
+    [[nodiscard]] virtual const char* getUsage() const { return "[options]"; }
     //! Returns the application's help option and its description.
-    virtual HelpOpt getHelpOption() const { return HelpOpt("Print help information and exit", 1); }
+    [[nodiscard]] virtual HelpOpt getHelpOption() const { return {"Print help information and exit", 1}; }
     //! Returns the parser function for handling positional options.
-    virtual PosOption getPositional() const { return nullptr; }
+    [[nodiscard]] virtual PosOption getPositional() const { return nullptr; }
     //! Prints the given error message to stderr.
     virtual void error(const char* msg) const { WRITE_STDERR("ERROR", getName(), msg); }
     //! Prints the given info message to stderr.
@@ -70,7 +70,7 @@ public:
     //! Sets the value that should be returned as the application's exit code.
     void setExitCode(int n);
     //! Returns the application's exit code.
-    int getExitCode() const;
+    [[nodiscard]] int getExitCode() const;
     //! Returns the application object that is running.
     static Application* getInstance();
     //! Prints the application's help information (called if options contain '--help').
@@ -104,20 +104,22 @@ protected:
 protected:
     Application();
     virtual ~Application();
-    void     shutdown(bool hasError);
-    void     exit(int exitCode) const;
-    unsigned verbose() const;
-    void     setVerbose(unsigned v);
-    int      setAlarm(unsigned sec);
-    void     killAlarm();
-    int      blockSignals();
-    void     unblockSignals(bool deliverPending);
-    void     processSignal(int sigNum);
+    [[nodiscard]] unsigned verbose() const;
+
+    void shutdown(bool hasError);
+    void exit(int exitCode) const;
+    void setVerbose(unsigned v);
+    int  setAlarm(unsigned sec);
+    void killAlarm();
+    int  blockSignals();
+    void unblockSignals(bool deliverPending);
+    void processSignal(int sigNum);
 
 private:
-    bool                getOptions(int argc, char** argv);
-    void                initInstance(Application& app);
-    void                resetInstance(Application& app);
+    bool                applyOptions(int argc, char** argv);
+    static void         initInstance(Application& app);
+    static void         resetInstance(Application& app);
+    static void         sigHandler(int sig); // signal handler
     int                 exitCode_;           // application's exit code
     unsigned            timeout_;            // active time limit or 0 for no limit
     unsigned            verbose_;            // active verbosity level
@@ -125,7 +127,6 @@ private:
     volatile long       blocked_;            // temporarily block signals?
     volatile long       pending_;            // pending signal or 0 if no pending signal
     static Application* instance_s;          // running instance (only valid during run()).
-    static void         sigHandler(int sig); // signal handler
 };
 
 } // namespace Potassco

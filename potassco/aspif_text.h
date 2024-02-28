@@ -83,12 +83,15 @@ class AspifTextOutput : public Potassco::AbstractProgram {
 public:
     AspifTextOutput(std::ostream& os);
     ~AspifTextOutput() override;
+    AspifTextOutput(const AspifTextOutput&)            = delete;
+    AspifTextOutput& operator=(const AspifTextOutput&) = delete;
+
     void initProgram(bool incremental) override;
     void beginStep() override;
     void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override;
     void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) override;
     void minimize(Weight_t prio, const WeightLitSpan& lits) override;
-    void output(const StringSpan& str, const LitSpan& cond) override;
+    void output(const std::string_view& str, const LitSpan& cond) override;
     void external(Atom_t a, Value_t v) override;
     void assume(const LitSpan& lits) override;
     void project(const AtomSpan& atoms) override;
@@ -96,14 +99,14 @@ public:
     void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;
 
     void theoryTerm(Id_t termId, int number) override;
-    void theoryTerm(Id_t termId, const StringSpan& name) override;
+    void theoryTerm(Id_t termId, const std::string_view& name) override;
     void theoryTerm(Id_t termId, int compound, const IdSpan& args) override;
     void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond) override;
     void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) override;
     void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) override;
     void endStep() override;
 
-    void addAtom(Atom_t id, const StringSpan& str);
+    void addAtom(Atom_t id, const std::string_view& str);
 
 private:
     std::ostream&    printName(std::ostream& os, Lit_t lit) const;
@@ -115,9 +118,8 @@ private:
     AspifTextOutput& push(const WeightLitSpan& wlits);
     template <class T>
     T get();
-    AspifTextOutput(const AspifTextOutput&);
-    AspifTextOutput& operator=(const AspifTextOutput&);
-    std::ostream&    os_;
+
+    std::ostream& os_;
     struct Data;
     TheoryData theory_;
     Data*      data_;
@@ -146,9 +148,10 @@ private:
     TheoryAtomStringBuilder& element(const TheoryData& td, const TheoryElement& a);
     bool                     function(const TheoryData& td, const TheoryTerm& f);
 
-    virtual LitSpan     getCondition(Id_t condId) const = 0;
-    virtual std::string getName(Atom_t atomId) const    = 0;
-    std::string         res_;
+    [[nodiscard]] virtual LitSpan     getCondition(Id_t condId) const = 0;
+    [[nodiscard]] virtual std::string getName(Atom_t atomId) const    = 0;
+
+    std::string res_;
 };
 
 } // namespace Potassco

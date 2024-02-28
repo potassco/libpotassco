@@ -36,14 +36,16 @@ namespace Potassco {
 
 //! A sum aggregate with a lower bound.
 struct Sum_t {
-    WeightLitSpan lits;  /**< Weight literals of the aggregate. */
-    Weight_t      bound; /**< Lower bound of the aggregate. */
+    WeightLitSpan lits;  //!< Weight literals of the aggregate.
+    Weight_t      bound; //!< Lower bound of the aggregate.
 };
 //! A type that can represent an aspif rule.
 struct Rule_t {
-    Head_t   ht;   /**< Head type of the rule. */
-    AtomSpan head; /**< Head atoms of the rule. */
-    Body_t   bt;   /**< Type of rule body. */
+    Rule_t() : ht(Head_t::Disjunctive), bt(Body_t::Normal), cond() {}
+
+    Head_t   ht;   //!< Head type of the rule.
+    AtomSpan head; //!< Head atoms of the rule.
+    Body_t   bt;   //!< Type of rule body.
     union {
         LitSpan cond;
         Sum_t   agg;
@@ -55,9 +57,9 @@ struct Rule_t {
     //! Named constructor for creating a sum rule.
     static Rule_t sum(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits);
     //! Returns whether the rule has a normal body, i.e. whether the body is a conjunction of literals.
-    bool normal() const { return bt == Body_t::Normal; }
+    [[nodiscard]] bool normal() const { return bt == Body_t::Normal; }
     //! Returns whether the body of the rule is a sum aggregate.
-    bool sum() const { return bt != Body_t::Normal; }
+    [[nodiscard]] bool sum() const { return bt != Body_t::Normal; }
 };
 
 //! A builder class for creating a rule.
@@ -133,27 +135,29 @@ public:
      * an update function.
      */
     //@{
-    AtomSpan head() const;
-    Atom_t*  head_begin() const;
-    Atom_t*  head_end() const;
-    Body_t   bodyType() const;
-    LitSpan  body() const;
-    Sum_t    sum() const;
-    Rule_t   rule() const;
+    [[nodiscard]] AtomSpan head() const;
+    [[nodiscard]] Atom_t*  head_begin() const;
+    [[nodiscard]] Atom_t*  head_end() const;
+    [[nodiscard]] Body_t   bodyType() const;
+    [[nodiscard]] LitSpan  body() const;
+    [[nodiscard]] Sum_t    sum() const;
+    [[nodiscard]] Rule_t   rule() const;
     // low-level access:
-    Lit_t*       lits_begin() const;
-    Lit_t*       lits_end() const;
-    WeightLit_t* wlits_begin() const;
-    WeightLit_t* wlits_end() const;
-    Weight_t     bound() const;
+    [[nodiscard]] Lit_t*       lits_begin() const;
+    [[nodiscard]] Lit_t*       lits_end() const;
+    [[nodiscard]] WeightLit_t* wlits_begin() const;
+    [[nodiscard]] WeightLit_t* wlits_end() const;
+    [[nodiscard]] Weight_t     bound() const;
     //@}
     struct Rule;
 
 private:
-    void         startBody(Body_t bt, Weight_t bnd);
-    Weight_t*    bound_() const;
-    Rule*        rule_() const;
-    Rule*        unfreeze(bool clear);
+    [[nodiscard]] Weight_t* bound_() const;
+    [[nodiscard]] Rule*     rule_() const;
+
+    void  startBody(Body_t bt, Weight_t bnd);
+    Rule* unfreeze(bool clear);
+
     MemoryRegion mem_;
 };
 ///@}

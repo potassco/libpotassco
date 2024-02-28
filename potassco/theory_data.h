@@ -62,7 +62,7 @@ inline const char* toString(Tuple_t t) {
 class TheoryTerm {
 public:
     //! Iterator type for iterating over arguments of a compound term.
-    typedef const Id_t* iterator;
+    using iterator = const Id_t*;
     //! Creates an invalid term.
     TheoryTerm();
     //! Creates a number term.
@@ -72,69 +72,71 @@ public:
     //! Creates a compound term.
     explicit TheoryTerm(const FuncData* c);
     //! Returns whether this object holds a valid number, symbol or compound.
-    bool valid() const;
+    [[nodiscard]] bool valid() const;
     //! Returns the type of this term.
-    Theory_t type() const;
+    [[nodiscard]] Theory_t type() const;
     //! Returns the number stored in this or throws if type() != Number.
-    int number() const;
+    [[nodiscard]] int number() const;
     //! Returns the symbol stored in this or throws if type() != Symbol.
-    const char* symbol() const;
+    [[nodiscard]] const char* symbol() const;
     //! Returns the compound id (either term id or tuple type) stored in this or throws if type() != Compound.
-    int compound() const;
+    [[nodiscard]] int compound() const;
     //! Returns whether this is a function.
-    bool isFunction() const;
+    [[nodiscard]] bool isFunction() const;
     //! Returns the function id stored in this or throws if !isFunction().
-    Id_t function() const;
+    [[nodiscard]] Id_t function() const;
     //! Returns whether this is a tuple.
-    bool isTuple() const;
+    [[nodiscard]] bool isTuple() const;
     //! Returns the tuple id stored in this or throws if !isTuple().
-    Tuple_t tuple() const;
+    [[nodiscard]] Tuple_t tuple() const;
     //! Returns the number of arguments in this term.
-    uint32_t size() const;
+    [[nodiscard]] uint32_t size() const;
     //! Returns an iterator pointing to the first argument of this term.
-    iterator begin() const;
+    [[nodiscard]] iterator begin() const;
     //! Returns an iterator marking the end of the arguments of this term.
-    iterator end() const;
+    [[nodiscard]] iterator end() const;
     //! Returns the range [begin(), end()).
-    IdSpan terms() const { return toSpan(begin(), size()); }
+    [[nodiscard]] IdSpan terms() const { return {begin(), size()}; }
 
 private:
     friend class TheoryData;
-    uint64_t  assertPtr(const void*) const;
-    void      assertType(Theory_t) const;
-    uintptr_t getPtr() const;
-    FuncData* func() const;
-    uint64_t  data_;
+    [[nodiscard]] uintptr_t getPtr() const;
+    [[nodiscard]] FuncData* func() const;
+
+    void assertType(Theory_t) const;
+
+    uint64_t data_;
 };
 
 //! A basic building block for a theory atom.
 class TheoryElement {
 public:
+    TheoryElement(const TheoryElement&)            = delete;
+    TheoryElement& operator=(const TheoryElement&) = delete;
+
     //! Iterator type for iterating over the terms of an element.
-    typedef const Id_t* iterator;
+    using iterator = const Id_t*;
     //! Creates a new TheoryElement over the given terms.
     static TheoryElement* newElement(const IdSpan& terms, Id_t condition);
     //! Destroys the given TheoryElement.
     static void destroy(TheoryElement* a);
     //! Returns the number of terms belonging to this element.
-    uint32_t size() const { return nTerms_; }
+    [[nodiscard]] uint32_t size() const { return nTerms_; }
     //! Returns an iterator pointing to the first term of this element.
-    iterator begin() const { return term_; }
+    [[nodiscard]] iterator begin() const { return term_; }
     //! Returns an iterator one past the last term of this element.
-    iterator end() const { return begin() + size(); }
+    [[nodiscard]] iterator end() const { return begin() + size(); }
     //! Returns the terms of this element.
-    IdSpan terms() const { return toSpan(begin(), size()); }
+    [[nodiscard]] IdSpan terms() const { return {begin(), size()}; }
     //! Returns the condition associated with this element.
-    Id_t condition() const;
+    [[nodiscard]] Id_t condition() const;
 
 private:
     friend class TheoryData;
     TheoryElement(const IdSpan& terms, Id_t c);
-    TheoryElement(const TheoryElement&);
-    TheoryElement& operator=(const TheoryElement&);
-    void           setCondition(Id_t c);
-    uint32_t       nTerms_ : 31;
-    uint32_t       nCond_  : 1;
+    void     setCondition(Id_t c);
+    uint32_t nTerms_ : 31;
+    uint32_t nCond_  : 1;
     POTASSCO_WARNING_BEGIN_RELAXED
     Id_t term_[0];
     POTASSCO_WARNING_END_RELAXED
@@ -143,8 +145,11 @@ private:
 //! A theory atom.
 class TheoryAtom {
 public:
+    TheoryAtom(const TheoryAtom&)            = delete;
+    TheoryAtom& operator=(const TheoryAtom&) = delete;
+
     //! Iterator type for iterating over the elements of a theory atom.
-    typedef const Id_t* iterator;
+    using iterator = const Id_t*;
     //! Creates a new theory atom.
     static TheoryAtom* newAtom(Id_t atom, Id_t term, const IdSpan& elements);
     //! Creates a new theory atom with guard.
@@ -153,30 +158,28 @@ public:
     static void destroy(TheoryAtom* a);
 
     //! Returns the associated program atom or 0 if this originated from a directive.
-    Id_t atom() const { return static_cast<Id_t>(atom_); }
+    [[nodiscard]] Id_t atom() const { return static_cast<Id_t>(atom_); }
     //! Returns the term that is associated with this atom.
-    Id_t term() const { return termId_; }
+    [[nodiscard]] Id_t term() const { return termId_; }
     //! Returns the number of elements in this atom.
-    uint32_t size() const { return nTerms_; }
+    [[nodiscard]] uint32_t size() const { return nTerms_; }
     //! Returns an iterator pointing to the first element of this atom.
-    iterator begin() const { return term_; }
+    [[nodiscard]] iterator begin() const { return term_; }
     //! Returns an iterator marking the end of elements of this atoms.
-    iterator end() const { return begin() + size(); }
+    [[nodiscard]] iterator end() const { return begin() + size(); }
     //! Returns the range [begin(), end()).
-    IdSpan elements() const { return toSpan(begin(), size()); }
+    [[nodiscard]] IdSpan elements() const { return {begin(), size()}; }
     //! Returns a pointer to the id of the theory operator associated with this atom or 0 if atom has no guard.
-    const Id_t* guard() const;
+    [[nodiscard]] const Id_t* guard() const;
     //! Returns a pointer to the term id of the right hand side of the theory operator or 0 if atom has no guard.
-    const Id_t* rhs() const;
+    [[nodiscard]] const Id_t* rhs() const;
 
 private:
-    TheoryAtom(Id_t atom, Id_t term, const IdSpan& elements, Id_t* op, Id_t* rhs);
-    TheoryAtom(const TheoryAtom&);
-    TheoryAtom& operator=(const TheoryAtom&);
-    uint32_t    atom_  : 31;
-    uint32_t    guard_ : 1;
-    Id_t        termId_;
-    uint32_t    nTerms_;
+    TheoryAtom(Id_t atom, Id_t term, const IdSpan& elements, const Id_t* op, const Id_t* rhs);
+    uint32_t atom_  : 31;
+    uint32_t guard_ : 1;
+    Id_t     termId_;
+    uint32_t nTerms_;
     POTASSCO_WARNING_BEGIN_RELAXED
     Id_t term_[0];
     POTASSCO_WARNING_END_RELAXED
@@ -186,13 +189,16 @@ private:
 class TheoryData {
 public:
     //! Iterator type for iterating over the theory atoms of a TheoryData object.
-    typedef const TheoryAtom* const* atom_iterator;
-    typedef TheoryTerm               Term;
-    typedef TheoryElement            Element;
+    using atom_iterator = const TheoryAtom* const*;
+    using Term          = TheoryTerm;
+    using Element       = TheoryElement;
     TheoryData();
     ~TheoryData();
+    TheoryData(const TheoryData&)            = delete;
+    TheoryData& operator=(const TheoryData&) = delete;
+
     //! Sentinel for marking a condition to be set later.
-    static const Id_t COND_DEFERRED = static_cast<Id_t>(-1);
+    static constexpr auto COND_DEFERRED = static_cast<Id_t>(-1);
 
     //! Resets this object to the state after default construction.
     void reset();
@@ -224,7 +230,7 @@ public:
     //! Adds a new number term with the given id.
     const TheoryTerm& addTerm(Id_t termId, int number);
     //! Adds a new symbolic term with the given name and id.
-    const TheoryTerm& addTerm(Id_t termId, const StringSpan& name);
+    const TheoryTerm& addTerm(Id_t termId, const std::string_view& name);
     //! Adds a new symbolic term with the given name and id.
     const TheoryTerm& addTerm(Id_t termId, const char* name);
     //! Adds a new function term with the given id.
@@ -245,31 +251,31 @@ public:
     void removeTerm(Id_t termId);
 
     //! Returns the number of stored theory atoms.
-    uint32_t numAtoms() const;
+    [[nodiscard]] uint32_t numAtoms() const;
     //! Returns an iterator pointing to the first theory atom.
-    atom_iterator begin() const;
+    [[nodiscard]] atom_iterator begin() const;
     //! Returns an iterator pointing to the first theory atom added after last call to update.
-    atom_iterator currBegin() const;
+    [[nodiscard]] atom_iterator currBegin() const;
     //! Returns an iterator marking the end of the range of theory atoms.
-    atom_iterator end() const;
+    [[nodiscard]] atom_iterator end() const;
     //! Returns whether this object stores a term with the given id.
-    bool hasTerm(Id_t t) const;
+    [[nodiscard]] bool hasTerm(Id_t t) const;
     //! Returns whether the given term was added after last call to update.
-    bool isNewTerm(Id_t t) const;
+    [[nodiscard]] bool isNewTerm(Id_t t) const;
     //! Returns whether this object stores an atom element with the given id.
-    bool hasElement(Id_t e) const;
+    [[nodiscard]] bool hasElement(Id_t e) const;
     //! Returns whether the given element was added after last call to update.
-    bool isNewElement(Id_t e) const;
+    [[nodiscard]] bool isNewElement(Id_t e) const;
     //! Returns the term with the given id or throws if no such term exists.
-    const Term& getTerm(Id_t t) const;
+    [[nodiscard]] const Term& getTerm(Id_t t) const;
     //! Returns the element with the given id or throws if no such element exists.
-    const Element& getElement(Id_t e) const;
+    [[nodiscard]] const Element& getElement(Id_t e) const;
 
     //! Removes all theory atoms a for which f(a) returns true.
     template <class F>
     void filter(const F& f) {
-        TheoryAtom** j   = const_cast<TheoryAtom**>(currBegin());
-        uint32_t     pop = 0;
+        auto**   j   = const_cast<TheoryAtom**>(currBegin());
+        uint32_t pop = 0;
         for (atom_iterator it = j, end = this->end(); it != end; ++it) {
             Id_t atom = (*it)->atom();
             if (!atom || !f(**it)) {
@@ -285,7 +291,7 @@ public:
     //! Interface for visiting a theory.
     class Visitor {
     public:
-        virtual ~Visitor();
+        virtual ~Visitor() = default;
         //! Visit a theory term. Should call data.accept(t, *this) to visit any arguments of the term.
         virtual void visit(const TheoryData& data, Id_t termId, const TheoryTerm& t) = 0;
         //! Visit a theory element. Should call data.accept(e, *this) to visit the terms of the element.
@@ -309,18 +315,17 @@ public:
     void accept(const TheoryTerm& t, Visitor& out, VisitMode m = visit_all) const;
 
 private:
-    TheoryData(const TheoryData&);
-    TheoryData& operator=(const TheoryData&);
     struct DestroyT;
-    TheoryTerm&     setTerm(Id_t);
-    TheoryTerm*     terms() const;
-    TheoryElement** elems() const;
-    TheoryAtom**    atoms() const;
-    uint32_t        numTerms() const;
-    uint32_t        numElems() const;
-    void            resizeAtoms(uint32_t n);
-    bool            doVisitTerm(VisitMode m, Id_t id) const { return m == visit_all || isNewTerm(id); }
-    bool            doVisitElem(VisitMode m, Id_t id) const { return m == visit_all || isNewElement(id); }
+    [[nodiscard]] TheoryTerm*     terms() const;
+    [[nodiscard]] TheoryElement** elems() const;
+    [[nodiscard]] TheoryAtom**    atoms() const;
+    [[nodiscard]] uint32_t        numTerms() const;
+    [[nodiscard]] uint32_t        numElems() const;
+
+    TheoryTerm& setTerm(Id_t);
+    void        resizeAtoms(uint32_t n);
+    bool        doVisitTerm(VisitMode m, Id_t id) const { return m == visit_all || isNewTerm(id); }    // NOLINT
+    bool        doVisitElem(VisitMode m, Id_t id) const { return m == visit_all || isNewElement(id); } // NOLINT
     struct Data;
     Data* data_;
 };
@@ -332,19 +337,19 @@ private:
 template <class T, const T& (TheoryData::*get)(Id_t) const>
 class IteratorAdaptor {
 public:
-    typedef IteratorAdaptor                 this_type;
-    typedef std::bidirectional_iterator_tag iterator_category;
-    typedef const T                         value_type;
-    typedef const T&                        reference;
-    typedef const T*                        pointer;
-    typedef std::ptrdiff_t                  difference_type;
+    using this_type         = IteratorAdaptor;
+    using iterator_category = std::bidirectional_iterator_tag;
+    using value_type        = const T;
+    using reference         = const T&;
+    using pointer           = const T*;
+    using difference_type   = std::ptrdiff_t;
     IteratorAdaptor(const TheoryData& t, const Id_t* e) : data_(&t), elem_(e) {}
     IteratorAdaptor() : data_(nullptr), elem_(nullptr) {}
     this_type& operator++() {
         ++elem_;
         return *this;
     }
-    this_type operator++(int) {
+    this_type operator++(int) { // NOLINT: cert-dcl21-cpp
         this_type t(*this);
         ++*this;
         return t;
@@ -353,7 +358,7 @@ public:
         --elem_;
         return *this;
     }
-    this_type operator--(int) {
+    this_type operator--(int) { // NOLINT: cert-dcl21-cpp
         this_type t(*this);
         --*this;
         return t;
@@ -368,33 +373,28 @@ public:
     friend bool operator==(const this_type& lhs, const this_type& rhs) {
         return lhs.data_ == rhs.data_ && lhs.elem_ == rhs.elem_;
     }
-    friend bool       operator!=(const this_type& lhs, const this_type& rhs) { return !(lhs == rhs); }
-    const Id_t*       raw() const { return elem_; }
-    const TheoryData& theory() const { return *data_; }
+    friend bool operator!=(const this_type& lhs, const this_type& rhs) { return !(lhs == rhs); }
+
+    [[nodiscard]] const Id_t*       raw() const { return elem_; }
+    [[nodiscard]] const TheoryData& theory() const { return *data_; }
 
 private:
     const TheoryData* data_;
     const Id_t*       elem_;
 };
 
-typedef IteratorAdaptor<TheoryElement, &TheoryData::getElement> TheoryElementIterator;
-typedef IteratorAdaptor<TheoryTerm, &TheoryData::getTerm>       TheoryTermIterator;
+using TheoryElementIterator = IteratorAdaptor<TheoryElement, &TheoryData::getElement>;
+using TheoryTermIterator    = IteratorAdaptor<TheoryTerm, &TheoryData::getTerm>;
 
-inline TheoryElementIterator begin(const TheoryData& t, const TheoryAtom& a) {
-    return TheoryElementIterator(t, a.begin());
-}
-inline TheoryElementIterator end(const TheoryData& t, const TheoryAtom& a) { return TheoryElementIterator(t, a.end()); }
-inline TheoryTermIterator    begin(const TheoryData& t, const TheoryElement& e) {
-    return TheoryTermIterator(t, e.begin());
-}
-inline TheoryTermIterator end(const TheoryData& t, const TheoryElement& e) { return TheoryTermIterator(t, e.end()); }
-
-StringSpan toSpan(const char* x);
+inline TheoryElementIterator begin(const TheoryData& t, const TheoryAtom& a) { return {t, a.begin()}; }
+inline TheoryElementIterator end(const TheoryData& t, const TheoryAtom& a) { return {t, a.end()}; }
+inline TheoryTermIterator    begin(const TheoryData& t, const TheoryElement& e) { return {t, e.begin()}; }
+inline TheoryTermIterator    end(const TheoryData& t, const TheoryElement& e) { return {t, e.end()}; }
 
 inline void print(AbstractProgram& out, Id_t termId, const TheoryTerm& term) {
     switch (term.type()) {
         case Potassco::Theory_t::Number  : out.theoryTerm(termId, term.number()); break;
-        case Potassco::Theory_t::Symbol  : out.theoryTerm(termId, Potassco::toSpan(term.symbol())); break;
+        case Potassco::Theory_t::Symbol  : out.theoryTerm(termId, term.symbol()); break;
         case Potassco::Theory_t::Compound: out.theoryTerm(termId, term.compound(), term.terms()); break;
     }
 }

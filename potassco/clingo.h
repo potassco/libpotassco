@@ -37,10 +37,10 @@ namespace Potassco {
 //! Supported clause types in theory propagation.
 struct Clause_t {
     //! Named constants.
-    POTASSCO_ENUM_CONSTANTS(Clause_t, Learnt = 0, /**< Cumulative removable (i.e. subject to nogood deletion) clause. */
-                            Static         = 1,   /**< Cumulative unremovable clause. */
-                            Volatile       = 2,   /**< Removable clause associated with current solving step.   */
-                            VolatileStatic = 3    /**< Unremovable clause associated with current solving step. */
+    POTASSCO_ENUM_CONSTANTS(Clause_t, Learnt = 0, //!< Cumulative removable (i.e. subject to nogood deletion) clause.
+                            Static         = 1,   //!< Cumulative unremovable clause.
+                            Volatile       = 2,   //!< Removable clause associated with current solving step.
+                            VolatileStatic = 3    //!< Unremovable clause associated with current solving step.
     );
     //! Returns whether p is either Volatile or VolatileStatic.
     static bool isVolatile(Clause_t p) { return (static_cast<unsigned>(p) & static_cast<unsigned>(Volatile)) != 0; }
@@ -50,78 +50,78 @@ struct Clause_t {
 //! Supported statistics types.
 struct Statistics_t {
     //! Named constants.
-    POTASSCO_ENUM_CONSTANTS(Statistics_t, Empty = 0, /**< Empty (invalid) object. */
-                            Value = 1,               /**< Single statistic value that is convertible to a double.    */
-                            Array = 2,               /**< Composite object mapping int keys to statistics types.   */
-                            Map   = 3                /**< Composite object mapping string keys to statistics types.*/
+    POTASSCO_ENUM_CONSTANTS(Statistics_t, Empty = 0, //!< Empty (invalid) object.
+                            Value = 1,               //!< Single statistic value that is convertible to a double.
+                            Array = 2,               //!< Composite object mapping int keys to statistics types.
+                            Map   = 3                //!< Composite object mapping string keys to statistics types.
     );
 };
 
 //! Represents an assignment of a particular solver.
 class AbstractAssignment {
 public:
-    typedef Potassco::Value_t Value_t;
-    typedef Potassco::Lit_t   Lit_t;
+    using Value_t = Potassco::Value_t;
+    using Lit_t   = Potassco::Lit_t;
     virtual ~AbstractAssignment();
     //! Returns the number of variables in the assignment.
-    virtual uint32_t size() const = 0;
+    [[nodiscard]] virtual uint32_t size() const = 0;
     //! Returns the number of unassigned variables in the assignment.
-    virtual uint32_t unassigned() const = 0;
+    [[nodiscard]] virtual uint32_t unassigned() const = 0;
     //! Returns whether the current assignment is conflicting.
-    virtual bool hasConflict() const = 0;
+    [[nodiscard]] virtual bool hasConflict() const = 0;
     //! Returns the number of decision literals in the assignment.
-    virtual uint32_t level() const = 0;
+    [[nodiscard]] virtual uint32_t level() const = 0;
     //! Returns the the number of decision literals that will not be backtracked while solving.
-    virtual uint32_t rootLevel() const = 0;
+    [[nodiscard]] virtual uint32_t rootLevel() const = 0;
     //! Returns whether lit is a valid literal in this assignment.
-    virtual bool hasLit(Lit_t lit) const = 0;
+    [[nodiscard]] virtual bool hasLit(Lit_t lit) const = 0;
     //! Returns the truth value that is currently assigned to lit or Value_t::Free if lit is unassigned.
-    virtual Value_t value(Lit_t lit) const = 0;
+    [[nodiscard]] virtual Value_t value(Lit_t lit) const = 0;
     //! Returns the decision level on which lit was assigned or uint32_t(-1) if lit is unassigned.
-    virtual uint32_t level(Lit_t lit) const = 0;
+    [[nodiscard]] virtual uint32_t level(Lit_t lit) const = 0;
     //! Returns the decision literal of the given decision level.
-    virtual Lit_t decision(uint32_t) const = 0;
+    [[nodiscard]] virtual Lit_t decision(uint32_t) const = 0;
     //! Returns the number of literals in the assignment trail.
-    virtual uint32_t trailSize() const = 0;
+    [[nodiscard]] virtual uint32_t trailSize() const = 0;
     //! Returns the literal in the trail at the given position.
     /*!
      * \pre pos < trailSize()
      */
-    virtual Lit_t trailAt(uint32_t pos) const = 0;
+    [[nodiscard]] virtual Lit_t trailAt(uint32_t pos) const = 0;
     //! Returns the trail position of the first literal assigned at the given level.
     /*
      * \pre level <= level()
      */
-    virtual uint32_t trailBegin(uint32_t level) const = 0;
+    [[nodiscard]] virtual uint32_t trailBegin(uint32_t level) const = 0;
     //! Returns the one-past-the-end position of literals assigned at the given decision level.
     /*
      * \note Literals assigned at the given level are in the half-open range [trailBegin(), trailEnd()).
      * \pre level <= level()
      */
-    uint32_t trailEnd(uint32_t level) const;
+    [[nodiscard]] uint32_t trailEnd(uint32_t level) const;
 
     //! Returns whether the current assignment is total.
     /*!
      * The default implementation returns unassigned() == 0.
      */
-    virtual bool isTotal() const;
+    [[nodiscard]] virtual bool isTotal() const;
     //! Returns whether the given literal is irrevocably assigned on the top level.
-    bool isFixed(Lit_t lit) const;
+    [[nodiscard]] bool isFixed(Lit_t lit) const;
     //! Returns whether the given literal is true wrt the current assignment.
-    bool isTrue(Lit_t lit) const;
+    [[nodiscard]] bool isTrue(Lit_t lit) const;
     //! Returns whether the given literal is false wrt the current assignment.
-    bool isFalse(Lit_t lit) const;
+    [[nodiscard]] bool isFalse(Lit_t lit) const;
 };
 
 //! Represents one particular solver instance.
 class AbstractSolver {
 public:
-    typedef Potassco::Lit_t Lit;
+    using Lit = Potassco::Lit_t;
     virtual ~AbstractSolver();
     //! Returns the id of the solver that is associated with this object.
-    virtual Id_t id() const = 0;
+    [[nodiscard]] virtual Id_t id() const = 0;
     //! Returns the current assignment of the solver.
-    virtual const AbstractAssignment& assignment() const = 0;
+    [[nodiscard]] virtual const AbstractAssignment& assignment() const = 0;
 
     //! Adds the given clause to the solver if possible.
     /*!
@@ -136,7 +136,7 @@ public:
      * that was created with Solver::addVariable(), it is also considered volatile.
      *
      */
-    virtual bool addClause(const Potassco::LitSpan& clause, Clause_t prop = Clause_t::Learnt) = 0;
+    [[nodiscard]] virtual bool addClause(const Potassco::LitSpan& clause, Clause_t prop = Clause_t::Learnt) = 0;
 
     //! Adds a new volatile variable to this solver instance.
     /*!
@@ -145,7 +145,7 @@ public:
      *
      * \return The positive literal of the new variable.
      */
-    virtual Lit addVariable() = 0;
+    [[nodiscard]] virtual Lit addVariable() = 0;
     //! Propagates any newly implied literals.
     virtual bool propagate() = 0;
 
@@ -156,7 +156,7 @@ public:
      * @{ */
 
     //! Returns whether the active propagator watches lit in this solver instance.
-    virtual bool hasWatch(Lit lit) const = 0;
+    [[nodiscard]] virtual bool hasWatch(Lit lit) const = 0;
 
     //! Adds the active propagator to the list of propagators to be notified when the given literal is assigned in this
     //! solver instance.
@@ -176,7 +176,7 @@ public:
 class AbstractPropagator {
 public:
     //! Type for representing a set of literals that have recently changed.
-    typedef Potassco::LitSpan ChangeList;
+    using ChangeList = Potassco::LitSpan;
     virtual ~AbstractPropagator();
     //! Shall propagate the newly assigned literals given in changes.
     virtual void propagate(AbstractSolver& solver, const ChangeList& changes) = 0;
@@ -189,7 +189,7 @@ public:
 //! Base class for implementing heuristics.
 class AbstractHeuristic {
 public:
-    typedef Potassco::Lit_t Lit;
+    using Lit = Potassco::Lit_t;
     virtual ~AbstractHeuristic();
     //! Shall return the literal that the solver with the given id should decide on next.
     /*!
@@ -214,18 +214,18 @@ public:
 class AbstractStatistics {
 public:
     //! Opaque type for representing (sub) keys.
-    typedef uint64_t Key_t;
+    using Key_t = uint64_t;
 
     virtual ~AbstractStatistics();
 
     //! Returns the root key of this statistic object.
-    virtual Key_t root() const = 0;
+    [[nodiscard]] virtual Key_t root() const = 0;
     //! Returns the type of the object with the given key.
-    virtual Statistics_t type(Key_t key) const = 0;
+    [[nodiscard]] virtual Statistics_t type(Key_t key) const = 0;
     //! Returns the child count of the object with the given key or 0 if it is a value.
-    virtual size_t size(Key_t key) const = 0;
+    [[nodiscard]] virtual size_t size(Key_t key) const = 0;
     //! Returns whether or not the object with the given key can be updated.
-    virtual bool writable(Key_t key) const = 0;
+    [[nodiscard]] virtual bool writable(Key_t key) const = 0;
 
     /*!
      * \name Array
@@ -236,7 +236,7 @@ public:
     /*!
      * \pre index < size(key)
      */
-    virtual Key_t at(Key_t arr, size_t index) const = 0;
+    [[nodiscard]] virtual Key_t at(Key_t arr, size_t index) const = 0;
 
     //! Appends a statistic object to the end of the given array.
     /*!
@@ -260,10 +260,10 @@ public:
      * \note The order of elements in a map is unspecified and might change
      * after a solve operation.
      */
-    virtual const char* key(Key_t mapK, size_t i) const = 0;
+    [[nodiscard]] virtual const char* key(Key_t mapK, size_t i) const = 0;
 
     //! Returns the element stored in the map under the given name.
-    virtual Key_t get(Key_t mapK, const char* at) const = 0;
+    [[nodiscard]] virtual Key_t get(Key_t mapK, const char* at) const = 0;
 
     //! Searches the given map for an element.
     /*!
@@ -273,7 +273,7 @@ public:
      * \return Whether or not element was found.
      * \post !find(mapK, element, outKey) || !outKey || *outKey == get(mapK, element).
      */
-    virtual bool find(Key_t mapK, const char* element, Key_t* outKey) const = 0;
+    [[nodiscard]] virtual bool find(Key_t mapK, const char* element, Key_t* outKey) const = 0;
 
     //! Creates a statistic object under the given name in the given map.
     /*!
@@ -295,7 +295,7 @@ public:
      */
     //@{
     //! Returns the statistic value associated with the given key.
-    virtual double value(Key_t key) const = 0;
+    [[nodiscard]] virtual double value(Key_t key) const = 0;
 
     //! Sets value as value for the given statistic object.
     /*!

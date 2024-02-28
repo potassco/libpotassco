@@ -72,7 +72,7 @@ public:
         }
         else {
             Rule_t           rt = Rule_t::Basic;
-            std::vector<int> r(1, at(head, 0));
+            std::vector<int> r(1, head[0]);
             if (size(head) > 1 || ht == Head_t::Choice) {
                 r[0] = static_cast<int>(size(head));
                 r.insert(r.end(), begin(head), end(head));
@@ -86,7 +86,7 @@ public:
         int rt = isSmodelsRule(ht, head, bound, body);
         REQUIRE(rt != 0);
         REQUIRE(size(head) == 1);
-        std::vector<int> r(1, at(head, 0));
+        std::vector<int> r(1, head[0]);
         r.push_back(bound);
         for (auto&& x : body) {
             r.push_back(lit(x));
@@ -106,7 +106,7 @@ public:
         rules[Rule_t::Optimize].push_back(std::move(r));
     }
     void project(const AtomSpan&) override {}
-    void output(const StringSpan& str, const LitSpan& cond) override {
+    void output(const std::string_view& str, const LitSpan& cond) override {
         REQUIRE(size(cond) == 1);
         atoms[*begin(cond)].assign(begin(str), end(str));
     }
@@ -261,7 +261,7 @@ TEST_CASE("Write smodels", "[smodels]") {
     SECTION("body literals are correctly reordered") {
         Atom_t     a    = 1;
         Vec<Lit_t> body = {2, -3, -4, 5};
-        writer.rule(Head_t::Disjunctive, toSpan(&a, 1), toSpan(body));
+        writer.rule(Head_t::Disjunctive, {&a, 1}, body);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::Basic].size() == 1);
@@ -271,7 +271,7 @@ TEST_CASE("Write smodels", "[smodels]") {
     SECTION("body literals with weights are correctly reordered") {
         Atom_t           a    = 1;
         Vec<WeightLit_t> body = {{2, 2}, {-3, 1}, {-4, 3}, {5, 4}};
-        writer.rule(Head_t::Disjunctive, toSpan(&a, 1), 4, toSpan(body));
+        writer.rule(Head_t::Disjunctive, {&a, 1}, 4, body);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::Weight].size() == 1);
@@ -281,7 +281,7 @@ TEST_CASE("Write smodels", "[smodels]") {
     SECTION("weights are removed from count bodies") {
         Atom_t           a    = 1;
         Vec<WeightLit_t> body = {{2, 1}, {-3, 1}, {-4, 1}, {5, 1}};
-        writer.rule(Head_t::Disjunctive, toSpan(&a, 1), 3, toSpan(body));
+        writer.rule(Head_t::Disjunctive, {&a, 1}, 3, body);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::Cardinality].size() == 1);
@@ -290,8 +290,8 @@ TEST_CASE("Write smodels", "[smodels]") {
     }
     SECTION("all head atoms are written") {
         Vec<Atom_t> atoms = {1, 2, 3, 4};
-        writer.rule(Head_t::Disjunctive, toSpan(atoms), toSpan<Lit_t>());
-        writer.rule(Head_t::Choice, toSpan(atoms), toSpan<Lit_t>());
+        writer.rule(Head_t::Disjunctive, atoms, {});
+        writer.rule(Head_t::Choice, atoms, {});
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::Disjunctive].size() == 1);
@@ -302,7 +302,7 @@ TEST_CASE("Write smodels", "[smodels]") {
     }
     SECTION("minimize rules are written without priority") {
         Vec<WeightLit_t> body = {{2, 2}, {-3, 1}, {-4, 3}, {5, 4}};
-        writer.minimize(10, toSpan(body));
+        writer.minimize(10, body);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::Optimize].size() == 1);
@@ -312,7 +312,7 @@ TEST_CASE("Write smodels", "[smodels]") {
     SECTION("output is written to symbol table") {
         Lit_t       a  = 1;
         std::string an = "Hallo";
-        writer.output(toSpan(an), toSpan(&a, 1));
+        writer.output(an, {&a, 1});
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.atoms[a] == an);
@@ -320,16 +320,16 @@ TEST_CASE("Write smodels", "[smodels]") {
     SECTION("output must be added after rules") {
         Lit_t       a  = 1;
         std::string an = "Hallo";
-        writer.output(toSpan(an), toSpan(&a, 1));
+        writer.output(an, {&a, 1});
         Atom_t b = 2;
-        REQUIRE_THROWS(writer.rule(Head_t::Disjunctive, toSpan(&b, 1), toSpan<Lit_t>()));
+        REQUIRE_THROWS(writer.rule(Head_t::Disjunctive, {&b, 1}, {}));
     }
     SECTION("compute statement is written via assume") {
         Atom_t     a    = 1;
         Vec<Lit_t> body = {2, -3, -4, 5};
-        writer.rule(Head_t::Disjunctive, toSpan(&a, 1), toSpan(body));
+        writer.rule(Head_t::Disjunctive, {&a, 1}, body);
         Lit_t na = -1;
-        writer.assume(toSpan(&na, 1));
+        writer.assume({&na, 1});
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::Basic].size() == 1);
@@ -340,7 +340,7 @@ TEST_CASE("Write smodels", "[smodels]") {
     }
     SECTION("compute statement can contain multiple literals") {
         Vec<Lit_t> compute = {-1, 2, -3, -4, 5, 6};
-        writer.assume(toSpan(compute));
+        writer.assume(compute);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         // B+ followed by B-
@@ -349,23 +349,23 @@ TEST_CASE("Write smodels", "[smodels]") {
     }
     SECTION("only one compute statement supported") {
         Lit_t na = -1, b = 2;
-        writer.assume(toSpan(&na, 1));
-        REQUIRE_THROWS(writer.assume(toSpan(&b, 1)));
+        writer.assume({&na, 1});
+        REQUIRE_THROWS(writer.assume({&b, 1}));
     }
     SECTION("complex directives are not supported") {
-        REQUIRE_THROWS(writer.project(toSpan<Atom_t>()));
+        REQUIRE_THROWS(writer.project({}));
         REQUIRE_THROWS(writer.external(1, Value_t::False));
-        REQUIRE_THROWS(writer.heuristic(1, Heuristic_t::Sign, 1, 0, toSpan<Lit_t>()));
-        REQUIRE_THROWS(writer.acycEdge(1, 2, toSpan<Lit_t>()));
+        REQUIRE_THROWS(writer.heuristic(1, Heuristic_t::Sign, 1, 0, {}));
+        REQUIRE_THROWS(writer.acycEdge(1, 2, {}));
     }
 }
 
 TEST_CASE("Match heuristic predicate", "[smodels]") {
-    const char* in;
-    StringSpan  atom;
-    Heuristic_t type;
-    int         bias;
-    unsigned    prio;
+    const char*      in;
+    std::string_view atom;
+    Heuristic_t      type;
+    int              bias;
+    unsigned         prio;
     SECTION("do not match invalid predicate name") {
         REQUIRE(0 == matchDomHeuPred(in = "heuristic()", atom, type, bias, prio));
         REQUIRE(0 == matchDomHeuPred(in = "_heu()", atom, type, bias, prio));
@@ -410,12 +410,12 @@ TEST_CASE("SmodelsOutput supports extended programs", "[smodels_ext]") {
     Vec<Atom_t>      head = {1, 2};
     Vec<Lit_t>       body = {3, -4};
     Vec<WeightLit_t> min  = {{-1, 2}, {2, 1}};
-    writer.rule(Head_t::Choice, toSpan(head), toSpan(body));
+    writer.rule(Head_t::Choice, head, body);
     exp << (int) Rule_t::Choice << " 2 2 3 2 1 5 4\n";
     writer.external(3, Value_t::False);
     writer.external(4, Value_t::False);
-    writer.minimize(0, toSpan(min));
-    writer.heuristic(1, Heuristic_t::Sign, 1, 0, toSpan<Lit_t>());
+    writer.minimize(0, min);
+    writer.heuristic(1, Heuristic_t::Sign, 1, 0, {});
     exp << "1 6 0 0\n";
     exp << (int) Rule_t::Optimize << " 0 2 1 2 3 2 1\n";
     exp << (int) Rule_t::ClaspAssignExt << " 4 0\n";
@@ -426,7 +426,7 @@ TEST_CASE("SmodelsOutput supports extended programs", "[smodels_ext]") {
     exp << "90 0\n";
     head[0] = 3;
     head[1] = 4;
-    writer.rule(Head_t::Choice, toSpan(head), toSpan<Lit_t>());
+    writer.rule(Head_t::Choice, head, {});
     exp << (int) Rule_t::Choice << " 2 4 5 0 0\n";
     writer.endStep();
     exp << "0\n0\nB+\n0\nB-\n1\n0\n1\n";
@@ -478,7 +478,7 @@ TEST_CASE("Convert to smodels", "[convert]") {
     }
     SECTION("convert output") {
         LitVec c = {1, -2, 3};
-        convert.output({"Foo", 3}, toSpan(c));
+        convert.output({"Foo", 3}, c);
         convert.endStep();
         REQUIRE(observer.rules[Rule_t::Basic].size() == 1);
         REQUIRE(convert.maxAtom() == 5);
@@ -503,7 +503,7 @@ TEST_CASE("Convert to smodels", "[convert]") {
         convert.output({"a", 1}, {&a, 1});
         convert.acycEdge(0, 1, {&a, 1});
         LitVec c = {1, 2, 3};
-        convert.acycEdge(1, 0, toSpan(c));
+        convert.acycEdge(1, 0, c);
         convert.endStep();
         REQUIRE(observer.rules[Rule_t::Basic].size() == 2);
         REQUIRE(observer.atoms[observer.rules[Rule_t::Basic][0][0]] == "_edge(0,1)");
@@ -513,7 +513,7 @@ TEST_CASE("Convert to smodels", "[convert]") {
     SECTION("heuristics are converted to atoms") {
         SECTION("empty condition") {
             Lit_t a = 1;
-            convert.heuristic(static_cast<Atom_t>(a), Heuristic_t::Factor, 10, 2, toSpan<Lit_t>());
+            convert.heuristic(static_cast<Atom_t>(a), Heuristic_t::Factor, 10, 2, {});
             convert.output({"a", 1}, {&a, 1});
             convert.endStep();
             REQUIRE(observer.rules[Rule_t::Basic].size() == 1);
@@ -524,8 +524,8 @@ TEST_CASE("Convert to smodels", "[convert]") {
             Lit_t a = 1, b = 2, c = 3;
             convert.output({"a", 1}, {&a, 1});
             convert.output({"b", 1}, {&b, 1});
-            convert.heuristic(static_cast<Atom_t>(a), Heuristic_t::Level, 10, 2, toSpan(&b, 1));
-            convert.heuristic(static_cast<Atom_t>(a), Heuristic_t::Init, 10, 2, toSpan(&c, 1));
+            convert.heuristic(static_cast<Atom_t>(a), Heuristic_t::Level, 10, 2, {&b, 1});
+            convert.heuristic(static_cast<Atom_t>(a), Heuristic_t::Init, 10, 2, {&c, 1});
             convert.endStep();
             REQUIRE(observer.rules[Rule_t::Basic].size() == 1);
             REQUIRE(observer.atoms[observer.rules[Rule_t::Basic][0][0]] == "_heuristic(a,level,10,2)");
@@ -533,7 +533,7 @@ TEST_CASE("Convert to smodels", "[convert]") {
         }
         SECTION("unused atom is ignored") {
             Lit_t a = 1;
-            convert.heuristic(static_cast<Atom_t>(a), Heuristic_t::Sign, -1, 2, toSpan<Lit_t>());
+            convert.heuristic(static_cast<Atom_t>(a), Heuristic_t::Sign, -1, 2, {});
             convert.endStep();
             REQUIRE(observer.rules[Rule_t::Basic].size() == 1);
             REQUIRE(convert.maxAtom() == 2);
@@ -541,8 +541,8 @@ TEST_CASE("Convert to smodels", "[convert]") {
         }
         SECTION("unnamed atom requires aux name") {
             Atom_t a = 1;
-            convert.rule(Head_t::Choice, {&a, 1}, toSpan<Lit_t>());
-            convert.heuristic(a, Heuristic_t::Sign, -1, 2, toSpan<Lit_t>());
+            convert.rule(Head_t::Choice, {&a, 1}, {});
+            convert.heuristic(a, Heuristic_t::Sign, -1, 2, {});
             convert.endStep();
             REQUIRE(observer.rules[Rule_t::Basic].size() == 1);
             REQUIRE(convert.maxAtom() == 3);
@@ -551,8 +551,6 @@ TEST_CASE("Convert to smodels", "[convert]") {
         }
     }
 }
-inline StringSpan toSpan(const char* str) { return Potassco::toSpan(str, std::strlen(str)); }
-using Potassco::toSpan;
 
 TEST_CASE("Test Atom to directive conversion", "[clasp]") {
     ReadObserver          observer;
@@ -563,12 +561,12 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
     std::vector<Atom_t> atoms = {1, 2, 3, 4, 5, 6};
     writer.initProgram(false);
     writer.beginStep();
-    writer.rule(Potassco::Head_t::Choice, Potassco::toSpan(atoms), Potassco::toSpan<Potassco::Lit_t>());
+    writer.rule(Potassco::Head_t::Choice, atoms, {});
     SECTION("_edge(X,Y) atoms are converted to edges directives") {
         Lit_t a = 1, b = 2, c = 3;
-        writer.output(toSpan("_edge(1,2)"), toSpan(&a, 1));
-        writer.output(toSpan(R"(_edge("1,2","2,1"))"), toSpan(&b, 1));
-        writer.output(toSpan(R"(_edge("2,1","1,2"))"), toSpan(&c, 1));
+        writer.output("_edge(1,2)", {&a, 1});
+        writer.output(R"(_edge("1,2","2,1"))", {&b, 1});
+        writer.output(R"(_edge("2,1","1,2"))", {&c, 1});
         writer.endStep();
         REQUIRE(readSmodels(str, observer, nullptr, opts) == 0);
         REQUIRE(observer.edges.size() == 3);
@@ -582,12 +580,12 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
     SECTION("Test acyc") {
         Lit_t a = 1, b = 2;
         SECTION("_acyc_ atoms are converted to edge directives") {
-            writer.output(toSpan("_acyc_1_1234_4321"), toSpan(&a, 1));
-            writer.output(toSpan("_acyc_1_4321_1234"), toSpan(&b, 1));
+            writer.output("_acyc_1_1234_4321", {&a, 1});
+            writer.output("_acyc_1_4321_1234", {&b, 1});
         }
         SECTION("_acyc_ and _edge atoms can be mixed") {
-            writer.output(toSpan("_acyc_1_1234_4321"), toSpan(&a, 1));
-            writer.output(toSpan("_edge(4321,1234)"), toSpan(&b, 1));
+            writer.output("_acyc_1_1234_4321", {&a, 1});
+            writer.output("_edge(4321,1234)", {&b, 1});
         }
         writer.endStep();
         REQUIRE(readSmodels(str, observer, nullptr, opts) == 0);
@@ -599,12 +597,12 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
     }
     SECTION("_heuristic atoms are converted to heuristic directive") {
         Lit_t a = 1, b = 2, h1 = 3, h2 = 4, h3 = 5, h4 = 6;
-        writer.output(toSpan("f(a,b,c,d(q(r(s))))"), toSpan(&a, 1));
-        writer.output(toSpan("f(\"a,b(c,d)\")"), toSpan(&b, 1));
-        writer.output(toSpan("_heuristic(f(a,b,c,d(q(r(s)))),sign,-1)"), toSpan(&h1, 1));
-        writer.output(toSpan("_heuristic(f(a,b,c,d(q(r(s)))),true,1)"), toSpan(&h2, 1));
-        writer.output(toSpan("_heuristic(f(\"a,b(c,d)\"),level,-1,10)"), toSpan(&h3, 1));
-        writer.output(toSpan("_heuristic(f(\"a,b(c,d)\"),factor,2,1)"), toSpan(&h4, 1));
+        writer.output("f(a,b,c,d(q(r(s))))", {&a, 1});
+        writer.output("f(\"a,b(c,d)\")", {&b, 1});
+        writer.output("_heuristic(f(a,b,c,d(q(r(s)))),sign,-1)", {&h1, 1});
+        writer.output("_heuristic(f(a,b,c,d(q(r(s)))),true,1)", {&h2, 1});
+        writer.output("_heuristic(f(\"a,b(c,d)\"),level,-1,10)", {&h3, 1});
+        writer.output("_heuristic(f(\"a,b(c,d)\"),factor,2,1)", {&h4, 1});
         writer.endStep();
         REQUIRE(readSmodels(str, observer, nullptr, opts) == 0);
         REQUIRE(observer.heuristics.size() == 4);

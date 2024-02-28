@@ -25,15 +25,22 @@
 
 #include <algorithm>
 #include <cstring>
-#include <stdexcept>
+
 namespace Potassco {
 Rule_t Rule_t::normal(Head_t ht, const AtomSpan& head, const LitSpan& body) {
-    Rule_t r = {ht, head, Body_t::Normal, {body}};
+    Rule_t r;
+    r.ht   = ht;
+    r.head = head;
+    r.bt   = Body_t::Normal;
+    r.cond = body;
     return r;
 }
 Rule_t Rule_t::sum(Head_t ht, const AtomSpan& head, const Sum_t& sum) {
-    Rule_t r = {ht, head, Body_t::Sum, {}};
-    r.agg    = sum;
+    Rule_t r;
+    r.ht   = ht;
+    r.head = head;
+    r.bt   = Body_t::Sum;
+    r.agg  = sum;
     return r;
 }
 Rule_t Rule_t::sum(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) {
@@ -55,20 +62,21 @@ struct RuleBuilder::Rule {
             mbeg = mend = p;
             type        = t;
         }
+        [[nodiscard]] uint32_t len() const { return mend - mbeg; }
+
         uint32_t mbeg : 30;
         uint32_t type : 2;
         uint32_t mend;
-        uint32_t len() const { return mend - mbeg; }
     };
     uint32_t top : 31;
     uint32_t fix : 1;
-    Span     head;
-    Span     body;
+    Span     head{};
+    Span     body{};
 };
 namespace {
 template <class T>
-inline Potassco::Span<T> span_cast(const MemoryRegion& m, const RuleBuilder::Rule::Span& in) {
-    return Potassco::toSpan(static_cast<T*>(m[in.mbeg]), in.len() / sizeof(T));
+inline std::span<const T> span_cast(const MemoryRegion& m, const RuleBuilder::Rule::Span& in) {
+    return {static_cast<const T*>(m[in.mbeg]), in.len() / sizeof(T)};
 }
 template <class T>
 inline RuleBuilder::Rule* push(MemoryRegion& m, RuleBuilder::Rule* r, const T& what) {

@@ -69,14 +69,14 @@ public:
         min.push_back({prio, {begin(lits), end(lits)}});
     }
     void project(const AtomSpan& atoms) override { projects.insert(projects.end(), begin(atoms), end(atoms)); }
-    void output(const StringSpan& str, const LitSpan& cond) override {
+    void output(const std::string_view& str, const LitSpan& cond) override {
         shows.push_back({{begin(str), end(str)}, {begin(cond), end(cond)}});
     }
 
     void external(Atom_t a, Value_t v) override { externals.push_back({a, v}); }
     void assume(const LitSpan& lits) override { assumes.insert(assumes.end(), begin(lits), end(lits)); }
     void theoryTerm(Id_t termId, int number) override { theory.addTerm(termId, number); }
-    void theoryTerm(Id_t termId, const StringSpan& name) override { theory.addTerm(termId, name); }
+    void theoryTerm(Id_t termId, const std::string_view& name) override { theory.addTerm(termId, name); }
     void theoryTerm(Id_t termId, int cId, const IdSpan& args) override { theory.addTerm(termId, cId, args); }
     void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan&) override {
         theory.addElement(elementId, terms, 0u);
@@ -96,8 +96,8 @@ public:
     TheoryData                              theory;
 };
 
-static int compareRead(std::stringstream& input, ReadObserver& observer, const Rule* rules,
-                       const std::pair<unsigned, unsigned>& subset) {
+static unsigned compareRead(std::stringstream& input, ReadObserver& observer, const Rule* rules,
+                            const std::pair<unsigned, unsigned>& subset) {
     for (unsigned i = 0; i != subset.second; ++i) { rule(input, rules[subset.first + i]); }
     finalize(input);
     readAspif(input, observer);
@@ -115,27 +115,27 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
     RuleBuilder rb;
     SECTION("simple rule") {
         rb.start().addHead(1).addGoal(2).addGoal(-3).end();
-        REQUIRE(Potassco::size(rb.head()) == 1);
-        REQUIRE(*Potassco::begin(rb.head()) == 1);
-        REQUIRE(Potassco::size(rb.body()) == 2);
+        REQUIRE(std::size(rb.head()) == 1);
+        REQUIRE(*std::begin(rb.head()) == 1);
+        REQUIRE(std::size(rb.body()) == 2);
         REQUIRE(rb.bodyType() == Body_t::Normal);
         std::initializer_list<Lit_t> lits = {2, -3};
         REQUIRE(std::equal(begin(lits), end(lits), rb.lits_begin()));
     }
     SECTION("simple weight rule") {
         rb.start().addHead(1).startSum(2).addGoal(2, 1).addGoal(-3, 1).addGoal(4, 2).end();
-        REQUIRE(Potassco::size(rb.head()) == 1);
-        REQUIRE(*Potassco::begin(rb.head()) == 1);
-        REQUIRE(Potassco::size(rb.sum().lits) == 3);
+        REQUIRE(std::size(rb.head()) == 1);
+        REQUIRE(*std::begin(rb.head()) == 1);
+        REQUIRE(std::size(rb.sum().lits) == 3);
         REQUIRE(rb.bodyType() == Body_t::Sum);
         std::initializer_list<WeightLit_t> sum = {{2, 1}, {-3, 1}, {4, 2}};
         REQUIRE(std::equal(begin(sum), end(sum), rb.wlits_begin()));
     }
     SECTION("weakean to cardinality rule") {
         rb.start().addHead(1).startSum(2).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).weaken(Body_t::Count).end();
-        REQUIRE(Potassco::size(rb.head()) == 1);
-        REQUIRE(*Potassco::begin(rb.head()) == 1);
-        REQUIRE(Potassco::size(rb.sum().lits) == 3);
+        REQUIRE(std::size(rb.head()) == 1);
+        REQUIRE(*std::begin(rb.head()) == 1);
+        REQUIRE(std::size(rb.sum().lits) == 3);
         REQUIRE(std::distance(rb.wlits_begin(), rb.wlits_end()) == 3);
         REQUIRE(rb.bodyType() == Body_t::Count);
         REQUIRE(rb.bound() == 1);
@@ -144,9 +144,9 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
     }
     SECTION("weaken to normal rule") {
         rb.start().addHead(1).startSum(3).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).weaken(Body_t::Normal).end();
-        REQUIRE(Potassco::size(rb.head()) == 1);
-        REQUIRE(*Potassco::begin(rb.head()) == 1);
-        REQUIRE(Potassco::size(rb.body()) == 3);
+        REQUIRE(std::size(rb.head()) == 1);
+        REQUIRE(*std::begin(rb.head()) == 1);
+        REQUIRE(std::size(rb.body()) == 3);
         REQUIRE(std::distance(rb.lits_begin(), rb.lits_end()) == 3);
         REQUIRE(rb.bodyType() == Body_t::Normal);
         std::initializer_list<Lit_t> lits = {2, -3, 4};
@@ -154,9 +154,9 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
     }
     SECTION("weak to normal rule - inverse order") {
         rb.startSum(3).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).start().addHead(1).weaken(Body_t::Normal).end();
-        REQUIRE(Potassco::size(rb.head()) == 1);
-        REQUIRE(*Potassco::begin(rb.head()) == 1);
-        REQUIRE(Potassco::size(rb.body()) == 3);
+        REQUIRE(std::size(rb.head()) == 1);
+        REQUIRE(*std::begin(rb.head()) == 1);
+        REQUIRE(std::size(rb.body()) == 3);
         REQUIRE(rb.bodyType() == Body_t::Normal);
         std::initializer_list<Lit_t> lits = {2, -3, 4};
         REQUIRE(std::equal(begin(lits), end(lits), rb.lits_begin()));
@@ -172,10 +172,10 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
             .startBody()
             .addGoal(5)
             .end();
-        REQUIRE(Potassco::size(rb.head()) == 1);
-        REQUIRE(*Potassco::begin(rb.head()) == 1);
-        REQUIRE(Potassco::size(rb.body()) == 1);
-        REQUIRE(*Potassco::begin(rb.body()) == 5);
+        REQUIRE(std::size(rb.head()) == 1);
+        REQUIRE(*std::begin(rb.head()) == 1);
+        REQUIRE(std::size(rb.body()) == 1);
+        REQUIRE(*std::begin(rb.body()) == 5);
         REQUIRE(rb.bodyType() == Body_t::Normal);
         rb.start()
             .addHead(1)
@@ -187,10 +187,10 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
             .startBody()
             .addGoal(5)
             .end();
-        REQUIRE(Potassco::size(rb.head()) == 1);
-        REQUIRE(*Potassco::begin(rb.head()) == 1);
-        REQUIRE(Potassco::size(rb.body()) == 1);
-        REQUIRE(*Potassco::begin(rb.body()) == 5);
+        REQUIRE(std::size(rb.head()) == 1);
+        REQUIRE(*std::begin(rb.head()) == 1);
+        REQUIRE(std::size(rb.body()) == 1);
+        REQUIRE(*std::begin(rb.body()) == 5);
         REQUIRE(rb.bodyType() == Body_t::Normal);
     }
 }
@@ -341,8 +341,8 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         REQUIRE(readAspif(input, observer) == 0);
         REQUIRE(observer.theory.numAtoms() == 1);
         struct ToString : public TheoryAtomStringBuilder {
-            LitSpan     getCondition(Id_t) const override { return Potassco::toSpan<Lit_t>(); }
-            std::string getName(Atom_t) const override { return "?"; }
+            [[nodiscard]] LitSpan     getCondition(Id_t) const override { return {}; }
+            [[nodiscard]] std::string getName(Atom_t) const override { return "?"; }
         } builder;
         REQUIRE(builder.toString(observer.theory, **observer.theory.begin()) == "&diff{end(1) - start(1)} <= 200");
     }
@@ -417,10 +417,10 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
                 temp.clear();
                 std::transform(r.body.begin(), r.body.end(), std::back_inserter(temp),
                                [](const WeightLit_t& x) { return x.lit; });
-                writer.rule(r.ht, toSpan(r.head), toSpan(temp));
+                writer.rule(r.ht, r.head, temp);
             }
             else {
-                writer.rule(r.ht, toSpan(r.head), r.bnd, toSpan(r.body));
+                writer.rule(r.ht, r.head, r.bnd, r.body);
             }
         }
         writer.endStep();
@@ -432,8 +432,8 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
     SECTION("Writer writes minimize") {
         auto m1 = Vec<WeightLit_t>{{1, -2}, {-3, 2}, {4, 1}};
         auto m2 = Vec<WeightLit_t>{{-10, 1}, {-20, 2}};
-        writer.minimize(1, toSpan(m1));
-        writer.minimize(-2, toSpan(m2));
+        writer.minimize(1, m1);
+        writer.minimize(-2, m2);
         writer.endStep();
         readAspif(out, observer);
         REQUIRE(observer.min.size() == 2);
@@ -444,7 +444,7 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
     }
     SECTION("Writer writes output") {
         std::pair<std::string, Vec<Lit_t>> exp[] = {{"Hallo", {1, -2, 3}}, {"Fact", {}}};
-        for (auto&& s : exp) { writer.output(toSpan(s.first), toSpan(s.second)); }
+        for (auto&& s : exp) { writer.output(s.first, s.second); }
         writer.endStep();
         readAspif(out, observer);
         for (auto&& s : exp) {
@@ -463,8 +463,8 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
     }
     SECTION("Writer writes assumptions") {
         Lit_t a[] = {1, 987232, -2};
-        writer.assume(toSpan(a, 2));
-        writer.assume(toSpan(a + 2, 1));
+        writer.assume({a, 2});
+        writer.assume({a + 2, 1});
         writer.endStep();
         readAspif(out, observer);
         REQUIRE(observer.assumes.size() == 3);
@@ -472,8 +472,8 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
     }
     SECTION("Writer writes projection") {
         Atom_t a[] = {1, 987232, 2};
-        writer.project(toSpan(a, 2));
-        writer.project(toSpan(a + 2, 1));
+        writer.project({a, 2});
+        writer.project({a + 2, 1});
         writer.endStep();
         readAspif(out, observer);
         REQUIRE(observer.projects.size() == 3);
@@ -481,7 +481,7 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
     }
     SECTION("Writer writes acyc edges") {
         Edge exp[] = {{0, 1, {1, -2}}, {1, 0, {3}}};
-        for (auto&& e : exp) { writer.acycEdge(e.s, e.t, toSpan(e.cond)); }
+        for (auto&& e : exp) { writer.acycEdge(e.s, e.t, e.cond); }
         writer.endStep();
         readAspif(out, observer);
         REQUIRE(observer.edges.size() == std::distance(std::begin(exp), std::end(exp)));
@@ -492,7 +492,7 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
                            {2, Heuristic_t::Level, 10, 3, {-1, 10}},
                            {1, Heuristic_t::Init, 20, 1, {}},
                            {1, Heuristic_t::Factor, 2, 2, {}}};
-        for (auto&& h : exp) { writer.heuristic(h.atom, h.type, h.bias, h.prio, toSpan(h.cond)); }
+        for (auto&& h : exp) { writer.heuristic(h.atom, h.type, h.bias, h.prio, h.cond); }
         writer.endStep();
         readAspif(out, observer);
         REQUIRE(std::equal(std::begin(exp), std::end(exp), observer.heuristics.begin()) == true);
@@ -512,44 +512,43 @@ TEST_CASE("TheoryData", "[aspif]") {
     }
 
     SECTION("Visit theory") {
-        using Potassco::toSpan;
         Id_t tId = 0, s[3], n[5], o[2], f[3], e[4], args[2];
         // primitives
-        data.addTerm(n[0] = tId++, 1);           // (number 1)
-        data.addTerm(n[1] = tId++, 2);           // (number 2)
-        data.addTerm(n[2] = tId++, 3);           // (number 3)
-        data.addTerm(n[3] = tId++, 4);           // (number 4)
-        data.addTerm(s[0] = tId++, toSpan("x")); // (string x)
-        data.addTerm(s[1] = tId++, toSpan("z")); // (string z)
+        data.addTerm(n[0] = tId++, 1);   // (number 1)
+        data.addTerm(n[1] = tId++, 2);   // (number 2)
+        data.addTerm(n[2] = tId++, 3);   // (number 3)
+        data.addTerm(n[3] = tId++, 4);   // (number 4)
+        data.addTerm(s[0] = tId++, "x"); // (string x)
+        data.addTerm(s[1] = tId++, "z"); // (string z)
         // compounds
-        data.addTerm(o[0] = tId++, toSpan("*"));            // (operator *)
-        data.addTerm(f[0] = tId++, s[0], toSpan(n, 1));     // (function x(1))
-        data.addTerm(f[1] = tId++, s[0], toSpan(n + 1, 1)); // (function x(2))
-        data.addTerm(f[2] = tId++, s[0], toSpan(n + 2, 1)); // (function x(3))
+        data.addTerm(o[0] = tId++, "*");              // (operator *)
+        data.addTerm(f[0] = tId++, s[0], {n, 1});     // (function x(1))
+        data.addTerm(f[1] = tId++, s[0], {n + 1, 1}); // (function x(2))
+        data.addTerm(f[2] = tId++, s[0], {n + 2, 1}); // (function x(3))
         args[0] = n[0];
         args[1] = f[0];
-        data.addTerm(e[0] = tId++, o[0], toSpan(args, 2)); // (1 * x(1))
+        data.addTerm(e[0] = tId++, o[0], {args, 2}); // (1 * x(1))
         args[0] = n[1];
         args[1] = f[1];
-        data.addTerm(e[1] = tId++, o[0], toSpan(args, 2)); // (2 * x(2))
+        data.addTerm(e[1] = tId++, o[0], {args, 2}); // (2 * x(2))
         args[0] = n[2];
         args[1] = f[2];
-        data.addTerm(e[2] = tId++, o[0], toSpan(args, 2)); // (3 * x(3))
+        data.addTerm(e[2] = tId++, o[0], {args, 2}); // (3 * x(3))
         args[0] = n[3];
         args[1] = s[1];
-        data.addTerm(e[3] = tId++, o[0], toSpan(args, 2)); // (4 * z)
+        data.addTerm(e[3] = tId++, o[0], {args, 2}); // (4 * z)
         // elements
         Id_t elems[4];
-        data.addElement(elems[0] = 0, toSpan(&e[0], 1), 0u); // (element 1*x(1):)
-        data.addElement(elems[1] = 1, toSpan(&e[1], 1), 0u); // (element 2*x(2):)
-        data.addElement(elems[2] = 2, toSpan(&e[2], 1), 0u); // (element 3*x(3):)
-        data.addElement(elems[3] = 3, toSpan(&e[3], 1), 0u); // (element 4*z:)
+        data.addElement(elems[0] = 0, {&e[0], 1}, 0u); // (element 1*x(1):)
+        data.addElement(elems[1] = 1, {&e[1], 1}, 0u); // (element 2*x(2):)
+        data.addElement(elems[2] = 2, {&e[2], 1}, 0u); // (element 3*x(3):)
+        data.addElement(elems[3] = 3, {&e[3], 1}, 0u); // (element 4*z:)
 
         // atom
-        data.addTerm(s[2] = tId++, toSpan("sum"));           // (string sum)
-        data.addTerm(o[1] = tId++, toSpan(">="));            // (string >=)
-        data.addTerm(n[4] = tId++, 42);                      // (number 42)
-        data.addAtom(1, s[2], toSpan(elems, 4), o[1], n[4]); // (&sum { 1*x(1); 2*x(2); 3*x(3); 4*z     } >= 42)
+        data.addTerm(s[2] = tId++, "sum");             // (string sum)
+        data.addTerm(o[1] = tId++, ">=");              // (string >=)
+        data.addTerm(n[4] = tId++, 42);                // (number 42)
+        data.addAtom(1, s[2], {elems, 4}, o[1], n[4]); // (&sum { 1*x(1); 2*x(2); 3*x(3); 4*z     } >= 42)
 
         struct Visitor : public TheoryData::Visitor {
             void visit(const TheoryData& data, Id_t termId, const TheoryTerm& t) override {

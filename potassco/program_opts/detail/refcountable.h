@@ -41,16 +41,15 @@ private:
     int refCount_;
 };
 
-template <class T>
+template <typename T>
 class IntrusiveSharedPtr {
 public:
     using element_type = T;
-    explicit IntrusiveSharedPtr(T* p = 0) noexcept : ptr_(p) { /* NO add ref */
-    }
+    explicit IntrusiveSharedPtr(T* p = nullptr) noexcept : ptr_(p) {}
     IntrusiveSharedPtr(const IntrusiveSharedPtr& o) noexcept : ptr_(o.ptr_) { addRef(); }
     IntrusiveSharedPtr(IntrusiveSharedPtr&& o) noexcept : ptr_(std::exchange(o.ptr_, nullptr)) {}
     ~IntrusiveSharedPtr() noexcept { release(); }
-    IntrusiveSharedPtr& operator=(const IntrusiveSharedPtr& other) noexcept {
+    IntrusiveSharedPtr& operator=(const IntrusiveSharedPtr& other) noexcept { // NOLINT: unhandled-self-assignment
         other.addRef();
         this->release();
         this->ptr_ = other.ptr_;
@@ -60,16 +59,17 @@ public:
         IntrusiveSharedPtr(std::move(other)).swap(*this);
         return *this;
     }
-    T&   operator*() const noexcept { return *ptr_; }
-    T*   operator->() const noexcept { return ptr_; }
-    T*   get() const noexcept { return ptr_; }
-    void reset() noexcept {
-        release();
-        ptr_ = 0;
-    }
+    T&                 operator*() const noexcept { return *ptr_; }
+    T*                 operator->() const noexcept { return ptr_; }
+    [[nodiscard]] T*   get() const noexcept { return ptr_; }
     [[nodiscard]] bool unique() const noexcept { return !ptr_ || ptr_->refCount() == 1; }
     [[nodiscard]] int  count() const noexcept { return ptr_ ? ptr_->refCount() : 0; }
-    void               swap(IntrusiveSharedPtr& b) {
+
+    void reset() noexcept {
+        release();
+        ptr_ = nullptr;
+    }
+    void swap(IntrusiveSharedPtr& b) {
         T* temp = ptr_;
         ptr_    = b.ptr_;
         b.ptr_  = temp;

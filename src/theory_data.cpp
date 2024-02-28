@@ -30,7 +30,7 @@
 namespace Potassco {
 template <class T>
 static std::size_t nBytes(const IdSpan& ids) {
-    return sizeof(T) + (ids.size * sizeof(Id_t));
+    return sizeof(T) + (ids.size() * sizeof(Id_t));
 }
 struct FuncData {
     static FuncData* newFunc(int32_t base, const IdSpan& args);
@@ -43,10 +43,10 @@ struct FuncData {
 };
 FuncData* FuncData::newFunc(int32_t base, const IdSpan& args) {
     std::size_t nb = nBytes<FuncData>(args);
-    FuncData*   f  = new (::operator new(nb)) FuncData;
+    auto*       f  = new (::operator new(nb)) FuncData;
     f->base        = base;
-    f->size        = static_cast<uint32_t>(Potassco::size(args));
-    std::memcpy(f->args, begin(args), f->size * sizeof(Id_t));
+    f->size        = static_cast<uint32_t>(std::size(args));
+    std::memcpy(f->args, args.data(), f->size * sizeof(Id_t));
     return f;
 }
 void FuncData::destroy(FuncData* f) {
@@ -55,8 +55,13 @@ void FuncData::destroy(FuncData* f) {
         ::operator delete(f);
     }
 }
-const uint64_t nulTerm  = static_cast<uint64_t>(-1);
-const uint64_t typeMask = static_cast<uint64_t>(3);
+const uint64_t  nulTerm  = static_cast<uint64_t>(-1);
+const uint64_t  typeMask = static_cast<uint64_t>(3);
+static uint64_t assertPtr(const void* p) {
+    auto data = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(p));
+    POTASSCO_REQUIRE((data & 3u) == 0u, "Invalid pointer alignment");
+    return data;
+}
 
 TheoryTerm::TheoryTerm() : data_(nulTerm) {}
 TheoryTerm::TheoryTerm(int num) { data_ = (static_cast<uint64_t>(num) << 2) | Theory_t::Number; }
@@ -65,11 +70,6 @@ TheoryTerm::TheoryTerm(const char* sym) {
     assert(sym == symbol());
 }
 TheoryTerm::TheoryTerm(const FuncData* c) { data_ = (assertPtr(c) | Theory_t::Compound); }
-uint64_t TheoryTerm::assertPtr(const void* p) const {
-    uint64_t data = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(p));
-    POTASSCO_REQUIRE((data & 3u) == 0u, "Invalid pointer alignment");
-    return data;
-}
 void     TheoryTerm::assertType(Theory_t t) const { POTASSCO_REQUIRE(type() == t, "Invalid term cast"); }
 bool     TheoryTerm::valid() const { return data_ != nulTerm; }
 Theory_t TheoryTerm::type() const {
@@ -107,9 +107,9 @@ TheoryTerm::iterator TheoryTerm::end() const {
 }
 
 TheoryElement::TheoryElement(const IdSpan& terms, Id_t c)
-    : nTerms_(static_cast<uint32_t>(Potassco::size(terms)))
+    : nTerms_(static_cast<uint32_t>(std::size(terms)))
     , nCond_(c != 0) {
-    std::memcpy(term_, Potassco::begin(terms), nTerms_ * sizeof(Id_t));
+    std::memcpy(term_, terms.data(), nTerms_ * sizeof(Id_t));
     if (nCond_ != 0) {
         term_[nTerms_] = c;
     }
@@ -130,12 +130,12 @@ void TheoryElement::destroy(TheoryElement* e) {
 Id_t TheoryElement::condition() const { return nCond_ == 0 ? 0 : term_[nTerms_]; }
 void TheoryElement::setCondition(Id_t c) { term_[nTerms_] = c; }
 
-TheoryAtom::TheoryAtom(Id_t a, Id_t term, const IdSpan& args, Id_t* op, Id_t* rhs)
+TheoryAtom::TheoryAtom(Id_t a, Id_t term, const IdSpan& args, const Id_t* op, const Id_t* rhs)
     : atom_(a)
     , guard_(op != nullptr)
     , termId_(term)
-    , nTerms_(static_cast<uint32_t>(Potassco::size(args))) {
-    std::memcpy(term_, Potassco::begin(args), nTerms_ * sizeof(Id_t));
+    , nTerms_(static_cast<uint32_t>(std::size(args))) {
+    std::memcpy(term_, args.data(), nTerms_ * sizeof(Id_t));
     if (op) {
         term_[nTerms_]     = *op;
         term_[nTerms_ + 1] = *rhs;
@@ -164,14 +164,15 @@ struct TheoryData::Data {
     template <class T>
     struct RawStack {
         RawStack() : top(0) {}
+        [[nodiscard]] T*       begin() const { return static_cast<T*>(mem.begin()); }
+        [[nodiscard]] uint32_t size() const { return static_cast<uint32_t>(top / sizeof(T)); }
+
         void push(const T& x = T()) {
             mem.grow(top += sizeof(T));
             new (mem[top - sizeof(T)]) T(x);
         }
-        T*       begin() const { return static_cast<T*>(mem.begin()); }
-        uint32_t size() const { return static_cast<uint32_t>(top / sizeof(T)); }
-        void     pop() { top -= sizeof(T); }
-        void     reset() {
+        void pop() { top -= sizeof(T); }
+        void reset() {
             mem.release();
             top = 0;
         }
@@ -210,16 +211,16 @@ TheoryData::~TheoryData() {
     delete data_;
 }
 const TheoryTerm& TheoryData::addTerm(Id_t termId, int number) { return setTerm(termId) = TheoryTerm(number); }
-const TheoryTerm& TheoryData::addTerm(Id_t termId, const StringSpan& name) {
+const TheoryTerm& TheoryData::addTerm(Id_t termId, const std::string_view& name) {
     TheoryTerm& t = setTerm(termId);
     // Align to 4-bytes to disable false-positives from valgrind
     // in subsequent calls to strlen etc.
-    char* buf                                                   = new char[((name.size + 1 + 3) / 4) * 4];
-    *std::copy(Potassco::begin(name), Potassco::end(name), buf) = 0;
+    char* buf                                         = new char[((name.size() + 1 + 3) / 4) * 4];
+    *std::copy(std::begin(name), std::end(name), buf) = 0;
     return (t = TheoryTerm(buf));
 }
 const TheoryTerm& TheoryData::addTerm(Id_t termId, const char* name) {
-    return addTerm(termId, Potassco::toSpan(name, name ? std::strlen(name) : 0));
+    return addTerm(termId, {name, name ? std::strlen(name) : 0});
 }
 const TheoryTerm& TheoryData::addTerm(Id_t termId, Id_t funcId, const IdSpan& args) {
     return setTerm(termId) = TheoryTerm(FuncData::newFunc(static_cast<int32_t>(funcId), args));
@@ -321,9 +322,9 @@ void TheoryData::accept(Visitor& out, VisitMode m) const {
 }
 void TheoryData::accept(const TheoryTerm& t, Visitor& out, VisitMode m) const {
     if (t.type() == Theory_t::Compound) {
-        for (TheoryTerm::iterator it = t.begin(), end = t.end(); it != end; ++it) {
-            if (doVisitTerm(m, *it))
-                out.visit(*this, *it, getTerm(*it));
+        for (Id_t id : t) {
+            if (doVisitTerm(m, id))
+                out.visit(*this, id, getTerm(id));
         }
         if (t.isFunction() && doVisitTerm(m, t.function())) {
             out.visit(*this, t.function(), getTerm(t.function()));
@@ -331,9 +332,9 @@ void TheoryData::accept(const TheoryTerm& t, Visitor& out, VisitMode m) const {
     }
 }
 void TheoryData::accept(const TheoryElement& e, Visitor& out, VisitMode m) const {
-    for (TheoryElement::iterator it = e.begin(), end = e.end(); it != end; ++it) {
-        if (doVisitTerm(m, *it)) {
-            out.visit(*this, *it, getTerm(*it));
+    for (Id_t id : e) {
+        if (doVisitTerm(m, id)) {
+            out.visit(*this, id, getTerm(id));
         }
     }
 }
@@ -341,9 +342,9 @@ void TheoryData::accept(const TheoryAtom& a, Visitor& out, VisitMode m) const {
     if (doVisitTerm(m, a.term())) {
         out.visit(*this, a.term(), getTerm(a.term()));
     }
-    for (TheoryElement::iterator eIt = a.begin(), eEnd = a.end(); eIt != eEnd; ++eIt) {
-        if (doVisitElem(m, *eIt)) {
-            out.visit(*this, *eIt, getElement(*eIt));
+    for (Id_t id : a) {
+        if (doVisitElem(m, id)) {
+            out.visit(*this, id, getElement(id));
         }
     }
     if (a.guard() && doVisitTerm(m, *a.guard())) {
@@ -353,7 +354,5 @@ void TheoryData::accept(const TheoryAtom& a, Visitor& out, VisitMode m) const {
         out.visit(*this, *a.rhs(), getTerm(*a.rhs()));
     }
 }
-TheoryData::Visitor::~Visitor() {}
-StringSpan toSpan(const char* x) { return Potassco::toSpan(x, std::strlen(x)); }
 
 } // namespace Potassco

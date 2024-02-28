@@ -46,6 +46,9 @@ public:
      */
     SmodelsConvert(AbstractProgram& out, bool enableClaspExt);
     ~SmodelsConvert() override;
+    SmodelsConvert(const SmodelsConvert&)            = delete;
+    SmodelsConvert& operator=(const SmodelsConvert&) = delete;
+
     //! Calls initProgram() on the associated output program.
     void initProgram(bool incremental) override;
     //! Calls beginStep() on the associated output program.
@@ -57,7 +60,7 @@ public:
     //! Converts literals associated with a priority to a set of corresponding smodels minimize rules.
     void minimize(Weight_t prio, const WeightLitSpan& lits) override;
     //! Adds an atom named str that is equivalent to the condition to the symbol table.
-    void output(const StringSpan& str, const LitSpan& cond) override;
+    void output(const std::string_view& str, const LitSpan& cond) override;
     //! Marks the atom that is equivalent to a as external.
     void external(Atom_t a, Value_t v) override;
     //! Adds an _heuristic predicate over the given atom to the symbol table that is equivalent to condition.
@@ -69,11 +72,11 @@ public:
     void endStep() override;
 
     //! Returns the output literal associated to in.
-    Lit_t get(Lit_t in) const;
+    [[nodiscard]] Lit_t get(Lit_t in) const;
     //! Returns the name associated with the given (output) smodels atom or 0 if no name exists.
-    const char* getName(Atom_t a) const;
+    [[nodiscard]] const char* getName(Atom_t a) const;
     //! Returns the max used smodels atom (valid atoms are [1..n]).
-    unsigned maxAtom() const;
+    [[nodiscard]] unsigned maxAtom() const;
 
 protected:
     //! Creates a (named) atom that is equivalent to the given condition.
@@ -90,8 +93,6 @@ protected:
     void flushSymbols();
 
 private:
-    SmodelsConvert(const SmodelsConvert&);
-    SmodelsConvert& operator=(const SmodelsConvert&);
     struct SmData;
     AbstractProgram& out_;
     SmData*          data_;

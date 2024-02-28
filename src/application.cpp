@@ -27,14 +27,14 @@
 #include <potassco/program_opts/typed_value.h>
 
 #include <cctype>
+#include <climits>
 #include <cstring>
-#include <limits.h>
 #ifdef _MSC_VER
 #pragma warning(disable : 4996)
 #endif
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
 #if !defined(SIGALRM)
 #define SIGALRM 14
 #endif
@@ -118,7 +118,7 @@ int Application::main(int argc, char** argv) {
     exitCode_ = EXIT_FAILURE;
     blocked_  = 0;
     pending_  = 0;
-    if (getOptions(argc, argv)) {
+    if (applyOptions(argc, argv)) {
         // install signal handlers
         for (const int* sig = getSignals(); sig && *sig; ++sig) {
             if (signal(*sig, &Application::sigHandler) == SIG_IGN) {
@@ -188,13 +188,13 @@ void Application::exit(int status) const {
 }
 
 // Temporarily disable delivery of signals.
-int Application::blockSignals() { return fetch_and_inc(blocked_); }
+int Application::blockSignals() { return (int) fetch_and_inc(blocked_); }
 
 // Re-enable signal handling and deliver any pending signal.
 void Application::unblockSignals(bool deliverPending) {
     if (fetch_and_dec(blocked_) == 1) {
-        int pend = pending_;
-        pending_ = 0;
+        auto pend = static_cast<int>(pending_);
+        pending_  = 0;
         // directly deliver any pending signal to our sig handler
         if (pend && deliverPending) {
             processSignal(pend);
@@ -204,15 +204,9 @@ void Application::unblockSignals(bool deliverPending) {
 void Application::sigHandler(int sig) {
     // On Windows and original Unix, a handler once invoked is set to SIG_DFL.
     // Instead, we temporarily ignore signals and reset our handler once it is done.
-    struct ScopedSig {
-        ScopedSig(int s) : sig(s) {
-            signal(sig, SIG_IGN);
-            Application::getInstance()->processSignal(sig);
-        }
-        ~ScopedSig() { signal(sig, sigHandler); }
-        int sig;
-    } scoped(sig);
-    (void) scoped;
+    POTASSCO_SCOPE_EXIT({ signal(sig, sigHandler); });
+    signal(sig, SIG_IGN);
+    Application::getInstance()->processSignal(sig);
 }
 
 // Called on timeout or signal.
@@ -253,7 +247,7 @@ unsigned HelpParser::maxValue_s = 0;
 } // namespace
 
 // Process command-line options.
-bool Application::getOptions(int argc, char** argv) {
+bool Application::applyOptions(int argc, char** argv) {
     using namespace ProgramOptions;
     unsigned help    = 0;
     bool     version = false;

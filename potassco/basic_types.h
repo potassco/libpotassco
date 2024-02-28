@@ -32,12 +32,15 @@
  * to the extent possible.
  *
  * A specification of aspif can be found in Appendix A of:
- * http://www.cs.uni-potsdam.de/wv/pdfformat/gekakaosscwa16b.pdf
+ * https://www.cs.uni-potsdam.de/wv/publications/DBLP_conf/iclp/GebserKKOSW16x.pdf
  */
 #include <potassco/platform.h>
 
-#define LIB_POTASSCO_VERSION_MAJOR 1
-#define LIB_POTASSCO_VERSION_MINOR 1
+#include <span>
+#include <string_view>
+
+#define LIB_POTASSCO_VERSION_MAJOR 2
+#define LIB_POTASSCO_VERSION_MINOR 0
 #define LIB_POTASSCO_VERSION_PATCH 0
 #define LIB_POTASSCO_VERSION                                                                                           \
     POTASSCO_STRING(LIB_POTASSCO_VERSION_MAJOR)                                                                        \
@@ -62,23 +65,25 @@ namespace Potassco {
  */
 ///@{
 //! Ids are non-negative integers in the range [0..idMax].
-typedef uint32_t Id_t;
+using Id_t = uint32_t;
 //! Maximum value for ids.
-const Id_t idMax = static_cast<Id_t>(-1);
+constexpr Id_t idMax = static_cast<Id_t>(-1);
 //! Atom ids are positive integers in the range [atomMin..atomMax].
-typedef uint32_t Atom_t;
+using Atom_t = uint32_t;
 //! Minimum value for atom ids (must not be 0).
-const Atom_t atomMin = static_cast<Atom_t>(1);
+constexpr Atom_t atomMin = static_cast<Atom_t>(1);
 //! Maximum value for atom ids.
-const Atom_t atomMax = static_cast<Atom_t>(((1u) << 31) - 1);
+constexpr Atom_t atomMax = static_cast<Atom_t>(((1u) << 31) - 1);
 //! Literals are signed atoms.
-typedef int32_t Lit_t;
+using Lit_t = int32_t;
 //! (Literal) weights are integers.
-typedef int32_t Weight_t;
+using Weight_t = int32_t;
 //! A literal with an associated weight.
 struct WeightLit_t {
-    Lit_t    lit;    /**< Literal. */
-    Weight_t weight; /**< Associated weight. */
+    Lit_t                 lit;    //!< Literal.
+    Weight_t              weight; //!< Associated weight.
+    friend constexpr bool operator==(const WeightLit_t& lhs, const WeightLit_t& rhs)  = default;
+    friend constexpr auto operator<=>(const WeightLit_t& lhs, const WeightLit_t& rhs) = default;
 };
 //! Supported rule head types.
 struct Head_t {
@@ -96,35 +101,16 @@ struct Value_t {
     POTASSCO_ENUM_CONSTANTS(Value_t, Free = 0, True = 1, False = 2, Release = 3);
 };
 
-//! A span consists of a starting address and a length.
-/*!
- * A span does not own the data and it is in general not safe to store a span.
- */
-template <class T>
-struct Span {
-    //! Iterator type for iterating over the elements of a span.
-    typedef const T*    iterator;
-    typedef std::size_t size_t;
-    //! Returns the element at the given position, which shall be < size.
-    const T& operator[](std::size_t pos) const {
-        assert(pos < size);
-        return first[pos];
-    }
-
-    const T* first; /**< Pointer to first element of this span. */
-    size_t   size;  /**< Number of elements in this span. */
-};
-typedef Span<Id_t>        IdSpan;
-typedef Span<Atom_t>      AtomSpan;
-typedef Span<Lit_t>       LitSpan;
-typedef Span<WeightLit_t> WeightLitSpan;
-typedef Span<char>        StringSpan;
+using IdSpan        = std::span<const Id_t>;
+using AtomSpan      = std::span<const Atom_t>;
+using LitSpan       = std::span<const Lit_t>;
+using WeightLitSpan = std::span<const WeightLit_t>;
 
 //! Supported modifications for domain heuristic.
 struct Heuristic_t {
     //! Named constants.
     POTASSCO_ENUM_CONSTANTS(Heuristic_t, Level = 0, Sign = 1, Factor = 2, Init = 3, True = 4, False = 5);
-    static const StringSpan pred; /**< zero-terminated predicate name. */
+    static constexpr std::string_view pred = "_heuristic(";
 };
 //! Supported aspif directives.
 struct Directive_t {
@@ -159,7 +145,7 @@ public:
     //! Mark the given list of atoms as projection atoms.
     virtual void project(const AtomSpan& atoms);
     //! Output str whenever condition is true in a stable model.
-    virtual void output(const StringSpan& str, const LitSpan& condition);
+    virtual void output(const std::string_view& str, const LitSpan& condition);
     //! If v is not equal to Value_t::Release, mark a as external and assume value v. Otherwise, treat a as regular
     //! atom.
     virtual void external(Atom_t a, Value_t v);
@@ -181,7 +167,7 @@ public:
     //! Add a new number term.
     virtual void theoryTerm(Id_t termId, int number);
     //! Add a new symbolic term.
-    virtual void theoryTerm(Id_t termId, const StringSpan& name);
+    virtual void theoryTerm(Id_t termId, const std::string_view& name);
     //! Add a new compound (function or tuple) term.
     virtual void theoryTerm(Id_t termId, int cId, const IdSpan& args);
     //! Add a new theory atom element.
@@ -195,7 +181,7 @@ public:
     //! Called once after all rules and directives of the current program step were added.
     virtual void endStep();
 };
-typedef int (*ErrorHandler)(int line, const char* what);
+using ErrorHandler = int (*)(int line, const char* what);
 
 /*!
  * \defgroup BasicFunc Basic functions
@@ -204,89 +190,38 @@ typedef int (*ErrorHandler)(int line, const char* what);
  */
 ///@{
 //! Returns the id of the given atom.
-inline Id_t id(Atom_t a) { return static_cast<Id_t>(a); }
+constexpr Id_t id(Atom_t a) { return static_cast<Id_t>(a); }
 //! Returns the id of the given literal.
-inline Id_t id(Lit_t lit) { return static_cast<Id_t>(lit); }
+constexpr Id_t id(Lit_t lit) { return static_cast<Id_t>(lit); }
 //! Returns the atom of the given literal.
-inline Atom_t atom(Lit_t lit) { return static_cast<Atom_t>(lit >= 0 ? lit : -lit); }
+constexpr Atom_t atom(Lit_t lit) { return static_cast<Atom_t>(lit >= 0 ? lit : -lit); }
 //! Returns the atom of the given weight literal.
-inline Atom_t atom(const WeightLit_t& w) { return atom(w.lit); }
+constexpr Atom_t atom(const WeightLit_t& w) { return atom(w.lit); }
 //! Converts the given id back to a literal.
-inline Lit_t lit(Id_t a) { return static_cast<Lit_t>(a); }
+constexpr Lit_t lit(Id_t a) { return static_cast<Lit_t>(a); }
 //! Identity function for literals.
-inline Lit_t lit(Lit_t lit) { return lit; }
+constexpr Lit_t lit(Lit_t lit) { return lit; }
 //! Returns the literal of the given weight literal.
-inline Lit_t lit(const WeightLit_t& w) { return w.lit; }
+constexpr Lit_t lit(const WeightLit_t& w) { return w.lit; }
 //! Returns the negative literal of the given atom.
-inline Lit_t neg(Atom_t a) { return -lit(a); }
+constexpr Lit_t neg(Atom_t a) { return -lit(a); }
 //! Returns the complement of the given literal.
-inline Lit_t neg(Lit_t lit) { return -lit; }
+constexpr Lit_t neg(Lit_t lit) { return -lit; }
 //! Returns the weight of the given atom, which is always 1.
-inline Weight_t weight(Atom_t) { return 1; }
+constexpr Weight_t weight(Atom_t) { return 1; }
 //! Returns the weight of the given literal, which is always 1.
-inline Weight_t weight(Lit_t) { return 1; }
+constexpr Weight_t weight(Lit_t) { return 1; }
 //! Returns the weight of the given weight literal.
-inline Weight_t weight(const WeightLit_t& w) { return w.weight; }
-//! Returns whether the given span is empty, i.e. has size 0.
-template <class T>
-inline bool empty(const Span<T>& s) {
-    return s.size == 0;
-}
-//! Returns the size of the given span.
-template <class T>
-inline std::size_t size(const Span<T>& s) {
-    return s.size;
-}
-//! Returns a pointer to the first element of the given span.
-template <class T>
-inline const T* begin(const Span<T>& s) {
-    return s.first;
-}
-//! Returns a pointer one past the end of the given span.
-template <class T>
-inline const T* end(const Span<T>& s) {
-    return begin(s) + s.size;
-}
-//! Returns the element at the given position of the given span.
-/*!
- * \pre pos < size(s)
- */
-template <class T>
-inline const T& at(const Span<T>& s, std::size_t pos) {
-    return s[pos];
-}
+constexpr Weight_t weight(const WeightLit_t& w) { return w.weight; }
 
-inline bool operator==(const WeightLit_t& lhs, const WeightLit_t& rhs) {
-    return lit(lhs) == lit(rhs) && weight(lhs) == weight(rhs);
-}
-inline bool operator==(Lit_t lhs, const WeightLit_t& rhs) { return lit(lhs) == lit(rhs) && weight(rhs) == 1; }
-inline bool operator==(const WeightLit_t& lhs, Lit_t rhs) { return rhs == lhs; }
-inline bool operator!=(const WeightLit_t& lhs, const WeightLit_t& rhs) { return !(lhs == rhs); }
-inline bool operator!=(Lit_t lhs, const WeightLit_t& rhs) { return !(lhs == rhs); }
-inline bool operator!=(const WeightLit_t& lhs, Lit_t rhs) { return rhs != lhs; }
-inline bool operator<(const WeightLit_t& lhs, const WeightLit_t& rhs) {
-    return lhs.lit != rhs.lit ? lhs.lit < rhs.lit : lhs.weight < rhs.weight;
-}
-
-//! Creates a span from an array of size s.
-template <class T>
-inline Span<T> toSpan(const T* x, std::size_t s) {
-    Span<T> r = {x, s};
-    return r;
-}
-//! Creates an empty span.
-template <class T>
-inline Span<T> toSpan() {
-    return toSpan(static_cast<const T*>(0), 0);
-}
-//! Creates a span from a sequential (STL) container c.
-template <class C>
-inline Span<typename C::value_type> toSpan(const C& c) {
-    return !c.empty() ? toSpan(&c[0], c.size()) : toSpan<typename C::value_type>();
-}
+constexpr bool operator==(Lit_t lhs, const WeightLit_t& rhs) { return lit(lhs) == lit(rhs) && weight(rhs) == 1; }
+constexpr bool operator==(const WeightLit_t& lhs, Lit_t rhs) { return rhs == lhs; }
+constexpr bool operator!=(const WeightLit_t& lhs, const WeightLit_t& rhs) { return !(lhs == rhs); }
+constexpr bool operator!=(Lit_t lhs, const WeightLit_t& rhs) { return !(lhs == rhs); }
+constexpr bool operator!=(const WeightLit_t& lhs, Lit_t rhs) { return rhs != lhs; }
 
 //! Returns the string representation of the given heuristic modifier.
-inline const char* toString(Heuristic_t t) {
+constexpr const char* toString(Heuristic_t t) {
     switch (t) {
         case Heuristic_t::Level : return "level";
         case Heuristic_t::Sign  : return "sign";
@@ -312,14 +247,17 @@ class MemoryRegion {
 public:
     explicit MemoryRegion(std::size_t initialSize = 0);
     ~MemoryRegion();
+    MemoryRegion(const MemoryRegion&)            = delete;
+    MemoryRegion& operator=(const MemoryRegion&) = delete;
+
     //! Returns the current region size.
-    std::size_t size() const {
+    [[nodiscard]] std::size_t size() const {
         return static_cast<std::size_t>(static_cast<unsigned char*>(end_) - static_cast<unsigned char*>(beg_));
     }
     //! Returns a pointer to the beginning of the region.
-    void* begin() const { return beg_; }
+    [[nodiscard]] void* begin() const { return beg_; }
     //! Returns a pointer past-the-end of the region.
-    void* end() const { return end_; }
+    [[nodiscard]] void* end() const { return end_; }
     //! Returns a pointer into the region at the given index.
     /*!
      * \pre  idx < size()
@@ -340,10 +278,8 @@ public:
     void release();
 
 private:
-    MemoryRegion(const MemoryRegion&);
-    MemoryRegion& operator=(const MemoryRegion&);
-    void*         beg_;
-    void*         end_;
+    void* beg_;
+    void* end_;
 };
 inline void swap(MemoryRegion& lhs, MemoryRegion& rhs) { lhs.swap(rhs); }
 class RuleBuilder;

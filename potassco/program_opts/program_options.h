@@ -61,7 +61,7 @@ public:
      * \param description description of the option, used for printing help
      * \param value       value object to be associated with this option
      */
-    Option(const std::string& longName, char shortName, const char* description, Value* value);
+    Option(std::string_view longName, char shortName, const char* description, Value* value);
 
     [[nodiscard]] const std::string& name() const { return name_; }
     [[nodiscard]] char               alias() const { return value_->alias(); }
@@ -100,7 +100,7 @@ public:
     /*!
      * Creates a new group of options under the given caption.
      */
-    OptionGroup(const std::string& caption = "", DescriptionLevel descLevel = desc_level_default);
+    OptionGroup(std::string_view caption = "", DescriptionLevel descLevel = desc_level_default);
 
     //! Returns the caption of this group.
     [[nodiscard]] const std::string& caption() const { return caption_; }
@@ -185,7 +185,7 @@ public:
     using option_iterator = OptionList::const_iterator;
     using OptionRange     = PrefixRange;
 
-    OptionContext(const std::string& caption = "", DescriptionLevel desc_default = desc_level_default);
+    OptionContext(std::string_view caption = "", DescriptionLevel desc_default = desc_level_default);
 
     [[nodiscard]] const std::string& caption() const;
 
@@ -368,10 +368,11 @@ public:
     ParseContext& parse();
 
 protected:
-    ParseContext& ctx() const { return *ctx_; }
-    SharedOptPtr  getOption(const char* name, FindType ft) const { return ctx_->getOption(name, ft); }
-    SharedOptPtr  getOption(int posKey, const char* tok) const { return ctx_->getOption(posKey, tok); }
-    void          addOptionValue(const SharedOptPtr& key, const std::string& value) { ctx_->addValue(key, value); }
+    [[nodiscard]] ParseContext& ctx() const { return *ctx_; }
+
+    SharedOptPtr getOption(const char* name, FindType ft) const { return ctx_->getOption(name, ft); }
+    SharedOptPtr getOption(int posKey, const char* tok) const { return ctx_->getOption(posKey, tok); }
+    void         addOptionValue(const SharedOptPtr& key, const std::string& value) { ctx_->addValue(key, value); }
 
 private:
     virtual void  doParse() = 0;

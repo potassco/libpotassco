@@ -193,7 +193,7 @@ TEST_CASE("Text writer ", "[text]") {
     AspifTextInput    prg(&out);
     SECTION("empty program is empty") {
         REQUIRE(read(prg, input));
-        REQUIRE(output.str() == "");
+        REQUIRE(output.str().empty());
     }
     SECTION("simple fact") {
         input << "x1.";
@@ -341,20 +341,20 @@ TEST_CASE("Text writer writes theory", "[text]") {
     out.initProgram(false);
     out.beginStep();
     SECTION("write empty atom") {
-        out.theoryAtom(0, 0, Potassco::toSpan<Id_t>());
-        out.theoryTerm(0, Potassco::toSpan("t"));
+        out.theoryAtom(0, 0, {});
+        out.theoryTerm(0, "t");
         out.endStep();
         REQUIRE(output.str() == "&t{}.\n");
     }
     SECTION("write operators") {
-        out.theoryTerm(0, Potassco::toSpan("t"));
-        out.theoryTerm(1, Potassco::toSpan("x"));
-        out.theoryTerm(2, Potassco::toSpan("y"));
-        out.theoryTerm(3, Potassco::toSpan("^~\\?."));
+        out.theoryTerm(0, "t");
+        out.theoryTerm(1, "x");
+        out.theoryTerm(2, "y");
+        out.theoryTerm(3, "^~\\?.");
         std::vector<Id_t> ids;
-        out.theoryTerm(4, 3, Potassco::toSpan(ids = {1, 2}));
-        out.theoryElement(0, Potassco::toSpan(ids = {4}), Potassco::toSpan<Lit_t>());
-        out.theoryAtom(0, 0, Potassco::toSpan(ids = {0}));
+        out.theoryTerm(4, 3, (ids = {1, 2}));
+        out.theoryElement(0, (ids = {4}), {});
+        out.theoryAtom(0, 0, (ids = {0}));
         out.endStep();
         REQUIRE(output.str() == "&t{x ^~\\?. y}.\n");
     }
@@ -363,24 +363,24 @@ TEST_CASE("Text writer writes theory", "[text]") {
         out.theoryTerm(3, 400);
         out.theoryTerm(6, 1);
         out.theoryTerm(11, 2);
-        out.theoryTerm(0, Potassco::toSpan("diff"));
-        out.theoryTerm(2, Potassco::toSpan("<="));
-        out.theoryTerm(4, Potassco::toSpan("-"));
-        out.theoryTerm(5, Potassco::toSpan("end"));
-        out.theoryTerm(8, Potassco::toSpan("start"));
+        out.theoryTerm(0, "diff");
+        out.theoryTerm(2, "<=");
+        out.theoryTerm(4, "-");
+        out.theoryTerm(5, "end");
+        out.theoryTerm(8, "start");
         std::vector<Id_t> ids;
-        out.theoryTerm(7, 5, Potassco::toSpan(ids = {6}));
-        out.theoryTerm(9, 8, Potassco::toSpan(ids = {6}));
-        out.theoryTerm(10, 4, Potassco::toSpan(ids = {7, 9}));
-        out.theoryTerm(12, 5, Potassco::toSpan(ids = {11}));
-        out.theoryTerm(13, 8, Potassco::toSpan(ids = {11}));
-        out.theoryTerm(14, 4, Potassco::toSpan(ids = {12, 13}));
+        out.theoryTerm(7, 5, (ids = {6}));
+        out.theoryTerm(9, 8, (ids = {6}));
+        out.theoryTerm(10, 4, (ids = {7, 9}));
+        out.theoryTerm(12, 5, (ids = {11}));
+        out.theoryTerm(13, 8, (ids = {11}));
+        out.theoryTerm(14, 4, (ids = {12, 13}));
 
-        out.theoryElement(0, Potassco::toSpan(ids = {10}), Potassco::toSpan<Lit_t>());
-        out.theoryElement(1, Potassco::toSpan(ids = {14}), Potassco::toSpan<Lit_t>());
+        out.theoryElement(0, (ids = {10}), {});
+        out.theoryElement(1, (ids = {14}), {});
 
-        out.theoryAtom(0, 0, Potassco::toSpan(ids = {0}), 2, 1);
-        out.theoryAtom(0, 0, Potassco::toSpan(ids = {1}), 2, 3);
+        out.theoryAtom(0, 0, (ids = {0}), 2, 1);
+        out.theoryAtom(0, 0, (ids = {1}), 2, 3);
         out.endStep();
         REQUIRE(output.str() == "&diff{end(1) - start(1)} <= 200.\n"
                                 "&diff{end(2) - start(2)} <= 400.\n");
@@ -388,14 +388,14 @@ TEST_CASE("Text writer writes theory", "[text]") {
     SECTION("Use theory atom in rule") {
         Atom_t head = 2;
         Lit_t  body = 1;
-        out.rule(Head_t::Disjunctive, toSpan(&head, 1), toSpan(&body, 1));
-        out.theoryTerm(0, Potassco::toSpan("atom"));
-        out.theoryTerm(1, Potassco::toSpan("x"));
-        out.theoryTerm(2, Potassco::toSpan("y"));
+        out.rule(Head_t::Disjunctive, {&head, 1}, {&body, 1});
+        out.theoryTerm(0, "atom");
+        out.theoryTerm(1, "x");
+        out.theoryTerm(2, "y");
         std::vector<Id_t> ids;
-        out.theoryElement(0, Potassco::toSpan(ids = {1, 2}), Potassco::toSpan<Lit_t>());
-        out.theoryElement(1, Potassco::toSpan(ids = {2}), Potassco::toSpan<Lit_t>());
-        out.theoryAtom(1, 0, Potassco::toSpan(ids = {0, 1}));
+        out.theoryElement(0, (ids = {1, 2}), {});
+        out.theoryElement(1, (ids = {2}), {});
+        out.theoryAtom(1, 0, (ids = {0, 1}));
         out.endStep();
         REQUIRE(output.str() == "x_2 :- &atom{x, y; y}.\n");
     }
@@ -403,16 +403,16 @@ TEST_CASE("Text writer writes theory", "[text]") {
         std::vector<Atom_t> head;
         std::vector<Id_t>   ids;
         std::vector<Lit_t>  body;
-        out.rule(Head_t::Choice, toSpan(head = {1, 2}), toSpan<Lit_t>());
-        out.rule(Head_t::Disjunctive, toSpan(head = {4}), toSpan(body = {3}));
-        out.output(toSpan("y"), toSpan(body = {1}));
-        out.output(toSpan("z"), toSpan(body = {2}));
-        out.theoryTerm(0, Potassco::toSpan("atom"));
-        out.theoryTerm(1, Potassco::toSpan("elem"));
-        out.theoryTerm(2, Potassco::toSpan("p"));
-        out.theoryElement(0, Potassco::toSpan(ids = {1}), Potassco::toSpan(body = {1, -2}));
-        out.theoryElement(1, Potassco::toSpan(ids = {2}), Potassco::toSpan(body = {1}));
-        out.theoryAtom(3, 0, Potassco::toSpan(ids = {0, 1}));
+        out.rule(Head_t::Choice, (head = {1, 2}), {});
+        out.rule(Head_t::Disjunctive, (head = {4}), (body = {3}));
+        out.output("y", (body = {1}));
+        out.output("z", (body = {2}));
+        out.theoryTerm(0, "atom");
+        out.theoryTerm(1, "elem");
+        out.theoryTerm(2, "p");
+        out.theoryElement(0, (ids = {1}), (body = {1, -2}));
+        out.theoryElement(1, (ids = {2}), (body = {1}));
+        out.theoryAtom(3, 0, (ids = {0, 1}));
         out.endStep();
         REQUIRE(output.str() == "{y;z}.\n"
                                 "x_4 :- &atom{elem : y, not z; p : y}.\n");
@@ -423,29 +423,29 @@ TEST_CASE("Text writer writes theory", "[text]") {
         out.theoryTerm(1, 200);
         out.theoryTerm(6, 1);
         out.theoryTerm(11, 2);
-        out.theoryTerm(0, Potassco::toSpan("diff"));
-        out.theoryTerm(2, Potassco::toSpan("<="));
-        out.theoryTerm(4, Potassco::toSpan("-"));
-        out.theoryTerm(5, Potassco::toSpan("end"));
-        out.theoryTerm(8, Potassco::toSpan("start"));
+        out.theoryTerm(0, "diff");
+        out.theoryTerm(2, "<=");
+        out.theoryTerm(4, "-");
+        out.theoryTerm(5, "end");
+        out.theoryTerm(8, "start");
         std::vector<Id_t> ids;
-        out.theoryTerm(7, 5, Potassco::toSpan(ids = {6}));
-        out.theoryTerm(9, 8, Potassco::toSpan(ids = {6}));
-        out.theoryTerm(10, 4, Potassco::toSpan(ids = {7, 9}));
+        out.theoryTerm(7, 5, (ids = {6}));
+        out.theoryTerm(9, 8, (ids = {6}));
+        out.theoryTerm(10, 4, (ids = {7, 9}));
 
-        out.theoryElement(0, Potassco::toSpan(ids = {10}), Potassco::toSpan<Lit_t>());
-        out.theoryAtom(0, 0, Potassco::toSpan(ids = {0}), 2, 1);
+        out.theoryElement(0, (ids = {10}), {});
+        out.theoryAtom(0, 0, (ids = {0}), 2, 1);
         out.endStep();
         REQUIRE(output.str() == "% #program base.\n"
                                 "&diff{end(1) - start(1)} <= 200.\n");
         output.str("");
         out.beginStep();
         out.theoryTerm(1, 600);
-        out.theoryTerm(12, 5, Potassco::toSpan(ids = {11}));
-        out.theoryTerm(13, 8, Potassco::toSpan(ids = {11}));
-        out.theoryTerm(14, 4, Potassco::toSpan(ids = {12, 13}));
-        out.theoryElement(0, Potassco::toSpan(ids = {14}), Potassco::toSpan<Lit_t>());
-        out.theoryAtom(0, 0, Potassco::toSpan(ids = {0}), 2, 1);
+        out.theoryTerm(12, 5, (ids = {11}));
+        out.theoryTerm(13, 8, (ids = {11}));
+        out.theoryTerm(14, 4, (ids = {12, 13}));
+        out.theoryElement(0, (ids = {14}), {});
+        out.theoryAtom(0, 0, (ids = {0}), 2, 1);
         out.endStep();
         REQUIRE(output.str() == "% #program step(1).\n"
                                 "&diff{end(2) - start(2)} <= 600.\n");

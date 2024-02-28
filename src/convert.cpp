@@ -31,7 +31,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-typedef std::unordered_map<Potassco::Atom_t, const char*> SymTab;
+using SymTab = std::unordered_map<Potassco::Atom_t, const char*>;
 #if defined(_MSC_VER)
 #pragma warning(disable : 4996)
 #endif
@@ -51,23 +51,23 @@ struct SmodelsConvert::SmData {
     struct Heuristic {
         Atom_t      atom;
         Heuristic_t type;
-        int         bias;
-        unsigned    prio;
-        unsigned    cond;
+        int         bias{};
+        unsigned    prio{};
+        unsigned    cond{};
     };
     struct Symbol {
         unsigned    atom : 31;
         unsigned    hash : 1;
-        const char* name;
+        const char* name{};
         bool        operator<(const Symbol& rhs) const { return atom < rhs.atom; }
     };
-    typedef std::vector<Atom>           AtomMap;
-    typedef std::vector<Atom_t>         AtomVec;
-    typedef std::vector<Lit_t>          LitVec;
-    typedef std::vector<WeightLit_t>    WLitVec;
-    typedef std::vector<Heuristic>      HeuVec;
-    typedef std::map<Weight_t, WLitVec> MinMap;
-    typedef std::vector<Symbol>         OutVec;
+    using AtomMap = std::vector<Atom>;
+    using AtomVec = std::vector<Atom_t>;
+    using LitVec  = std::vector<Lit_t>;
+    using WLitVec = std::vector<WeightLit_t>;
+    using HeuVec  = std::vector<Heuristic>;
+    using MinMap  = std::map<Weight_t, WLitVec>;
+    using OutVec  = std::vector<Symbol>;
     SmData() : next_(2) {}
     ~SmData() {
         flushStep();
@@ -101,17 +101,16 @@ struct SmodelsConvert::SmData {
     }
     AtomSpan mapHead(const AtomSpan& h);
     template <class T>
-    Span<T> mapLits(const Span<T>& in, std::vector<T>& out) {
+    auto mapLits(const std::span<const T>& in, std::vector<T>& out) -> std::span<const T> {
         out.clear();
-        for (typename Span<T>::iterator x = begin(in); x != end(in); ++x) { out.push_back(mapLit(*x)); }
-        return toSpan(out);
+        for (const auto& x : in) { out.push_back(mapLit(x)); }
+        return out;
     }
-    const char* addOutput(Atom_t atom, const StringSpan&, bool addHash);
+    const char* addOutput(Atom_t atom, const std::string_view&, bool addHash);
     void        addMinimize(Weight_t prio, const WeightLitSpan& lits) {
         WLitVec& body = minimize_[prio];
         body.reserve(body.size() + size(lits));
-        for (const WeightLit_t* it = begin(lits); it != end(lits); ++it) {
-            WeightLit_t x = *it;
+        for (auto x : lits) {
             if (weight(x) < 0) {
                 x.lit    = -x.lit;
                 x.weight = -x.weight;
@@ -153,14 +152,14 @@ struct SmodelsConvert::SmData {
 };
 AtomSpan SmodelsConvert::SmData::mapHead(const AtomSpan& h) {
     head_.clear();
-    for (const Atom_t* x = begin(h); x != end(h); ++x) { head_.push_back(mapHeadAtom(*x)); }
+    for (auto a : h) { head_.push_back(mapHeadAtom(a)); }
     if (head_.empty()) {
         head_.push_back(falseAtom());
     }
-    return toSpan(head_);
+    return head_;
 }
-const char* SmodelsConvert::SmData::addOutput(Atom_t atom, const StringSpan& str, bool addHash) {
-    char* n                             = new char[str.size + 1];
+const char* SmodelsConvert::SmData::addOutput(Atom_t atom, const std::string_view& str, bool addHash) {
+    char* n                             = new char[str.size() + 1];
     *std::copy(begin(str), end(str), n) = 0;
     Symbol s{.atom = atom, .hash = 0, .name = n};
     if (addHash && symTab_.insert(SymTab::value_type(atom, s.name)).second) {
@@ -185,7 +184,7 @@ Atom_t SmodelsConvert::makeAtom(const LitSpan& cond, bool named) {
     if (size(cond) != 1 || cond[0] < 0 || (data_->mapAtom(atom(cond[0])).show && named)) {
         // aux :- cond.
         Atom_t aux = (id = data_->newAtom());
-        out_.rule(Head_t::Disjunctive, toSpan(&aux, 1), data_->mapLits(cond, data_->lits_));
+        out_.rule(Head_t::Disjunctive, {&aux, 1}, data_->mapLits(cond, data_->lits_));
     }
     else {
         SmData::Atom& ma = data_->mapAtom(atom(*begin(cond)));
@@ -212,13 +211,13 @@ void SmodelsConvert::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const
         }
         Atom_t aux = data_->newAtom();
         data_->lits_.assign(1, lit(aux));
-        out_.rule(Head_t::Disjunctive, toSpan(&aux, 1), bound, mBody);
-        out_.rule(ht, mHead, toSpan(data_->lits_));
+        out_.rule(Head_t::Disjunctive, {&aux, 1}, bound, mBody);
+        out_.rule(ht, mHead, data_->lits_);
     }
 }
 
 void SmodelsConvert::minimize(Weight_t prio, const WeightLitSpan& lits) { data_->addMinimize(prio, lits); }
-void SmodelsConvert::output(const StringSpan& str, const LitSpan& cond) {
+void SmodelsConvert::output(const std::string_view& str, const LitSpan& cond) {
     // create a unique atom for cond and set its name to str
     data_->addOutput(makeAtom(cond, true), str, true);
 }
@@ -238,7 +237,7 @@ void SmodelsConvert::acycEdge(int s, int t, const LitSpan& condition) {
     }
     StringBuilder buf;
     buf.appendFormat("_edge(%d,%d)", s, t);
-    data_->addOutput(makeAtom(condition, true), toSpan(buf), false);
+    data_->addOutput(makeAtom(condition, true), buf.view(), false);
 }
 
 void SmodelsConvert::flush() {
@@ -247,7 +246,7 @@ void SmodelsConvert::flush() {
     flushHeuristic();
     flushSymbols();
     Lit_t f = -static_cast<Lit_t>(data_->falseAtom());
-    out_.assume(toSpan(&f, 1));
+    out_.assume({&f, 1});
     data_->flushStep();
 }
 void SmodelsConvert::endStep() {
@@ -256,11 +255,11 @@ void SmodelsConvert::endStep() {
 }
 void SmodelsConvert::flushMinimize() {
     for (const auto& [prio, lits] : data_->minimize_) {
-        out_.minimize(prio, data_->mapLits(toSpan(lits), data_->wlits_));
+        out_.minimize(prio, data_->mapLits(std::span{lits}, data_->wlits_));
     }
 }
 void SmodelsConvert::flushExternal() {
-    LitSpan T = toSpan<Lit_t>();
+    LitSpan T{};
     data_->head_.clear();
     for (auto ext : data_->extern_) {
         SmData::Atom& a  = data_->mapAtom(ext);
@@ -274,7 +273,7 @@ void SmodelsConvert::flushExternal() {
                 data_->head_.push_back(at);
             }
             else if (vt == Value_t::True) {
-                out_.rule(Head_t::Disjunctive, toSpan(&at, 1), T);
+                out_.rule(Head_t::Disjunctive, {&at, 1}, T);
             }
         }
         else {
@@ -282,7 +281,7 @@ void SmodelsConvert::flushExternal() {
         }
     }
     if (!data_->head_.empty()) {
-        out_.rule(Head_t::Choice, toSpan(data_->head_), T);
+        out_.rule(Head_t::Choice, data_->head_, T);
     }
 }
 void SmodelsConvert::flushHeuristic() {
@@ -297,19 +296,19 @@ void SmodelsConvert::flushHeuristic() {
             ma.show = 1;
             buf.clear();
             buf.appendFormat("_atom(%u)", ma.smId);
-            name = data_->addOutput(ma, toSpan(buf), true);
+            name = data_->addOutput(ma, buf.view(), true);
         }
         buf.clear();
         buf.appendFormat("_heuristic(%s,%s,%d,%u)", name, toString(heu.type), heu.bias, heu.prio);
         auto c = static_cast<Lit_t>(heu.cond);
-        out_.output(toSpan(buf), toSpan(&c, 1));
+        out_.output(buf.view(), {&c, 1});
     }
 }
 void SmodelsConvert::flushSymbols() {
     std::sort(data_->output_.begin(), data_->output_.end());
     for (const auto& sym : data_->output_) {
         auto x = static_cast<Lit_t>(sym.atom);
-        out_.output(toSpan(sym.name, std::strlen(sym.name)), toSpan(&x, 1));
+        out_.output(sym.name, {&x, 1});
     }
 }
 } // namespace Potassco

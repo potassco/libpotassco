@@ -79,6 +79,9 @@ class AspifOutput : public AbstractProgram {
 public:
     //! Creates a new object and associates it with the given output stream.
     AspifOutput(std::ostream& os);
+    AspifOutput(const AspifOutput&)            = delete;
+    AspifOutput& operator=(const AspifOutput&) = delete;
+
     //! Writes an aspif header to the stream.
     void initProgram(bool incremental) override;
     //! Prepares the object for a new program step.
@@ -90,7 +93,7 @@ public:
     //! Writes an aspif minimize directive.
     void minimize(Weight_t prio, const WeightLitSpan& lits) override;
     //! Writes an aspif output directive.
-    void output(const StringSpan& str, const LitSpan& cond) override;
+    void output(const std::string_view& str, const LitSpan& cond) override;
     //! Writes an aspif external directive.
     void external(Atom_t a, Value_t v) override;
     //! Writes an aspif assumption directive.
@@ -105,7 +108,7 @@ public:
     //! Writes an aspif theory number term.
     void theoryTerm(Id_t termId, int number) override;
     //! Writes an aspif theory symbolic term.
-    void theoryTerm(Id_t termId, const StringSpan& name) override;
+    void theoryTerm(Id_t termId, const std::string_view& name) override;
     //! Writes an aspif theory compound term.
     void theoryTerm(Id_t termId, int compound, const IdSpan& args) override;
     //! Writes an aspif theory element directive.
@@ -122,6 +125,7 @@ protected:
     AspifOutput& startDir(Directive_t r);
     //! Writes x.
     AspifOutput& add(int x);
+    AspifOutput& add(unsigned x);
     //! Writes size(lits) followed by the elements in lits.
     AspifOutput& add(const WeightLitSpan& lits);
     //! Writes size(lits) followed by the literals in lits.
@@ -129,13 +133,11 @@ protected:
     //! Writes size(atoms) followed by the atoms in atoms.
     AspifOutput& add(const AtomSpan& atoms);
     //! Writes size(str) followed by the characters in str.
-    AspifOutput& add(const StringSpan& str);
+    AspifOutput& add(const std::string_view& str);
     //! Terminates the active directive by writing a newline.
     AspifOutput& endDir();
 
 private:
-    AspifOutput(const AspifOutput&);
-    AspifOutput&  operator=(const AspifOutput&);
     std::ostream& os_;
 };
 } // namespace Potassco

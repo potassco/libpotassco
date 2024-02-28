@@ -38,8 +38,9 @@ struct AspifTextInput::Data {
         rule.clear();
         symbol.clear();
     }
-    AtomSpan    atoms() const { return rule.head(); }
-    LitSpan     lits() const { return rule.body(); }
+    [[nodiscard]] AtomSpan atoms() const { return rule.head(); }
+    [[nodiscard]] LitSpan  lits() const { return rule.body(); }
+
     RuleBuilder rule;
     std::string symbol;
 };
@@ -138,7 +139,7 @@ bool AspifTextInput::matchDirective() {
         matchTerm();
         matchCondition();
         match(".");
-        out_->output(toSpan(data_->symbol), data_->lits());
+        out_->output(data_->symbol, data_->lits());
     }
     else if (match("#external", false)) {
         Atom_t  a = matchId();
@@ -321,10 +322,7 @@ void AspifTextInput::matchAtomArg() {
             matchStr();
         }
         else {
-            if (c == ')' && --p < 0) {
-                break;
-            }
-            else if (c == ',' && p == 0) {
+            if ((c == ')' && --p < 0) || (c == ',' && p == 0)) {
                 break;
             }
             p += int(c == '(');
@@ -346,12 +344,14 @@ void AspifTextInput::matchStr() {
 // AspifTextOutput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifTextOutput::Data {
-    typedef std::vector<std::string> StringVec;
-    typedef std::vector<Id_t>        AtomMap;
-    typedef std::vector<Lit_t>       LitVec;
-    typedef std::vector<uint32_t>    RawVec;
-    LitSpan getCondition(Id_t id) const { return toSpan(&conditions[id + 1], static_cast<size_t>(conditions[id])); }
-    Id_t    addCondition(const LitSpan& cond) {
+    using StringVec = std::vector<std::string>;
+    using AtomMap   = std::vector<Id_t>;
+    using LitVec    = std::vector<Lit_t>;
+    using RawVec    = std::vector<uint32_t>;
+    [[nodiscard]] LitSpan getCondition(Id_t id) const {
+        return {&conditions[id + 1], static_cast<size_t>(conditions[id])};
+    }
+    Id_t addCondition(const LitSpan& cond) {
         if (conditions.empty()) {
             conditions.push_back(0);
         }
@@ -363,16 +363,16 @@ struct AspifTextOutput::Data {
         conditions.insert(conditions.end(), begin(cond), end(cond));
         return id;
     }
-    Id_t addString(const StringSpan& str) {
+    Id_t addString(const std::string_view& str) {
         Id_t id = static_cast<Id_t>(strings.size());
-        strings.push_back(std::string(Potassco::begin(str), Potassco::end(str)));
+        strings.emplace_back(str);
         return id;
     }
     RawVec    directives;
     StringVec strings;
     AtomMap   atoms; // maps into strings
     LitVec    conditions;
-    uint32_t  readPos;
+    uint32_t  readPos{};
     void      reset() {
         directives.clear();
         strings.clear();
@@ -383,7 +383,7 @@ struct AspifTextOutput::Data {
 };
 AspifTextOutput::AspifTextOutput(std::ostream& os) : os_(os), step_(-1) { data_ = new Data(); }
 AspifTextOutput::~AspifTextOutput() { delete data_; }
-void AspifTextOutput::addAtom(Atom_t id, const StringSpan& str) {
+void AspifTextOutput::addAtom(Atom_t id, const std::string_view& str) {
     if (id >= data_->atoms.size()) {
         data_->atoms.resize(id + 1, idMax);
     }
@@ -423,34 +423,32 @@ void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body)
 }
 void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) {
     if (size(lits) == 0) {
-        AspifTextOutput::rule(ht, head, toSpan<Lit_t>());
+        AspifTextOutput::rule(ht, head, {});
     }
     push(Directive_t::Rule).push(static_cast<uint32_t>(ht)).push(head);
-    uint32_t top = static_cast<uint32_t>(data_->directives.size());
-    Weight_t min = weight(*begin(lits)), max = min;
+    auto top = static_cast<uint32_t>(data_->directives.size());
+    auto min = weight(*begin(lits)), max = min;
     push(Body_t::Sum).push(bound).push(static_cast<uint32_t>(size(lits)));
-    for (const WeightLit_t *it = begin(lits), *end = Potassco::end(lits); it != end; ++it) {
-        push(Potassco::lit(*it)).push(Potassco::weight(*it));
-        if (Potassco::weight(*it) < min) {
-            min = Potassco::weight(*it);
+    for (const auto& wl : lits) {
+        push(Potassco::lit(wl)).push(Potassco::weight(wl));
+        if (Potassco::weight(wl) < min) {
+            min = Potassco::weight(wl);
         }
-        if (Potassco::weight(*it) > max) {
-            max = Potassco::weight(*it);
+        if (Potassco::weight(wl) > max) {
+            max = Potassco::weight(wl);
         }
     }
     if (min == max) {
         data_->directives.resize(top);
         bound = (bound + min - 1) / min;
         push(Body_t::Count).push(bound).push(static_cast<uint32_t>(size(lits)));
-        for (const WeightLit_t *it = begin(lits), *end = Potassco::end(lits); it != end; ++it) {
-            push(Potassco::lit(*it));
-        }
+        for (const auto& wl : lits) { push(Potassco::lit(wl)); }
     }
 }
 void AspifTextOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
     push(Directive_t::Minimize).push(lits).push(prio);
 }
-void AspifTextOutput::output(const StringSpan& str, const LitSpan& cond) {
+void AspifTextOutput::output(const std::string_view& str, const LitSpan& cond) {
     bool isAtom = size(str) > 0 && (std::islower(static_cast<unsigned char>(*begin(str))) || *begin(str) == '_');
     if (size(cond) == 1 && lit(*begin(cond)) > 0 && isAtom) {
         addAtom(Potassco::atom(*begin(cond)), str);
@@ -471,7 +469,7 @@ void AspifTextOutput::heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio
     push(Directive_t::Heuristic).push(a).push(condition).push(bias).push(prio).push(static_cast<uint32_t>(t));
 }
 void AspifTextOutput::theoryTerm(Id_t termId, int number) { theory_.addTerm(termId, number); }
-void AspifTextOutput::theoryTerm(Id_t termId, const StringSpan& name) { theory_.addTerm(termId, name); }
+void AspifTextOutput::theoryTerm(Id_t termId, const std::string_view& name) { theory_.addTerm(termId, name); }
 void AspifTextOutput::theoryTerm(Id_t termId, int compound, const IdSpan& args) {
     theory_.addTerm(termId, compound, args);
 }
@@ -505,17 +503,16 @@ AspifTextOutput& AspifTextOutput::push(const LitSpan& lits) {
 AspifTextOutput& AspifTextOutput::push(const WeightLitSpan& wlits) {
     data_->directives.reserve(data_->directives.size() + (2 * size(wlits)));
     data_->directives.push_back(static_cast<uint32_t>(size(wlits)));
-    for (WeightLitSpan::iterator it = begin(wlits), end = Potassco::end(wlits); it != end; ++it) {
-        data_->directives.push_back(static_cast<uint32_t>(lit(*it)));
-        data_->directives.push_back(static_cast<uint32_t>(weight(*it)));
+    for (const auto& wl : wlits) {
+        data_->directives.push_back(static_cast<uint32_t>(lit(wl)));
+        data_->directives.push_back(static_cast<uint32_t>(weight(wl)));
     }
     return *this;
 }
 void AspifTextOutput::writeDirectives() {
-    const char *sep = nullptr, *term = nullptr;
     data_->readPos = 0;
     for (uint32_t x; (x = get<uint32_t>()) != Directive_t::End;) {
-        sep = term = "";
+        auto sep = "", term = "";
         switch (x) {
             case Directive_t::Rule:
                 if (get<uint32_t>() != 0) {
@@ -547,6 +544,7 @@ void AspifTextOutput::writeDirectives() {
                         }
                         os_ << "}";
                         break;
+                    default: break;
                 }
                 break;
             case Directive_t::Minimize:
@@ -612,8 +610,8 @@ void AspifTextOutput::writeDirectives() {
 void AspifTextOutput::visitTheories() {
     struct BuildStr : public TheoryAtomStringBuilder {
         explicit BuildStr(AspifTextOutput& s) : self(&s) {}
-        LitSpan     getCondition(Id_t condId) const override { return self->data_->getCondition(condId); }
-        std::string getName(Atom_t id) const override {
+        [[nodiscard]] LitSpan     getCondition(Id_t condId) const override { return self->data_->getCondition(condId); }
+        [[nodiscard]] std::string getName(Atom_t id) const override {
             if (id < self->data_->atoms.size() && self->data_->atoms[id] < self->data_->strings.size()) {
                 return self->data_->strings[self->data_->atoms[id]];
             }
@@ -631,7 +629,7 @@ void AspifTextOutput::visitTheories() {
             POTASSCO_REQUIRE(atom >= data_->atoms.size() || data_->atoms[atom] == idMax,
                              "Redefinition: theory atom '%u' already shown as '%s'", atom,
                              data_->strings[data_->atoms[atom]].c_str());
-            addAtom(atom, toSpan(name));
+            addAtom(atom, name);
         }
     }
 }
@@ -705,12 +703,12 @@ TheoryAtomStringBuilder& TheoryAtomStringBuilder::element(const TheoryData& data
     if (e.condition()) {
         LitSpan cond = getCondition(e.condition());
         sep          = " : ";
-        for (const Lit_t *it = begin(cond), *end = Potassco::end(cond); it != end; ++it, sep = ", ") {
-            add(sep);
-            if (*it < 0) {
+        for (const auto& lit : cond) {
+            add(std::exchange(sep, ", "));
+            if (lit < 0) {
                 add("not ");
             }
-            add(getName(atom(*it)));
+            add(getName(atom(lit)));
         }
     }
     return *this;

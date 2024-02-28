@@ -23,7 +23,7 @@
 #include <potassco/application.h>
 #include <potassco/program_opts/typed_value.h>
 
-#include <signal.h>
+#include <csignal>
 
 namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
@@ -58,11 +58,11 @@ struct MyApp : public Potassco::Application {
         return true;
     }
     using Potassco::Application::verbose;
-    typedef std::vector<std::string> StringSeq;
-    int                              foo;
-    StringSeq                        input;
-    std::string                      desc;
-    mutable std::string              err;
+    using StringSeq         = std::vector<std::string>;
+    int                 foo = {};
+    StringSeq           input;
+    std::string         desc;
+    mutable std::string err;
 };
 
 TEST_CASE("Test application", "[app]") {

@@ -36,7 +36,7 @@ AbstractProgram::~AbstractProgram() = default;
 void AbstractProgram::initProgram(bool) {}
 void AbstractProgram::beginStep() {}
 void AbstractProgram::project(const AtomSpan&) { throw std::logic_error("projection directive not supported"); }
-void AbstractProgram::output(const StringSpan&, const LitSpan&) {
+void AbstractProgram::output(const std::string_view&, const LitSpan&) {
     throw std::logic_error("output directive not supported");
 }
 void AbstractProgram::external(Atom_t, Value_t) { throw std::logic_error("external directive not supported"); }
@@ -46,7 +46,7 @@ void AbstractProgram::heuristic(Atom_t, Heuristic_t, int, unsigned, const LitSpa
 }
 void AbstractProgram::acycEdge(int, int, const LitSpan&) { throw std::logic_error("edge directive not supported"); }
 void AbstractProgram::theoryTerm(Id_t, int) { throw std::logic_error("theory data not supported"); }
-void AbstractProgram::theoryTerm(Id_t, const StringSpan&) { throw std::logic_error("theory data not supported"); }
+void AbstractProgram::theoryTerm(Id_t, const std::string_view&) { throw std::logic_error("theory data not supported"); }
 void AbstractProgram::theoryTerm(Id_t, int, const IdSpan&) { throw std::logic_error("theory data not supported"); }
 void AbstractProgram::theoryElement(Id_t, const IdSpan&, const LitSpan&) {
     throw std::logic_error("theory data not supported");
@@ -55,8 +55,7 @@ void AbstractProgram::theoryAtom(Id_t, Id_t, const IdSpan&) { throw std::logic_e
 void AbstractProgram::theoryAtom(Id_t, Id_t, const IdSpan&, Id_t, Id_t) {
     throw std::logic_error("theory data not supported");
 }
-void             AbstractProgram::endStep() {}
-const StringSpan Heuristic_t::pred = {"_heuristic(", 11};
+void AbstractProgram::endStep() {}
 /////////////////////////////////////////////////////////////////////////////////////////
 // BufferedStream
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -101,7 +100,7 @@ void BufferedStream::underflow(bool upPos) {
     }
     auto n = static_cast<std::streamsize>(ALLOC_SIZE - (1 + rpos_));
     str_.read(buf_ + rpos_, n);
-    auto r          = static_cast<std::size_t>(str_.gcount());
+    auto r          = str_.gcount();
     buf_[r + rpos_] = 0;
 }
 bool BufferedStream::unget(char c) {
@@ -225,7 +224,7 @@ int readProgram(std::istream& str, ProgramReader& reader, ErrorHandler err) {
         if (!err) {
             throw;
         }
-        return err(reader.line(), e.what());
+        return err((int) reader.line(), e.what());
     }
     return 0;
 }
@@ -240,7 +239,7 @@ bool match(const char*& input, const char* word) {
     }
     return false;
 }
-bool matchAtomArg(const char*& input, StringSpan& arg) {
+bool matchAtomArg(const char*& input, std::string_view& arg) {
     const char* scan = input;
     for (int p = 0; *scan; ++scan) {
         if (*scan == '(') {
@@ -264,9 +263,9 @@ bool matchAtomArg(const char*& input, StringSpan& arg) {
             }
         }
     }
-    arg   = toSpan(input, static_cast<std::size_t>(scan - input));
+    arg   = {input, static_cast<std::size_t>(scan - input)};
     input = scan;
-    return arg.size != 0;
+    return not arg.empty();
 }
 bool match(const char*& input, Heuristic_t& heuType) {
     for (unsigned x = 0; x <= static_cast<unsigned>(Heuristic_t::eMax); ++x) {
@@ -289,7 +288,7 @@ bool match(const char*& input, int& out) {
     return true;
 }
 
-int matchDomHeuPred(const char*& in, StringSpan& atom, Heuristic_t& type, int& bias, unsigned& prio) {
+int matchDomHeuPred(const char*& in, std::string_view& atom, Heuristic_t& type, int& bias, unsigned& prio) {
     int p;
     if (!match(in, begin(Heuristic_t::pred))) {
         return 0;
@@ -314,11 +313,12 @@ int matchDomHeuPred(const char*& in, StringSpan& atom, Heuristic_t& type, int& b
     return match(in, ")") ? 1 : -4;
 }
 
-int matchEdgePred(const char*& in, StringSpan& n0, StringSpan& n1) {
+int matchEdgePred(const char*& in, std::string_view& n0, std::string_view& n1) {
     int sPos, tPos, ePos = -1;
     if (sscanf(in, "_acyc_%*d_%n%*d_%n%*d%n", &sPos, &tPos, &ePos) == 0 && ePos > 0) {
-        n0  = toSpan(in + sPos, (tPos - sPos) - 1);
-        n1  = toSpan(in + tPos, ePos - tPos);
+        POTASSCO_ASSERT(tPos >= sPos && ePos >= tPos);
+        n0  = {in + sPos, std::size_t(tPos - sPos) - 1};
+        n1  = {in + tPos, std::size_t(ePos - tPos)};
         in += ePos;
         return size(n0) > 0 && size(n1) > 0 ? 1 : -1;
     }

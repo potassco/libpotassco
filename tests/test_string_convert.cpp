@@ -98,10 +98,10 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(Potassco::string_cast(p) == "10,false");
         REQUIRE((Potassco::string_cast<std::pair<int, bool>>("10,false") == p));
 
-        typedef std::pair<int, int> IntPair;
-        IntPair                     x;
-        std::string                 value("(1,2)");
-        bool                        ok = Potassco::string_cast(value, x);
+        using IntPair = std::pair<int, int>;
+        IntPair     x;
+        std::string value("(1,2)");
+        bool        ok = Potassco::string_cast(value, x);
         REQUIRE(ok);
         REQUIRE(x == IntPair(1, 2));
         REQUIRE(Potassco::string_cast("7", x));
@@ -111,7 +111,7 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(x == IntPair(7, 2));
     }
     SECTION("Pairs can be nested") {
-        typedef std::pair<int, int> IntPair;
+        using IntPair = std::pair<int, int>;
         std::pair<IntPair, IntPair> x;
         std::string                 value("((1,2),(3,4))");
         REQUIRE(Potassco::string_cast(value, x));
@@ -144,7 +144,7 @@ TEST_CASE("String conversion", "[string]") {
     }
 
     SECTION("double parsing is locale-independent") {
-        typedef std::pair<std::string, std::string> P;
+        using P           = std::pair<std::string, std::string>;
         P           lcg[] = {P("de", "DE"), P("el", "GR"), P("ru", "RU"), P("es", "ES"), P("it", "IT")};
         const char* x     = nullptr;
 #if defined(_MSC_VER) && _MSC_VER <= 1600
@@ -167,9 +167,9 @@ TEST_CASE("String conversion", "[string]") {
     }
 
     SECTION("vectors can be converted") {
-        typedef std::vector<int> Vec;
-        Vec                      x;
-        std::string              value("[1,2,3,4]");
+        using Vec = std::vector<int>;
+        Vec         x;
+        std::string value("[1,2,3,4]");
         REQUIRE(Potassco::string_cast(value, x));
         REQUIRE(x.size() == 4);
         REQUIRE(x[0] == 1);
@@ -181,10 +181,10 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(!Potassco::string_cast("1,2,", x));
     }
     SECTION("vectors can be nested") {
-        typedef std::vector<int> Vec;
-        typedef std::vector<Vec> VecVec;
-        VecVec                   x;
-        std::string              value("[[1,2],[3,4]]");
+        using Vec    = std::vector<int>;
+        using VecVec = std::vector<Vec>;
+        VecVec      x;
+        std::string value("[[1,2],[3,4]]");
         REQUIRE(Potassco::string_cast(value, x));
         REQUIRE((x.size() == 2 && x[0].size() == 2 && x[1].size() == 2));
         REQUIRE(x[0][0] == 1);
@@ -217,7 +217,7 @@ TEST_CASE("String builder", "[string]") {
     SECTION("empty builder") {
         StringBuilder builder;
         REQUIRE(std::strcmp(builder.c_str(), "") == 0);
-        REQUIRE(builder.size() == 0);
+        REQUIRE(builder.empty());
     }
     SECTION("append string") {
         StringBuilder builder;

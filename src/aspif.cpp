@@ -93,7 +93,7 @@ bool AspifInput::doParse() {
                     case CR(Output):
                         matchString();
                         matchLits();
-                        out_.output(toSpan(data.sym), rule.body());
+                        out_.output(data.sym, rule.body());
                         break;
                 }
             case CR(External):
@@ -164,18 +164,18 @@ void AspifInput::matchTheory(unsigned rt) {
         case Theory_t::Number: out_.theoryTerm(tId, matchInt()); break;
         case Theory_t::Symbol:
             matchString();
-            out_.theoryTerm(tId, toSpan(data_->sym));
+            out_.theoryTerm(tId, data_->sym);
             break;
         case Theory_t::Compound: {
             int type = matchInt(Tuple_t::eMin, INT_MAX, "unrecognized compound term type");
             matchIds();
-            out_.theoryTerm(tId, type, toSpan(data_->ids));
+            out_.theoryTerm(tId, type, data_->ids);
             break;
         }
         case Theory_t::Element: {
             matchIds();
             matchLits();
-            out_.theoryElement(tId, toSpan(data_->ids), rule_->body());
+            out_.theoryElement(tId, data_->ids, rule_->body());
             break;
         }
         case Theory_t::Atom: // fall through
@@ -183,11 +183,11 @@ void AspifInput::matchTheory(unsigned rt) {
             Id_t termId = matchPos();
             matchIds();
             if (rt == Theory_t::Atom) {
-                out_.theoryAtom(tId, termId, toSpan(data_->ids));
+                out_.theoryAtom(tId, termId, data_->ids);
             }
             else {
                 Id_t opId = matchPos();
-                out_.theoryAtom(tId, termId, toSpan(data_->ids), opId, matchPos());
+                out_.theoryAtom(tId, termId, data_->ids, opId, matchPos());
             }
             break;
         }
@@ -211,22 +211,26 @@ AspifOutput& AspifOutput::add(int x) {
     os_ << " " << x;
     return *this;
 }
+AspifOutput& AspifOutput::add(unsigned x) {
+    os_ << " " << x;
+    return *this;
+}
 AspifOutput& AspifOutput::add(const WeightLitSpan& lits) {
     os_ << " " << size(lits);
-    for (const WeightLit_t* x = begin(lits); x != end(lits); ++x) { os_ << " " << lit(*x) << " " << weight(*x); }
+    for (const auto& wl : lits) { os_ << " " << lit(wl) << " " << weight(wl); }
     return *this;
 }
 AspifOutput& AspifOutput::add(const LitSpan& lits) {
     os_ << " " << size(lits);
-    for (const Lit_t* x = begin(lits); x != end(lits); ++x) { os_ << " " << lit(*x); }
+    for (const auto& x : lits) { os_ << " " << lit(x); }
     return *this;
 }
 AspifOutput& AspifOutput::add(const AtomSpan& atoms) {
     os_ << " " << size(atoms);
-    for (const Atom_t* x = begin(atoms); x != end(atoms); ++x) { os_ << " " << *x; }
+    for (const auto& a : atoms) { os_ << " " << a; }
     return *this;
 }
-AspifOutput& AspifOutput::add(const StringSpan& str) {
+AspifOutput& AspifOutput::add(const std::string_view& str) {
     os_ << " " << size(str) << " ";
     os_.write(begin(str), size(str));
     return *this;
@@ -261,7 +265,7 @@ void AspifOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const We
 void AspifOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
     startDir(Directive_t::Minimize).add(prio).add(lits).endDir();
 }
-void AspifOutput::output(const StringSpan& str, const LitSpan& cond) {
+void AspifOutput::output(const std::string_view& str, const LitSpan& cond) {
     startDir(Directive_t::Output).add(str).add(cond).endDir();
 }
 void AspifOutput::external(Atom_t a, Value_t v) {
@@ -284,7 +288,7 @@ void AspifOutput::heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, co
 void AspifOutput::theoryTerm(Id_t termId, int number) {
     startDir(Directive_t::Theory).add(Theory_t::Number).add(termId).add(number).endDir();
 }
-void AspifOutput::theoryTerm(Id_t termId, const StringSpan& name) {
+void AspifOutput::theoryTerm(Id_t termId, const std::string_view& name) {
     startDir(Directive_t::Theory).add(Theory_t::Symbol).add(termId).add(name).endDir();
 }
 void AspifOutput::theoryTerm(Id_t termId, int cId, const IdSpan& args) {

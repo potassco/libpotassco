@@ -36,11 +36,11 @@
 #include <cassert>
 #include <cctype>
 #include <climits>
+#include <cstdio>
 #include <cstring>
 #include <istream> // for CfgFileParser
 #include <ostream> // for op<<
-#include <stdio.h>
-#include <stdlib.h>
+#include <utility>
 using namespace std;
 
 namespace Potassco::ProgramOptions {
@@ -140,7 +140,8 @@ Value::Value(State initial)
     , flag_(0)
     , composing_(0)
     , negatable_(0)
-    , level_(0) {
+    , level_(0)
+    , desc_() {
     desc_.value = nullptr;
     static_assert(sizeof(Value) == sizeof(void*) * 3, "unexpected size");
 }
@@ -206,7 +207,7 @@ bool Value::parse(const std::string& name, const std::string& value, State st) {
 ///////////////////////////////////////////////////////////////////////////////
 // class Option
 ///////////////////////////////////////////////////////////////////////////////
-Option::Option(const string& longName, char alias, const char* desc, Value* v)
+Option::Option(std::string_view longName, char alias, const char* desc, Value* v)
     : name_(longName)
     , description_(desc ? desc : "")
     , value_(v) {
@@ -245,7 +246,7 @@ bool Option::assignDefault() const {
 ///////////////////////////////////////////////////////////////////////////////
 // class OptionGroup
 ///////////////////////////////////////////////////////////////////////////////
-OptionGroup::OptionGroup(const std::string& caption, DescriptionLevel hl) : caption_(caption), level_(hl) {}
+OptionGroup::OptionGroup(std::string_view caption, DescriptionLevel hl) : caption_(caption), level_(hl) {}
 
 OptionInitHelper OptionGroup::addOptions() { return OptionInitHelper(*this); }
 
@@ -315,13 +316,13 @@ OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, con
             longName += '!';
     }
     owner_->addOption(SharedOptPtr(new Option(longName, shortName, desc, val)));
-    cleanup.release();
+    std::ignore = cleanup.release();
     return *this;
 }
 ///////////////////////////////////////////////////////////////////////////////
 // class OptionContext
 ///////////////////////////////////////////////////////////////////////////////
-OptionContext::OptionContext(const std::string& cap, DescriptionLevel def) : caption_(cap), descLevel_(def) {}
+OptionContext::OptionContext(std::string_view cap, DescriptionLevel def) : caption_(cap), descLevel_(def) {}
 
 const std::string& OptionContext::caption() const { return caption_; }
 void               OptionContext::setActiveDescLevel(DescriptionLevel x) { descLevel_ = std::min(x, desc_level_all); }
@@ -339,7 +340,7 @@ OptionContext& OptionContext::add(const OptionGroup& options) {
     if (k >= groups_.size()) {
         // add as new group
         k = groups_.size();
-        groups_.push_back(OptionGroup(options.caption(), options.descLevel()));
+        groups_.emplace_back(options.caption(), options.descLevel());
     }
     for (const auto& opt : options) { insertOption(k, opt); }
     groups_[k].setDescriptionLevel(std::min(options.descLevel(), groups_[k].descLevel()));
@@ -793,9 +794,9 @@ private:
 class CfgFileParser : public OptionParser {
 public:
     CfgFileParser(ParseContext& ctx, std::istream& in) : OptionParser(ctx), in_(in) {}
+    void operator=(const CfgFileParser&) = delete;
 
 private:
-    void        operator=(const CfgFileParser&);
     inline void trimLeft(std::string& str, const std::string& charList = " \t") {
         std::string::size_type pos = str.find_first_not_of(charList);
         if (pos != 0)
@@ -833,7 +834,7 @@ private:
             trimLeft(line);
             trimRight(line);
 
-            if (line.empty() || line.find("#") == 0) {
+            if (line.empty() || line.find('#') == 0) {
                 // An empty line or single line comment stops a multi line section value.
                 if (inSection) {
                     if ((opt = getOption(sectionName.c_str(), ft)).get())
@@ -843,7 +844,7 @@ private:
                 continue;
             }
             std::string::size_type pos;
-            if ((pos = line.find("=")) != std::string::npos) {
+            if ((pos = line.find('=')) != std::string::npos) {
                 // A new section terminates a multi line section value.
                 // First process the current section value...
                 if (inSection && (opt = getOption(sectionName.c_str(), ft)).get()) {

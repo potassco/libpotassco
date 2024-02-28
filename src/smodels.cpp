@@ -30,7 +30,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-typedef std::unordered_map<std::string, Potassco::Id_t> StrMap;
+using StrMap = std::unordered_map<std::string, Potassco::Id_t>;
 namespace Potassco {
 
 enum SmodelsRule {
@@ -60,8 +60,8 @@ int isSmodelsRule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLi
     if (isSmodelsHead(t, head) != Basic || bound < 0) {
         return End;
     }
-    for (WeightLitSpan::iterator it = begin(body), end = Potassco::end(body); it != end; ++it) {
-        if (weight(*it) != 1) {
+    for (const auto& wl : body) {
+        if (weight(wl) != 1) {
             return Weight;
         }
     }
@@ -73,23 +73,23 @@ AtomTable::~AtomTable() = default;
 /////////////////////////////////////////////////////////////////////////////////////////
 struct SmodelsInput::SymTab : public AtomTable {
     SymTab(AbstractProgram& o) : out(&o) {}
-    void add(Atom_t id, const StringSpan& name, bool output) override {
-        atoms.insert(StrMap::value_type(std::string(Potassco::begin(name), Potassco::end(name)), id));
+    void add(Atom_t id, const std::string_view& name, bool output) override {
+        atoms.insert(StrMap::value_type(name, id));
         if (output) {
             auto lit = static_cast<Lit_t>(id);
-            out->output(name, toSpan(&lit, 1));
+            out->output(name, {&lit, 1});
         }
     }
-    Atom_t find(const StringSpan& name) override {
-        temp.assign(Potassco::begin(name), Potassco::end(name));
+    Atom_t find(const std::string_view& name) override {
+        temp.assign(name);
         auto it = atoms.find(temp);
         return it != atoms.end() ? it->second : 0;
     }
     struct Heuristic {
         std::string atom;
         Heuristic_t type;
-        int         bias;
-        unsigned    prio;
+        int         bias{};
+        unsigned    prio{};
         Lit_t       cond;
     };
     StrMap           atoms;
@@ -97,7 +97,7 @@ struct SmodelsInput::SymTab : public AtomTable {
     AbstractProgram* out;
 };
 struct SmodelsInput::NodeTab {
-    Id_t add(const StringSpan& n) {
+    Id_t add(const std::string_view& n) {
         return nodes.insert(StrMap::value_type(std::string(begin(n), end(n)), (Id_t) nodes.size())).first->second;
     }
     StrMap nodes;
@@ -224,7 +224,7 @@ bool SmodelsInput::readSymbols() {
         atoms_   = new SymTab(out_);
         delSyms_ = true;
     }
-    StringSpan                     n0, n1;
+    std::string_view               n0, n1;
     SymTab::Heuristic              heu;
     std::vector<SymTab::Heuristic> doms;
     for (Lit_t atom; (atom = (Lit_t) matchPos()) != 0;) {
@@ -239,25 +239,25 @@ bool SmodelsInput::readSymbols() {
         if (opts_.cEdge && matchEdgePred(n, n0, n1) > 0) {
             Id_t s = nodes_->add(n0);
             Id_t t = nodes_->add(n1);
-            out_.acycEdge(static_cast<int>(s), static_cast<int>(t), toSpan(&atom, 1));
+            out_.acycEdge(static_cast<int>(s), static_cast<int>(t), {&atom, 1});
             filter = opts_.filter;
         }
         else if (opts_.cHeuristic && matchDomHeuPred(n, n0, heu.type, heu.bias, heu.prio) > 0) {
             heu.cond = atom;
-            heu.atom.assign(Potassco::begin(n0), Potassco::end(n0));
+            heu.atom.assign(n0);
             doms.push_back(heu);
             filter = opts_.filter;
         }
         if (atoms_) {
-            atoms_->add(atom, toSpan(name), !filter);
+            atoms_->add(atom, name, !filter);
         }
         else if (!filter) {
-            out_.output(toSpan(name), toSpan(&atom, 1));
+            out_.output(name, {&atom, 1});
         }
     }
     for (const auto& dom : doms) {
-        if (Atom_t x = atoms_->find(toSpan(dom.atom))) {
-            out_.heuristic(x, dom.type, dom.bias, dom.prio, toSpan(&dom.cond, 1));
+        if (Atom_t x = atoms_->find(dom.atom)) {
+            out_.heuristic(x, dom.type, dom.bias, dom.prio, {&dom.cond, 1});
         }
     }
     if (!incremental()) {
@@ -276,7 +276,7 @@ bool SmodelsInput::readCompute(const char* comp, bool val) {
         if (val) {
             x = neg(x);
         }
-        out_.rule(Head_t::Disjunctive, toSpan<Atom_t>(), toSpan(&x, 1));
+        out_.rule(Head_t::Disjunctive, {}, {&x, 1});
     }
     return true;
 }
@@ -311,20 +311,20 @@ struct SmWeight {
 inline Lit_t smLit(const WeightLit_t& x) { return x.weight >= 0 ? x.lit : -x.lit; }
 inline Lit_t smLit(Lit_t x) { return x; }
 template <class T>
-static unsigned negSize(const Potassco::Span<T>& lits) {
+static unsigned negSize(const std::span<T>& lits) {
     unsigned r = 0;
-    for (const T *it = Potassco::begin(lits), *end = Potassco::end(lits); it != end; ++it) { r += smLit(*it) < 0; }
+    for (const auto& x : lits) { r += smLit(x) < 0; }
     return r;
 }
 template <class T, class Op>
-static void print(std::ostream& os, const Span<T>& span, unsigned neg, unsigned pos, Op op) {
-    for (const T* it = begin(span); neg; ++it) {
+static void print(std::ostream& os, const std::span<T>& span, unsigned neg, unsigned pos, Op op) {
+    for (auto it = begin(span); neg; ++it) {
         if (smLit(*it) < 0) {
             os << " " << op(*it);
             --neg;
         }
     }
-    for (const T* it = begin(span); pos; ++it) {
+    for (auto it = begin(span); pos; ++it) {
         if (smLit(*it) >= 0) {
             os << " " << op(*it);
             --pos;
@@ -351,18 +351,18 @@ SmodelsOutput& SmodelsOutput::add(Head_t ht, const AtomSpan& head) {
     if (ht == Head_t::Choice || size(head) > 1) {
         add((unsigned) size(head));
     }
-    for (const Atom_t* x = begin(head); x != end(head); ++x) { add(*x); }
+    for (auto atom : head) { add(atom); }
     return *this;
 }
 
 SmodelsOutput& SmodelsOutput::add(const LitSpan& lits) {
-    unsigned neg = negSize(lits), size = static_cast<unsigned>(Potassco::size(lits));
+    unsigned neg = negSize(lits), size = static_cast<unsigned>(std::size(lits));
     add(size).add(neg);
     print(os_, lits, neg, size - neg, Atom());
     return *this;
 }
 SmodelsOutput& SmodelsOutput::add(Weight_t bnd, const WeightLitSpan& lits, bool card) {
-    unsigned neg = negSize(lits), size = static_cast<unsigned>(Potassco::size(lits));
+    unsigned neg = negSize(lits), size = static_cast<unsigned>(std::size(lits));
     if (!card) {
         add(static_cast<unsigned>(bnd));
     }
@@ -400,7 +400,7 @@ void SmodelsOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
         else {
             POTASSCO_REQUIRE(false_ != 0, "empty head requires false atom");
             fHead_ = true;
-            return SmodelsOutput::rule(ht, toSpan(&false_, 1), body);
+            return SmodelsOutput::rule(ht, {&false_, 1}, body);
         }
     }
     auto rt = (SmodelsRule) isSmodelsHead(ht, head);
@@ -412,14 +412,14 @@ void SmodelsOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const 
     if (empty(head)) {
         POTASSCO_REQUIRE(false_ != 0, "empty head requires false atom");
         fHead_ = true;
-        return SmodelsOutput::rule(ht, toSpan(&false_, 1), bound, body);
+        return SmodelsOutput::rule(ht, {&false_, 1}, bound, body);
     }
     auto rt = (SmodelsRule) isSmodelsRule(ht, head, bound, body);
     POTASSCO_REQUIRE(rt != End, "unsupported rule type");
     startRule(rt).add(ht, head).add(bound, body, rt == Cardinality).endRule();
 }
 void SmodelsOutput::minimize(Weight_t, const WeightLitSpan& lits) { startRule(Optimize).add(0, lits, false).endRule(); }
-void SmodelsOutput::output(const StringSpan& str, const LitSpan& cond) {
+void SmodelsOutput::output(const std::string_view& str, const LitSpan& cond) {
     POTASSCO_REQUIRE(sec_ <= 1, "adding symbols after compute not supported");
     POTASSCO_REQUIRE(size(cond) == 1 && lit(*begin(cond)) > 0,
                      "general output directive not supported in smodels format");
@@ -447,15 +447,15 @@ void SmodelsOutput::assume(const LitSpan& lits) {
         ++sec_;
     }
     os_ << "B+\n";
-    for (const Lit_t* x = begin(lits); x != end(lits); ++x) {
-        if (lit(*x) > 0) {
-            os_ << atom(*x) << "\n";
+    for (auto x : lits) {
+        if (lit(x) > 0) {
+            os_ << atom(x) << "\n";
         }
     }
     os_ << "0\nB-\n";
-    for (const Lit_t* x = begin(lits); x != end(lits); ++x) {
-        if (lit(*x) < 0) {
-            os_ << atom(*x) << "\n";
+    for (auto x : lits) {
+        if (lit(x) < 0) {
+            os_ << atom(x) << "\n";
         }
     }
     if (fHead_ && false_) {
@@ -465,7 +465,7 @@ void SmodelsOutput::assume(const LitSpan& lits) {
 }
 void SmodelsOutput::endStep() {
     if (sec_ < 2) {
-        SmodelsOutput::assume(Potassco::toSpan<Lit_t>());
+        SmodelsOutput::assume({});
     }
     os_ << "1\n";
 }

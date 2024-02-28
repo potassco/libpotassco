@@ -25,16 +25,9 @@
 #define POTASSCO_PLATFORM_H_INCLUDED
 #include <cassert>
 #include <cerrno>
+#include <cinttypes>
 #include <cstddef>
 #include <cstdlib>
-#if !defined(POTASSCO_HAS_STATIC_ASSERT)
-#if (defined(__cplusplus) && __cplusplus >= 201103L) || (defined(_MSC_VER) && _MSC_VER >= 1600) ||                     \
-    (defined(static_assert) && !defined(_LIBCPP_VERSION))
-#define POTASSCO_HAS_STATIC_ASSERT 1
-#else
-#define POTASSCO_HAS_STATIC_ASSERT 0
-#endif
-#endif
 
 #define POTASSCO_STRING2(x)    #x
 #define POTASSCO_STRING(x)     POTASSCO_STRING2(x)
@@ -84,22 +77,10 @@
 #define POTASSCO_WARNING_BEGIN_RELAXED
 #define POTASSCO_WARNING_END_RELAXED
 #endif
-#include <inttypes.h>
 
 #if !defined(POTASSCO_ENABLE_PRAGMA_TODO) || POTASSCO_ENABLE_PRAGMA_TODO == 0
 #undef POTASSCO_PRAGMA_TODO
 #define POTASSCO_PRAGMA_TODO(X)
-#endif
-
-#if POTASSCO_HAS_STATIC_ASSERT == 0
-template <bool>
-struct static_assertion;
-template <>
-struct static_assertion<true> {};
-#undef static_assert
-#define static_assert(x, message)                                                                                      \
-    typedef bool POTASSCO_CONCAT(potassco_static_assertion,                                                            \
-                                 __LINE__)[sizeof(static_assertion<(x)>)] POTASSCO_ATTR_UNUSED
 #endif
 
 #if UINTPTR_MAX > UINT64_MAX
@@ -108,11 +89,11 @@ struct static_assertion<true> {};
 
 namespace Potassco {
 struct EnumClass {
-    const char *name, *rep;
-    int         min, max;
-    bool        isValid(int v) const;
-    size_t      convert(const char*, int&) const;
-    size_t      convert(int, const char*&) const;
+    const char *       name, *rep;
+    int                min, max;
+    [[nodiscard]] bool isValid(int v) const;
+    size_t             convert(const char*, int&) const;
+    size_t             convert(int, const char*&) const;
 };
 enum FailType { error_assert = -1, error_logic = -2, error_runtime = -3 };
 
@@ -138,10 +119,10 @@ POTASSCO_ATTR_NORETURN extern void fail(int ec, const char* file, unsigned line,
 //! Macro for defining a set of constants similar to a C++11 strong enum.
 #define POTASSCO_ENUM_CONSTANTS_T(TypeName, BaseType, minVal, ...)                                                     \
     enum E { __VA_ARGS__, __eEnd, eMin = minVal, eMax = __eEnd - 1 };                                                  \
-    TypeName(E x = eMin) : val_(x) {}                                                                                  \
-    explicit TypeName(BaseType x) : val_(static_cast<E>(x)) { assert(x <= eMax); }                                     \
-    operator BaseType() const { return static_cast<BaseType>(val_); }                                                  \
-    static Potassco::EnumClass enumClass() {                                                                           \
+    constexpr TypeName(E x = eMin) : val_(x) {}                                                                        \
+    constexpr explicit TypeName(BaseType x) : val_(static_cast<E>(x)) { assert(x <= eMax); }                           \
+    constexpr                            operator BaseType() const { return static_cast<BaseType>(val_); }             \
+    constexpr static Potassco::EnumClass enumClass() {                                                                 \
         Potassco::EnumClass r = {#TypeName, #__VA_ARGS__, eMin, eMax};                                                 \
         return r;                                                                                                      \
     }                                                                                                                  \

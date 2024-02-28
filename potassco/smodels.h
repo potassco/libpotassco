@@ -37,9 +37,9 @@ class AtomTable {
 public:
     virtual ~AtomTable();
     //! Associate a name with the given (output) atom.
-    virtual void add(Atom_t id, const StringSpan& name, bool output) = 0;
+    virtual void add(Atom_t id, const std::string_view& name, bool output) = 0;
     //! Return the atom with the given name or 0 if no such atom was previously added.
-    virtual Atom_t find(const StringSpan& name) = 0;
+    virtual Atom_t find(const std::string_view& name) = 0;
 };
 
 //! Class for parsing logic programs in (extended) smodels format.
@@ -144,6 +144,9 @@ public:
      * set to 0 if integrity constraints are not used.
      */
     SmodelsOutput(std::ostream& os, bool enableClaspExt, Atom_t falseAtom);
+    SmodelsOutput(const SmodelsOutput&)            = delete;
+    SmodelsOutput& operator=(const SmodelsOutput&) = delete;
+
     //! Prepares the object for a new program.
     /*!
      * Requires enableClaspExt or inc must be false.
@@ -161,7 +164,7 @@ public:
     /*!
      * \note Symbols shall only be added once after all rules were added.
      */
-    void output(const StringSpan& str, const LitSpan& cond) override;
+    void output(const std::string_view& str, const LitSpan& cond) override;
     //! Writes lits as a compute statement.
     /*!
      * \note The function shall be called at most once per step and only after all rules and symbols were added.
@@ -186,19 +189,17 @@ protected:
     //! Terminates the active rule by writing a newline.
     SmodelsOutput& endRule();
     //! Returns whether the current program is incremental.
-    bool incremental() const { return inc_; }
+    [[nodiscard]] bool incremental() const { return inc_; }
     //! Returns whether clasp extensions are enabled.
-    bool extended() const { return ext_; }
+    [[nodiscard]] bool extended() const { return ext_; }
 
 private:
-    SmodelsOutput(const SmodelsOutput&);
-    SmodelsOutput& operator=(const SmodelsOutput&);
-    std::ostream&  os_;
-    Atom_t         false_;
-    int            sec_;
-    bool           ext_;
-    bool           inc_;
-    bool           fHead_;
+    std::ostream& os_;
+    Atom_t        false_;
+    int           sec_;
+    bool          ext_;
+    bool          inc_;
+    bool          fHead_;
 };
 ///@}
 

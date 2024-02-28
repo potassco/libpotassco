@@ -27,9 +27,9 @@
 #include <potassco/basic_types.h>
 
 #include <climits>
+#include <cstdint>
 #include <iosfwd>
 #include <stdexcept>
-#include <stdint.h>
 
 namespace Potassco {
 
@@ -42,14 +42,17 @@ namespace Potassco {
 //! integers.
 class BufferedStream {
 public:
-    enum { BUF_SIZE = 4096 };
+    static constexpr auto BUF_SIZE = std::streamsize(4096);
+
     //! Creates a new object wrapping the given stream.
     explicit BufferedStream(std::istream& str);
     ~BufferedStream();
+    BufferedStream& operator=(const BufferedStream&) = delete;
+
     //! Returns the next character in the input stream, without extracting it.
-    char peek() const { return buf_[rpos_]; }
+    [[nodiscard]] char peek() const { return buf_[rpos_]; }
     //! Returns whether the end of the input stream was reached.
-    bool end() const { return peek() == 0; }
+    [[nodiscard]] bool end() const { return peek() == 0; }
     //! Extracts the next character from the input stream or returns 0 if the end was reached.
     char get();
     //! Attempts to put back the given character into the read buffer.
@@ -70,7 +73,7 @@ public:
      */
     int copy(char* bufferOut, int max);
     //! Returns the current line number in the input stream, i.e. the number of '\n' characters extracted so far.
-    unsigned line() const;
+    [[nodiscard]] unsigned line() const;
     //! Returns whether the given character is a decimal digit.
     static inline bool isDigit(char c) { return c >= '0' && c <= '9'; }
     //! Converts the given character to a decimal digit.
@@ -84,15 +87,15 @@ public:
     }
 
 private:
+    static constexpr auto ALLOC_SIZE = BUF_SIZE + 1;
+
     char rget();
-    enum { ALLOC_SIZE = BUF_SIZE + 1 };
-    BufferedStream& operator=(const BufferedStream&);
-    void            underflow(bool up = true);
-    typedef char*   BufferType;
-    std::istream&   str_;
-    BufferType      buf_;
-    std::size_t     rpos_;
-    unsigned        line_;
+    void underflow(bool up = true);
+    using BufferType = char*;
+    std::istream& str_;
+    BufferType    buf_;
+    std::size_t   rpos_;
+    unsigned      line_;
 };
 
 /*!
@@ -149,16 +152,16 @@ bool match(const char*& input, const char* word);
  */
 bool match(const char*& input, Heuristic_t& heuType);
 //! Attempts to extract the next argument of a predicate.
-bool matchAtomArg(const char*& input, StringSpan& arg);
+bool matchAtomArg(const char*& input, std::string_view& arg);
 //! Attempts to extract an integer from input and sets input to the first character after the integer.
 bool match(const char*& input, int& out);
 //! Tries to match potassco's special _heuristic/3 or _heuristic/4 predicate.
 /*!
  * \return > 1 on match, 0 if in does not start with _heuristic, < 0 if in has wrong arity or parameters.
  */
-int matchDomHeuPred(const char*& in, StringSpan& atom, Heuristic_t& type, int& bias, unsigned& prio);
+int matchDomHeuPred(const char*& in, std::string_view& atom, Heuristic_t& type, int& bias, unsigned& prio);
 //! Tries to match an _edge/2 or _acyc_/0 predicate.
-int matchEdgePred(const char*& in, StringSpan& n0, StringSpan& n1);
+int matchEdgePred(const char*& in, std::string_view& n0, std::string_view& n1);
 ///@}
 
 //! Base class for input parsers.
@@ -169,10 +172,13 @@ public:
     //! Creates a reader that is not yet associated with any input stream.
     ProgramReader();
     virtual ~ProgramReader();
+    ProgramReader(const ProgramReader&)            = delete;
+    ProgramReader& operator=(const ProgramReader&) = delete;
+
     //! Associates the reader with the given input stream and returns whether the stream has the right format.
     bool accept(std::istream& str);
     //! Returns whether the input stream represents an incremental program.
-    bool incremental() const;
+    [[nodiscard]] bool incremental() const;
     //! Attempts to parse the previously accepted input stream.
     /*!
      * Depending on the given read mode, the function either parses the complete program
@@ -184,7 +190,7 @@ public:
     //! Resets this object to the state after default construction.
     void reset();
     //! Returns the current line number in the input stream.
-    unsigned line() const;
+    [[nodiscard]] unsigned line() const;
     //! Sets the largest possible variable number.
     /*!
      * The given value is used when matching atoms or literals.
@@ -194,8 +200,8 @@ public:
     void setMaxVar(unsigned v) { varMax_ = v; }
 
 protected:
-    typedef BufferedStream StreamType;
-    typedef WeightLit_t    WLit_t;
+    using StreamType = BufferedStream;
+    using WLit_t     = WeightLit_t;
     //! Shall return true if the format of the input stream is supported by this object.
     /*!
      * \param[out] inc Whether the input stream represents an incremental program.
@@ -206,9 +212,9 @@ protected:
     //! Shall reset any parsing state.
     virtual void doReset();
     //! Returns the associated input stream.
-    StreamType* stream() const;
+    [[nodiscard]] StreamType* stream() const;
     //! Returns the next character in the input stream, without extracting it.
-    char peek(bool skipws) const;
+    [[nodiscard]] char peek(bool skipws) const;
     //! Throws an std::exception with the current line and given message if cnd is false.
     bool require(bool cnd, const char* msg) const;
     //! Attempts to match the given string.
@@ -238,11 +244,9 @@ protected:
     void skipLine();
 
 private:
-    ProgramReader(const ProgramReader&);
-    ProgramReader& operator=(const ProgramReader&);
-    StreamType*    str_;
-    unsigned       varMax_;
-    bool           inc_;
+    StreamType* str_;
+    unsigned    varMax_;
+    bool        inc_;
 };
 //! Attaches the given stream to r and calls ProgramReader::parse() with the read mode set to ProgramReader::Complete.
 int readProgram(std::istream& str, ProgramReader& r, ErrorHandler err);

@@ -32,6 +32,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <typeinfo>
 #include <utility>
 #include <vector>
@@ -46,19 +47,22 @@ namespace detail {
 // A primitive input stream buffer for fast extraction from a given string
 // NOTE: The input string is NOT COPIED, hence it
 //       MUST NOT CHANGE during extraction
-template <class T, class Traits = std::char_traits<T>>
+template <typename T, typename Traits = std::char_traits<T>>
 class input_from_string : public std::basic_streambuf<T, Traits> {
-    typedef std::basic_streambuf<T, Traits>   base_type;
-    typedef typename Traits::char_type*       pointer_type;
-    typedef const typename Traits::char_type* const_pointer_type;
-    typedef typename base_type::pos_type      pos_type;
-    typedef typename base_type::off_type      off_type;
+    using base_type          = std::basic_streambuf<T, Traits>;
+    using pointer_type       = typename Traits::char_type*;
+    using const_pointer_type = const typename Traits::char_type*;
+    using pos_type           = typename base_type::pos_type;
+    using off_type           = typename base_type::off_type;
 
 public:
     explicit input_from_string(const_pointer_type p, size_t size) : buffer_(const_cast<pointer_type>(p)), size_(size) {
         base_type::setp(0, 0);                              // no write buffer
         base_type::setg(buffer_, buffer_, buffer_ + size_); // read buffer
     }
+    input_from_string(const input_from_string&)            = delete;
+    input_from_string& operator=(const input_from_string&) = delete;
+
     pos_type seekoff(off_type offset, std::ios_base::seekdir dir, std::ios_base::openmode which) override {
         if (which & std::ios_base::out) {
             // not supported!
@@ -80,16 +84,12 @@ public:
         return base_type::seekpos(offset, which);
     }
 
-private:
-    input_from_string(const input_from_string&);
-    input_from_string& operator=(const input_from_string&);
-
 protected:
     pointer_type buffer_;
     size_t       size_;
 };
 
-template <class T, class Traits = std::char_traits<T>>
+template <typename T, typename Traits = std::char_traits<T>>
 class input_stream : public std::basic_istream<T, Traits> {
 public:
     input_stream(const std::string& str) : std::basic_istream<T, Traits>(0), buffer_(str.data(), str.size()) {
@@ -103,33 +103,15 @@ private:
     input_from_string<T, Traits> buffer_;
 };
 struct no_stream_support {
-    template <class T>
+    template <typename T>
     no_stream_support(const T&) {}
 };
 no_stream_support& operator>>(std::istream&, const no_stream_support&);
-template <bool b, class T>
-struct enable_if;
-template <class T>
-struct enable_if<true, T> {
-    typedef T type;
-};
-template <class T, T>
-struct type_check {
-    enum { value = 1 };
-};
-template <class T, class U>
-struct is_same {
-    enum { value = 0 };
-};
-template <class T>
-struct is_same<T, T> {
-    enum { value = 1 };
-};
 } // namespace detail
 ///////////////////////////////////////////////////////////////////////////////
 // primitive parser
 ///////////////////////////////////////////////////////////////////////////////
-template <class T>
+template <typename T>
 int xconvert(const char* x, T& out, const char** errPos = nullptr, double = 0);
 int xconvert(const char* x, bool& out, const char** errPos = nullptr, int = 0);
 int xconvert(const char* x, char& out, const char** errPos = nullptr, int = 0);
@@ -140,9 +122,8 @@ int xconvert(const char* x, unsigned long& out, const char** errPos = nullptr, i
 int xconvert(const char* x, double& out, const char** errPos = nullptr, int = 0);
 int xconvert(const char* x, const char*& out, const char** errPos = nullptr, int = 0);
 int xconvert(const char* x, std::string& out, const char** errPos = nullptr, int sep = 0);
-template <class T>
-typename detail::enable_if<detail::type_check<EnumClass (*)(), &T::enumClass>::value, int>::type
-xconvert(const char* x, T& out, const char** errPos, int e = 0) {
+template <typename T>
+auto xconvert(const char* x, T& out, const char** errPos, int e = 0) -> decltype(int(T::enumClass().convert(x, e))) {
     size_t len = T::enumClass().convert(x, e);
     if (errPos) {
         *errPos = x + len;
@@ -161,9 +142,9 @@ std::string&        xconvert(std::string&, unsigned long);
 std::string&        xconvert(std::string&, double);
 inline std::string& xconvert(std::string& out, const std::string& s) { return out.append(s); }
 inline std::string& xconvert(std::string& out, const char* s) { return out.append(s ? s : ""); }
-template <class T>
-typename detail::enable_if<detail::type_check<EnumClass (*)(), &T::enumClass>::value, std::string>::type&
-xconvert(std::string& out, T x) {
+template <typename T>
+auto xconvert(std::string& out, T x)
+    -> std::enable_if_t<std::is_convertible_v<decltype(T::enumClass()), Potassco::EnumClass>, std::string&> {
     const char* key;
     size_t      len = T::enumClass().convert(static_cast<int>(x), key);
     return out.append(key, len);
@@ -313,7 +294,7 @@ int xconvert(const char* x, T& out, const char** errPos, double) {
 ///////////////////////////////////////////////////////////////////////////////
 class bad_string_cast : public std::bad_cast {
 public:
-    const char* what() const noexcept override;
+    [[nodiscard]] const char* what() const noexcept override;
 };
 template <class T>
 bool string_cast(const char* arg, T& to) {
@@ -375,7 +356,7 @@ int vsnprintf(char* s, size_t n, const char* format, va_list arg);
 //! A class for creating a sequence of characters.
 class StringBuilder {
 public:
-    typedef StringBuilder ThisType;
+    using ThisType = StringBuilder;
     enum Mode { Fixed, Dynamic };
     //! Constructs an empty object with an initial capacity of 63 characters.
     explicit StringBuilder();
@@ -389,14 +370,16 @@ public:
      */
     explicit StringBuilder(char* buf, std::size_t n, Mode m = Fixed);
     ~StringBuilder();
+    StringBuilder(const StringBuilder&)            = delete;
+    StringBuilder& operator=(const StringBuilder&) = delete;
 
     //! Returns the character sequence as a null-terminated string.
-    const char* c_str() const;
+    [[nodiscard]] const char* c_str() const;
     //! Returns the length of this character sequence, i.e. std::strlen(c_str()).
-    std::size_t size() const;
+    [[nodiscard]] std::size_t size() const;
     //! Returns if character sequence is empty, i.e. std::strlen(c_str()) == 0.
-    bool       empty() const { return size() == std::size_t(0); }
-    Span<char> toSpan() const;
+    [[nodiscard]] bool             empty() const { return size() == std::size_t(0); }
+    [[nodiscard]] std::string_view view() const;
     //! Resizes this character sequence to a length of n characters.
     /*!
      * \throw std::logic_error if n > maxSize()
@@ -404,7 +387,7 @@ public:
      */
     ThisType& resize(std::size_t n, char c = '\0');
     //! Returns the maximum size of this sequence.
-    std::size_t maxSize() const;
+    [[nodiscard]] std::size_t maxSize() const;
     //! Clears this character sequence.
     ThisType& clear() { return resize(std::size_t(0)); }
 
@@ -431,31 +414,30 @@ public:
     ThisType& appendFormat(const char* fmt, ...);
 
 private:
-    StringBuilder(const StringBuilder&);
-    StringBuilder& operator=(const StringBuilder&);
-    ThisType&      append_(uint64_t n, bool pos);
+    ThisType& append_(uint64_t n, bool pos);
     enum Type { Sbo = 0u, Str = 64u, Buf = 128u };
     static constexpr uint8_t Own    = 1u;
     static constexpr uint8_t SboCap = 63u;
     struct Buffer {
-        std::size_t free() const { return size - used; }
-        char*       pos() const { return head + used; }
-        char*       head;
-        std::size_t used;
-        std::size_t size;
+        [[nodiscard]] std::size_t free() const { return size - used; }
+        [[nodiscard]] char*       pos() const { return head + used; }
+        char*                     head;
+        std::size_t               used;
+        std::size_t               size;
     };
-    void    setTag(uint8_t t) { reinterpret_cast<uint8_t&>(sbo_[63]) = t; }
-    uint8_t tag() const { return static_cast<uint8_t>(sbo_[63]); }
-    Type    type() const { return static_cast<Type>(tag() & uint8_t(Str | Buf)); }
-    Buffer  grow(std::size_t n);
-    Buffer  buffer() const;
+    [[nodiscard]] uint8_t tag() const { return static_cast<uint8_t>(sbo_[63]); }
+    [[nodiscard]] Type    type() const { return static_cast<Type>(tag() & uint8_t(Str | Buf)); }
+    [[nodiscard]] Buffer  buffer() const;
+
+    void   setTag(uint8_t t) { reinterpret_cast<uint8_t&>(sbo_[63]) = t; }
+    Buffer grow(std::size_t n);
+
     union {
         std::string* str_;
         Buffer       buf_;
         char         sbo_[64];
     };
 };
-inline Span<char> toSpan(StringBuilder& b) { return b.toSpan(); }
 
 } // namespace Potassco
 

@@ -34,7 +34,7 @@
 #pragma warning(disable : 4996)
 #define strtod_l   _strtod_l
 #define freelocale _free_locale
-typedef _locale_t  my_locale_t;
+using my_locale_t = _locale_t;
 inline my_locale_t default_locale() { return _create_locale(LC_ALL, "C"); }
 #if _MSC_VER < 1700
 inline unsigned long long strtoull(const char* str, char** endptr, int base) { return _strtoui64(str, endptr, base); }
@@ -42,8 +42,8 @@ inline long long          strtoll(const char* str, char** endptr, int base) { re
 #endif
 #elif defined(__CYGWIN__) || defined(__MINGW32__) || defined(__OpenBSD__)
 #include <locale>
-typedef std::locale my_locale_t;
-static double       strtod_l(const char* x, char** end, const my_locale_t& loc) {
+using my_locale_t = std::locale;
+static double strtod_l(const char* x, char** end, const my_locale_t& loc) {
     std::size_t                          xLen = std::strlen(x);
     const char*                          err  = x;
     Potassco::detail::input_stream<char> str(x, xLen);
@@ -65,8 +65,8 @@ static double       strtod_l(const char* x, char** end, const my_locale_t& loc) 
 inline void        freelocale(const my_locale_t&) {}
 inline my_locale_t default_locale() { return std::locale::classic(); }
 #else
-#include <locale.h>
-typedef locale_t   my_locale_t;
+#include <clocale>
+using my_locale_t = locale_t;
 inline my_locale_t default_locale() { return newlocale(LC_ALL_MASK, "C", nullptr); }
 #endif
 static struct LocaleHolder {
@@ -333,22 +333,21 @@ string& xconvert(string& out, double d) { return (StringBuilder(out).append(d), 
 
 const char* bad_string_cast::what() const noexcept { return "bad_string_cast"; }
 
-StringBuilder::StringBuilder() {
-    sbo_[0] = 0;
+StringBuilder::StringBuilder() : sbo_() {
     setTag(uint8_t(SboCap));
+    sbo_[0] = 0;
 }
-StringBuilder::StringBuilder(std::string& s) {
-    str_ = &s;
+StringBuilder::StringBuilder(std::string& s) : sbo_() {
     setTag(Str);
+    str_ = &s;
 }
-StringBuilder::StringBuilder(char* buf, std::size_t n, Mode m) {
+StringBuilder::StringBuilder(char* buf, std::size_t n, Mode m) : sbo_() {
     if (!n) {
         buf = sbo_ + (SboCap - 2);
         n   = 1;
     }
-    *(buf_.head = buf) = 0;
-    buf_.used          = 0;
-    buf_.size          = n - 1;
+    buf_       = {.head = buf, .used = 0, .size = n - 1};
+    *buf_.head = 0;
     setTag(m == Fixed ? Buf : Buf | Own);
 }
 StringBuilder::~StringBuilder() {
@@ -358,27 +357,19 @@ StringBuilder::~StringBuilder() {
 }
 const char* StringBuilder::c_str() const { return buffer().head; }
 std::size_t StringBuilder::size() const { return buffer().used; }
-std::size_t StringBuilder::maxSize() const { return tag() != Buf ? std::size_t(-1) - sizeof(this) : buffer().size; }
-Span<char>  StringBuilder::toSpan() const {
+std::size_t StringBuilder::maxSize() const { return tag() != Buf ? std::size_t(-1) - sizeof(*this) : buffer().size; }
+std::string_view StringBuilder::view() const {
     Buffer x = buffer();
-    return Potassco::toSpan(x.head, x.used);
+    return {x.head, x.used};
 }
 StringBuilder::Buffer StringBuilder::buffer() const {
-    Buffer r;
     switch (type()) {
-        default: assert(false);
-        case Sbo:
-            r.head = const_cast<char*>(sbo_);
-            r.size = SboCap;
-            r.used = SboCap - tag();
-            break;
-        case Str:
-            r.head = const_cast<char*>(str_->c_str());
-            r.size = r.used = str_->size();
-            break;
+        default : assert(false);
+        case Sbo: return {.head = const_cast<char*>(sbo_), .used = std::size_t(SboCap - tag()), .size = SboCap};
+        case Str: return {.head = const_cast<char*>(str_->c_str()), .used = str_->size(), .size = str_->size()};
         case Buf: return buf_;
     }
-    return r;
+    return {};
 }
 StringBuilder& StringBuilder::resize(std::size_t n, char c) {
     Buffer b = buffer();
@@ -402,7 +393,7 @@ StringBuilder& StringBuilder::resize(std::size_t n, char c) {
 }
 
 StringBuilder::Buffer StringBuilder::grow(std::size_t n) {
-    Buffer ret;
+    Buffer ret{};
     Type   bft = type();
     if (bft == Sbo && tag() >= n) {
         ret = buffer();
@@ -544,7 +535,7 @@ void fail(int ec, const char* file, unsigned line, const char* exp, const char* 
         str.appendFormat("check('%s') failed", exp);
     }
     switch (ec) {
-        case error_logic  : throw std::logic_error(msg);
+        case error_logic: // fallthrough
         case error_assert : throw std::logic_error(msg);
         case error_runtime: throw std::runtime_error(msg);
         case ENOMEM       : throw std::bad_alloc();
@@ -559,7 +550,7 @@ void fail(int ec, const char* file, unsigned line, const char* exp, const char* 
 }
 
 namespace detail {
-bool find_kv(const EnumClass& e, const StringSpan* sKey, const int* iKey, StringSpan* sOut, int* iOut) {
+bool find_kv(const EnumClass& e, const std::string_view* sKey, const int* iKey, std::string_view* sOut, int* iOut) {
 #define SKIPWS(x)                                                                                                      \
     while (*(x) == ' ') ++(x)
     const char* args = e.rep;
@@ -571,12 +562,12 @@ bool find_kv(const EnumClass& e, const StringSpan* sKey, const int* iKey, String
             xconvert(v + 1, cVal, &v, ',');
             SKIPWS(v);
         }
-        if ((iKey && cVal == *iKey) || (sKey && sKey->size == s && std::strncmp(args, sKey->first, s) == 0)) {
+        if ((iKey && cVal == *iKey) || (sKey && sKey->size() == s && std::strncmp(args, sKey->data(), s) == 0)) {
             if (iOut) {
                 *iOut = cVal;
             }
             if (sOut) {
-                *sOut = toSpan(args, s);
+                *sOut = {args, s};
             }
             return true;
         }
@@ -599,18 +590,18 @@ size_t EnumClass::convert(const char* x, int& out) const {
         return static_cast<size_t>(next - x);
     }
     else if (x == next) {
-        StringSpan k = toSpan(x, std::strcspn(x, " ,="));
-        return detail::find_kv(*this, &k, nullptr, nullptr, &out) ? k.size : 0;
+        std::string_view k = {x, std::strcspn(x, " ,=")};
+        return detail::find_kv(*this, &k, nullptr, nullptr, &out) ? k.size() : 0;
     }
     else {
         return static_cast<size_t>(0);
     }
 }
 size_t EnumClass::convert(int val, const char*& out) const {
-    StringSpan key = toSpan("", 0);
+    std::string_view key{};
     detail::find_kv(*this, nullptr, &val, &key, nullptr);
-    out = key.first;
-    return key.size;
+    out = key.data();
+    return key.size();
 }
 
 } // namespace Potassco
