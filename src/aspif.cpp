@@ -57,29 +57,31 @@ bool AspifInput::doAttach(bool& inc) {
     return require(stream()->get() == '\n', "invalid extra characters in problem line");
 }
 bool AspifInput::doParse() {
-#define CR(r) Directive_t::r
+#define CR(r)   Directive_t::r
+#define EMAX(X) (enum_count<X>() - 1)
+
     RuleBuilder rule;
     Extra       data;
     rule_ = &rule;
     data_ = &data;
     out_.beginStep();
-    for (unsigned rt; (rt = matchPos(Directive_t::eMax, "rule type or 0 expected")) != 0; rule.clear()) {
-        switch (rt) {
-            default: return require(false, "unrecognized rule type"); {
-                    case CR(Rule):
-                        rule.start(static_cast<Head_t>(matchPos(Head_t::eMax, "invalid head type")));
-                        matchAtoms();
-                        auto bt = static_cast<Body_t>(matchPos(Body_t::eMax, "invalid body type"));
-                        if (bt == Body_t::Normal) {
-                            matchLits();
-                        }
-                        else {
-                            rule.startSum(matchInt());
-                            matchWLits(0);
-                        }
-                        rule.end(&out_);
-                        break;
+    for (unsigned rt; (rt = matchPos(EMAX(Directive_t), "rule type or 0 expected")) != 0; rule.clear()) {
+        switch (static_cast<Directive_t>(rt)) {
+            default      : return require(false, "unrecognized rule type");
+            case CR(Rule): {
+                rule.start(static_cast<Head_t>(matchPos(EMAX(Head_t), "invalid head type")));
+                matchAtoms();
+                auto bt = static_cast<Body_t>(matchPos(EMAX(Body_t), "invalid body type"));
+                if (bt == Body_t::Normal) {
+                    matchLits();
                 }
+                else {
+                    rule.startSum(matchInt());
+                    matchWLits(0);
+                }
+                rule.end(&out_);
+                break;
+            }
             case CR(Minimize):
                 rule.startMinimize(matchInt());
                 matchWLits(INT_MIN);
@@ -89,16 +91,15 @@ bool AspifInput::doParse() {
                 matchAtoms();
                 out_.project(rule.head());
                 break;
-                {
-                    case CR(Output):
-                        matchString();
-                        matchLits();
-                        out_.output(data.sym, rule.body());
-                        break;
-                }
+            case CR(Output): {
+                matchString();
+                matchLits();
+                out_.output(data.sym, rule.body());
+                break;
+            }
             case CR(External):
                 if (Atom_t atom = matchAtom()) {
-                    auto val = static_cast<Value_t>(matchPos(Value_t::eMax, "value expected"));
+                    auto val = static_cast<Value_t>(matchPos(EMAX(Value_t), "value expected"));
                     out_.external(atom, val);
                 }
                 break;
@@ -106,24 +107,22 @@ bool AspifInput::doParse() {
                 matchLits();
                 out_.assume(rule.body());
                 break;
-                {
-                    case CR(Heuristic):
-                        auto type = static_cast<Heuristic_t>(matchPos(Heuristic_t::eMax, "invalid heuristic modifier"));
-                        auto atom = matchAtom();
-                        auto bias = matchInt();
-                        auto prio = matchPos(INT_MAX, "invalid heuristic priority");
-                        matchLits();
-                        out_.heuristic(atom, type, bias, prio, rule.body());
-                        break;
-                }
-                {
-                    case CR(Edge):
-                        auto start = matchPos(INT_MAX, "invalid edge, start node expected");
-                        auto end   = matchPos(INT_MAX, "invalid edge, end node expected");
-                        matchLits();
-                        out_.acycEdge((int) start, (int) end, rule.body());
-                        break;
-                }
+            case CR(Heuristic): {
+                auto type = static_cast<Heuristic_t>(matchPos(EMAX(Heuristic_t), "invalid heuristic modifier"));
+                auto atom = matchAtom();
+                auto bias = matchInt();
+                auto prio = matchPos(INT_MAX, "invalid heuristic priority");
+                matchLits();
+                out_.heuristic(atom, type, bias, prio, rule.body());
+                break;
+            }
+            case CR(Edge): {
+                auto start = matchPos(INT_MAX, "invalid edge, start node expected");
+                auto end   = matchPos(INT_MAX, "invalid edge, end node expected");
+                matchLits();
+                out_.acycEdge((int) start, (int) end, rule.body());
+                break;
+            }
             case CR(Theory) : matchTheory(matchPos()); break;
             case CR(Comment): skipLine(); break;
         }
@@ -159,7 +158,7 @@ void AspifInput::matchIds() {
 }
 void AspifInput::matchTheory(unsigned rt) {
     Id_t tId = matchPos();
-    switch (rt) {
+    switch (static_cast<Theory_t>(rt)) {
         default              : require(false, "unrecognized theory directive type"); return;
         case Theory_t::Number: out_.theoryTerm(tId, matchInt()); break;
         case Theory_t::Symbol:
@@ -167,7 +166,7 @@ void AspifInput::matchTheory(unsigned rt) {
             out_.theoryTerm(tId, data_->sym);
             break;
         case Theory_t::Compound: {
-            int type = matchInt(Tuple_t::eMin, INT_MAX, "unrecognized compound term type");
+            int type = matchInt(-static_cast<int>(enum_count<Tuple_t>()), INT_MAX, "unrecognized compound term type");
             matchIds();
             out_.theoryTerm(tId, type, data_->ids);
             break;
@@ -182,7 +181,7 @@ void AspifInput::matchTheory(unsigned rt) {
         case Theory_t::AtomWithGuard: {
             Id_t termId = matchPos();
             matchIds();
-            if (rt == Theory_t::Atom) {
+            if (static_cast<Theory_t>(rt) == Theory_t::Atom) {
                 out_.theoryAtom(tId, termId, data_->ids);
             }
             else {
@@ -286,23 +285,23 @@ void AspifOutput::heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, co
         .endDir();
 }
 void AspifOutput::theoryTerm(Id_t termId, int number) {
-    startDir(Directive_t::Theory).add(Theory_t::Number).add(termId).add(number).endDir();
+    startDir(Directive_t::Theory).add(uint32_t(Theory_t::Number)).add(termId).add(number).endDir();
 }
 void AspifOutput::theoryTerm(Id_t termId, const std::string_view& name) {
-    startDir(Directive_t::Theory).add(Theory_t::Symbol).add(termId).add(name).endDir();
+    startDir(Directive_t::Theory).add(uint32_t(Theory_t::Symbol)).add(termId).add(name).endDir();
 }
 void AspifOutput::theoryTerm(Id_t termId, int cId, const IdSpan& args) {
-    startDir(Directive_t::Theory).add(Theory_t::Compound).add(termId).add(cId).add(args).endDir();
+    startDir(Directive_t::Theory).add(uint32_t(Theory_t::Compound)).add(termId).add(cId).add(args).endDir();
 }
 void AspifOutput::theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond) {
-    startDir(Directive_t::Theory).add(Theory_t::Element).add(elementId).add(terms).add(cond).endDir();
+    startDir(Directive_t::Theory).add(uint32_t(Theory_t::Element)).add(elementId).add(terms).add(cond).endDir();
 }
 void AspifOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) {
-    startDir(Directive_t::Theory).add(Theory_t::Atom).add(atomOrZero).add(termId).add(elements).endDir();
+    startDir(Directive_t::Theory).add(uint32_t(Theory_t::Atom)).add(atomOrZero).add(termId).add(elements).endDir();
 }
 void AspifOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) {
     startDir(Directive_t::Theory)
-        .add(Theory_t::AtomWithGuard)
+        .add(uint32_t(Theory_t::AtomWithGuard))
         .add(atomOrZero)
         .add(termId)
         .add(elements)

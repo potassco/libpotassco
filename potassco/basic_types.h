@@ -34,6 +34,7 @@
  * A specification of aspif can be found in Appendix A of:
  * https://www.cs.uni-potsdam.de/wv/publications/DBLP_conf/iclp/GebserKKOSW16x.pdf
  */
+#include <potassco/enum.h>
 #include <potassco/platform.h>
 
 #include <span>
@@ -85,39 +86,35 @@ struct WeightLit_t {
     friend constexpr bool operator==(const WeightLit_t& lhs, const WeightLit_t& rhs)  = default;
     friend constexpr auto operator<=>(const WeightLit_t& lhs, const WeightLit_t& rhs) = default;
 };
-//! Supported rule head types.
-struct Head_t {
-    //! Named constants.
-    POTASSCO_ENUM_CONSTANTS(Head_t, Disjunctive = 0, Choice = 1);
-};
-//! Supported rule body types.
-struct Body_t {
-    //! Named constants.
-    POTASSCO_ENUM_CONSTANTS(Body_t, Normal = 0, Sum = 1, Count = 2);
-};
-//! Type representing an external value.
-struct Value_t {
-    //! Named constants.
-    POTASSCO_ENUM_CONSTANTS(Value_t, Free = 0, True = 1, False = 2, Release = 3);
-};
 
 using IdSpan        = std::span<const Id_t>;
 using AtomSpan      = std::span<const Atom_t>;
 using LitSpan       = std::span<const Lit_t>;
 using WeightLitSpan = std::span<const WeightLit_t>;
 
+//! Supported rule head types.
+POTASSCO_ENUM(Head_t, unsigned, Disjunctive = 0, Choice = 1);
+
+//! Supported rule body types.
+POTASSCO_ENUM(Body_t, unsigned, Normal = 0, Sum = 1, Count = 2);
+
+//! Type representing an external value.
+POTASSCO_ENUM(Value_t, unsigned, Free = 0, True = 1, False = 2, Release = 3);
+
 //! Supported modifications for domain heuristic.
-struct Heuristic_t {
-    //! Named constants.
-    POTASSCO_ENUM_CONSTANTS(Heuristic_t, Level = 0, Sign = 1, Factor = 2, Init = 3, True = 4, False = 5);
-    static constexpr std::string_view pred = "_heuristic(";
-};
+enum class Heuristic_t : unsigned { Level = 0, Sign = 1, Factor = 2, Init = 3, True = 4, False = 5 };
+consteval auto getEnumEntries(enum_type<Heuristic_t>) {
+    using namespace std::literals;
+    using enum Heuristic_t;
+    return std::array{
+        enumDecl(Level, "level"sv), enumDecl(Sign, "sign"sv), enumDecl(Factor, "factor"sv),
+        enumDecl(Init, "init"sv),   enumDecl(True, "true"sv), enumDecl(False, "false"sv),
+    };
+}
+
 //! Supported aspif directives.
-struct Directive_t {
-    //! Named constants.
-    POTASSCO_ENUM_CONSTANTS(Directive_t, End = 0, Rule = 1, Minimize = 2, Project = 3, Output = 4, External = 5,
-                            Assume = 6, Heuristic = 7, Edge = 8, Theory = 9, Comment = 10);
-};
+POTASSCO_ENUM(Directive_t, unsigned, End = 0, Rule = 1, Minimize = 2, Project = 3, Output = 4, External = 5, Assume = 6,
+              Heuristic = 7, Edge = 8, Theory = 9, Comment = 10);
 
 //! Basic callback interface for constructing a logic program.
 class AbstractProgram {
@@ -219,19 +216,6 @@ constexpr bool operator==(const WeightLit_t& lhs, Lit_t rhs) { return rhs == lhs
 constexpr bool operator!=(const WeightLit_t& lhs, const WeightLit_t& rhs) { return !(lhs == rhs); }
 constexpr bool operator!=(Lit_t lhs, const WeightLit_t& rhs) { return !(lhs == rhs); }
 constexpr bool operator!=(const WeightLit_t& lhs, Lit_t rhs) { return rhs != lhs; }
-
-//! Returns the string representation of the given heuristic modifier.
-constexpr const char* toString(Heuristic_t t) {
-    switch (t) {
-        case Heuristic_t::Level : return "level";
-        case Heuristic_t::Sign  : return "sign";
-        case Heuristic_t::Factor: return "factor";
-        case Heuristic_t::Init  : return "init";
-        case Heuristic_t::True  : return "true";
-        case Heuristic_t::False : return "false";
-        default                 : return "";
-    }
-}
 
 ///@}
 ///@}

@@ -144,8 +144,8 @@ inline WeightLit_t matchWLit(BufferedStream& str, unsigned aMax = atomMax, Weigh
                              const char* err = "weight literal expected") {
     return {.lit = matchLit(str, aMax, err), .weight = matchInt(str, minW, INT_MAX, "invalid weight literal weight")};
 }
-//! Returns whether input starts with word and if so sets input to input + std::strlen(word).
-bool match(const char*& input, const char* word);
+//! Returns whether input starts with word and if so sets input to input + word.length().
+bool match(const char*& input, std::string_view word);
 //! Returns whether input starts with a string representation of a heuristic modifier and if so extracts it.
 /*!
  * \see toString(Heuristic_t)

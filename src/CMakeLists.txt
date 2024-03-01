@@ -15,6 +15,7 @@ set(header
 	${header_path}/basic_types.h
 	${header_path}/clingo.h
 	${header_path}/convert.h
+	${header_path}/enum.h
 	${header_path}/match_basic_types.h
 	${header_path}/platform.h
 	${header_path}/rule_utils.h

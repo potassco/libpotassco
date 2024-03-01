@@ -40,22 +40,14 @@ struct FuncData;
  */
 ///@{
 //! Supported aspif theory directives.
-struct Theory_t {
-    //! Named constants.
-    POTASSCO_ENUM_CONSTANTS(Theory_t, Number = 0, Symbol = 1, Compound = 2, Reserved = 3, Element = 4, Atom = 5,
-                            AtomWithGuard = 6);
-};
+enum class Theory_t { Number = 0, Symbol = 1, Compound = 2, Reserved = 3, Element = 4, Atom = 5, AtomWithGuard = 6 };
 
 //! Supported aspif theory tuple types.
-struct Tuple_t {
-    //! Named constants.
-    POTASSCO_ENUM_CONSTANTS_T(Tuple_t, int, -3, Bracket = -3, Brace = -2, Paren = -1);
-};
-//! Returns starting and ending delimiters of the given tuple type.
-inline const char* toString(Tuple_t t) {
-    static const char* p   = "()\0{}\0[]";
-    int                off = (-static_cast<int>(t) - 1) * 3;
-    return p + off;
+enum class Tuple_t { Bracket = -3, Brace = -2, Paren = -1 };
+consteval auto getEnumEntries(enum_type<Tuple_t>) {
+    using namespace std::literals;
+    using enum Tuple_t;
+    return std::array{enumDecl(Bracket, "[]"sv), enumDecl(Brace, "{}"sv), enumDecl(Paren, "()"sv)};
 }
 
 //! A term is either a number, symbolic, or compound term (function or tuple).

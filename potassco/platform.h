@@ -88,13 +88,6 @@
 #endif
 
 namespace Potassco {
-struct EnumClass {
-    const char *       name, *rep;
-    int                min, max;
-    [[nodiscard]] bool isValid(int v) const;
-    size_t             convert(const char*, int&) const;
-    size_t             convert(int, const char*&) const;
-};
 enum FailType { error_assert = -1, error_logic = -2, error_runtime = -3 };
 
 template <typename ActionT>
@@ -115,21 +108,6 @@ POTASSCO_ATTR_NORETURN extern void fail(int ec, const char* file, unsigned line,
  * \addtogroup BasicTypes
  */
 ///@{
-
-//! Macro for defining a set of constants similar to a C++11 strong enum.
-#define POTASSCO_ENUM_CONSTANTS_T(TypeName, BaseType, minVal, ...)                                                     \
-    enum E { __VA_ARGS__, __eEnd, eMin = minVal, eMax = __eEnd - 1 };                                                  \
-    constexpr TypeName(E x = eMin) : val_(x) {}                                                                        \
-    constexpr explicit TypeName(BaseType x) : val_(static_cast<E>(x)) { assert(x <= eMax); }                           \
-    constexpr                            operator BaseType() const { return static_cast<BaseType>(val_); }             \
-    constexpr static Potassco::EnumClass enumClass() {                                                                 \
-        Potassco::EnumClass r = {#TypeName, #__VA_ARGS__, eMin, eMax};                                                 \
-        return r;                                                                                                      \
-    }                                                                                                                  \
-    E val_
-
-//! Macro for defining a set of constants starting at 0.
-#define POTASSCO_ENUM_CONSTANTS(TypeName, ...) POTASSCO_ENUM_CONSTANTS_T(TypeName, unsigned, 0u, __VA_ARGS__)
 
 //! Executes the given expression and calls Potassco::fail() with the given error code if it evaluates to false.
 #define POTASSCO_CHECK(exp, ec, ...)                                                                                   \

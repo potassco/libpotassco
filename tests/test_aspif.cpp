@@ -40,7 +40,7 @@ namespace Potassco::Test::Aspif {
 const Weight_t BOUND_NONE = -1;
 static void    finalize(std::stringstream& str) { str << "0\n"; }
 static void    rule(std::ostream& os, const Rule& r) {
-    os << (unsigned) Directive_t::Rule << " " << r.ht << " ";
+    os << (unsigned) Directive_t::Rule << " " << (unsigned) r.ht << " ";
     os << r.head.size();
     for (auto x : r.head) { os << " " << x; }
     os << " " << (unsigned) r.bt << " ";

@@ -35,26 +35,27 @@ namespace Potassco {
 ///@{
 
 //! Supported clause types in theory propagation.
-struct Clause_t {
-    //! Named constants.
-    POTASSCO_ENUM_CONSTANTS(Clause_t, Learnt = 0, //!< Cumulative removable (i.e. subject to nogood deletion) clause.
-                            Static         = 1,   //!< Cumulative unremovable clause.
-                            Volatile       = 2,   //!< Removable clause associated with current solving step.
-                            VolatileStatic = 3    //!< Unremovable clause associated with current solving step.
-    );
-    //! Returns whether p is either Volatile or VolatileStatic.
-    static bool isVolatile(Clause_t p) { return (static_cast<unsigned>(p) & static_cast<unsigned>(Volatile)) != 0; }
-    //! Returns whether p is either Static or VolatileStatic.
-    static bool isStatic(Clause_t p) { return (static_cast<unsigned>(p) & static_cast<unsigned>(Static)) != 0; }
+enum class Clause_t {
+    Learnt         = 0, //!< Cumulative removable (i.e. subject to nogood deletion) clause.
+    Static         = 1, //!< Cumulative unremovable clause.
+    Volatile       = 2, //!< Removable clause associated with current solving step.
+    VolatileStatic = 3  //!< Unremovable clause associated with current solving step.
 };
-//! Supported statistics types.
-struct Statistics_t {
-    //! Named constants.
-    POTASSCO_ENUM_CONSTANTS(Statistics_t, Empty = 0, //!< Empty (invalid) object.
-                            Value = 1,               //!< Single statistic value that is convertible to a double.
-                            Array = 2,               //!< Composite object mapping int keys to statistics types.
-                            Map   = 3                //!< Composite object mapping string keys to statistics types.
-    );
+//! Returns whether p is either Volatile or VolatileStatic.
+constexpr bool isVolatile(Clause_t p) {
+    return (static_cast<unsigned>(p) & static_cast<unsigned>(Clause_t::Volatile)) != 0;
+}
+//! Returns whether p is either Static or VolatileStatic.
+constexpr bool isStatic(Clause_t p) {
+    return (static_cast<unsigned>(p) & static_cast<unsigned>(Clause_t::Static)) != 0;
+}
+
+//! Named constants.
+enum class Statistics_t {
+    Empty = 0, //!< Empty (invalid) object.
+    Value = 1, //!< Single statistic value that is convertible to a double.
+    Array = 2, //!< Composite object mapping int keys to statistics types.
+    Map   = 3  //!< Composite object mapping string keys to statistics types.
 };
 
 //! Represents an assignment of a particular solver.

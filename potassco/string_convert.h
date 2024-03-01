@@ -24,6 +24,7 @@
 #include <potassco/platform.h>
 
 #include <potassco/basic_types.h>
+#include <potassco/enum.h>
 
 #include <climits>
 #include <cstdarg>
@@ -122,17 +123,40 @@ int xconvert(const char* x, unsigned long& out, const char** errPos = nullptr, i
 int xconvert(const char* x, double& out, const char** errPos = nullptr, int = 0);
 int xconvert(const char* x, const char*& out, const char** errPos = nullptr, int = 0);
 int xconvert(const char* x, std::string& out, const char** errPos = nullptr, int sep = 0);
-template <typename T>
-auto xconvert(const char* x, T& out, const char** errPos, int e = 0) -> decltype(int(T::enumClass().convert(x, e))) {
-    size_t len = T::enumClass().convert(x, e);
+template <typename EnumT>
+requires EnumReflect<EnumT>::value
+int xconvert(const char* x, EnumT& out, const char** errPos, int e = 0) {
+    // try numeric extraction first
+    using UT        = std::underlying_type_t<EnumT>;
+    const char* err = nullptr;
+    UT          v;
+    auto        ret = xconvert(x, v, &err, e);
+    if (ret > 0) {
+        if (enum_cast<EnumT>(v).has_value()) {
+            out = static_cast<EnumT>(v);
+        }
+        else {
+            err = x;
+            ret = 0;
+        }
+    }
+    else {
+        // try extraction "by name"
+        for (const auto& [key, val] : Potassco::enum_entries<EnumT>()) {
+            if (auto n = val.size(); strncasecmp(x, val.data(), n) == 0 && (!x[n] || x[n] == ',')) {
+                out  = static_cast<EnumT>(key);
+                err += n;
+                ret  = 1;
+                break;
+            }
+        }
+    }
     if (errPos) {
-        *errPos = x + len;
+        *errPos = err;
     }
-    if (len) {
-        out = static_cast<T>(e);
-    }
-    return int(len > 0u);
+    return ret;
 }
+
 std::string&        xconvert(std::string&, bool);
 std::string&        xconvert(std::string&, char);
 std::string&        xconvert(std::string&, int);
@@ -142,12 +166,13 @@ std::string&        xconvert(std::string&, unsigned long);
 std::string&        xconvert(std::string&, double);
 inline std::string& xconvert(std::string& out, const std::string& s) { return out.append(s); }
 inline std::string& xconvert(std::string& out, const char* s) { return out.append(s ? s : ""); }
-template <typename T>
-auto xconvert(std::string& out, T x)
-    -> std::enable_if_t<std::is_convertible_v<decltype(T::enumClass()), Potassco::EnumClass>, std::string&> {
-    const char* key;
-    size_t      len = T::enumClass().convert(static_cast<int>(x), key);
-    return out.append(key, len);
+template <typename EnumT>
+requires EnumReflect<EnumT>::value
+std::string& xconvert(std::string& out, EnumT enumT) {
+    if (auto name = Potassco::enum_name(enumT); not name.empty())
+        return out.append(name);
+    else
+        return xconvert(out, static_cast<std::underlying_type_t<EnumT>>(enumT));
 }
 #if defined(LLONG_MAX)
 int          xconvert(const char* x, long long& out, const char** errPos = nullptr, int = 0);
@@ -158,12 +183,12 @@ std::string& xconvert(std::string&, unsigned long long x);
 ///////////////////////////////////////////////////////////////////////////////
 // composite parser
 ///////////////////////////////////////////////////////////////////////////////
-const int def_sep = int(',');
+constexpr int def_sep = int(',');
 template <class T>
 int xconvert(const char* x, std::vector<T>& out, const char** errPos = nullptr, int sep = def_sep);
 
 // parses T[,U] optionally enclosed in parentheses
-template <class T, class U>
+template <typename T, typename U>
 int xconvert(const char* x, std::pair<T, U>& out, const char** errPos = nullptr, int sep = def_sep) {
     if (!x) {
         return 0;
@@ -200,7 +225,7 @@ int xconvert(const char* x, std::pair<T, U>& out, const char** errPos = nullptr,
     return sum;
 }
 // parses T1 [, ..., Tn] optionally enclosed in brackets
-template <class T, class OutIt>
+template <typename T, typename OutIt>
 std::size_t convert_seq(const char* x, std::size_t maxLen, OutIt out, char sep, const char** errPos = nullptr) {
     if (!x) {
         return 0;
@@ -233,7 +258,7 @@ std::size_t convert_seq(const char* x, std::size_t maxLen, OutIt out, char sep, 
     return t;
 }
 // parses T1 [, ..., Tn] optionally enclosed in brackets
-template <class T>
+template <typename T>
 int xconvert(const char* x, std::vector<T>& out, const char** errPos, int sep) {
     if (sep == 0) {
         sep = def_sep;
@@ -245,16 +270,16 @@ int xconvert(const char* x, std::vector<T>& out, const char** errPos, int sep) {
     }
     return static_cast<int>(t);
 }
-template <class T, int sz>
+template <typename T, int sz>
 int xconvert(const char* x, T (&out)[sz], const char** errPos = nullptr, int sep = 0) {
     return static_cast<int>(convert_seq<T>(x, sz, out, static_cast<char>(sep ? sep : def_sep), errPos));
 }
-template <class T, class U>
+template <typename T, typename U>
 std::string& xconvert(std::string& out, const std::pair<T, U>& in, char sep = static_cast<char>(def_sep)) {
     xconvert(out, in.first).append(1, sep);
     return xconvert(out, in.second);
 }
-template <class IT>
+template <typename IT>
 std::string& xconvert(std::string& accu, IT begin, IT end, char sep = static_cast<char>(def_sep)) {
     for (bool first = true; begin != end; first = false) {
         if (!first) {
@@ -264,14 +289,14 @@ std::string& xconvert(std::string& accu, IT begin, IT end, char sep = static_cas
     }
     return accu;
 }
-template <class T>
+template <typename T>
 std::string& xconvert(std::string& out, const std::vector<T>& in, char sep = static_cast<char>(def_sep)) {
     return xconvert(out, in.begin(), in.end(), sep);
 }
 ///////////////////////////////////////////////////////////////////////////////
 // fall back parser
 ///////////////////////////////////////////////////////////////////////////////
-template <class T>
+template <typename T>
 int xconvert(const char* x, T& out, const char** errPos, double) {
     std::size_t                xLen = std::strlen(x);
     const char*                err  = x;
@@ -296,12 +321,12 @@ class bad_string_cast : public std::bad_cast {
 public:
     [[nodiscard]] const char* what() const noexcept override;
 };
-template <class T>
+template <typename T>
 bool string_cast(const char* arg, T& to) {
     const char* end;
     return xconvert(arg, to, &end, 0) != 0 && !*end;
 }
-template <class T>
+template <typename T>
 T string_cast(const char* s) {
     T to;
     if (string_cast<T>(s, to)) {
@@ -309,39 +334,39 @@ T string_cast(const char* s) {
     }
     throw bad_string_cast();
 }
-template <class T>
+template <typename T>
 T string_cast(const std::string& s) {
     return string_cast<T>(s.c_str());
 }
-template <class T>
+template <typename T>
 bool string_cast(const std::string& from, T& to) {
     return string_cast<T>(from.c_str(), to);
 }
 
-template <class T>
+template <typename T>
 bool stringTo(const char* str, T& x) {
     return string_cast(str, x);
 }
 ///////////////////////////////////////////////////////////////////////////////
 // T -> string
 ///////////////////////////////////////////////////////////////////////////////
-template <class U>
+template <typename U>
 std::string string_cast(const U& num) {
     std::string out;
     xconvert(out, num);
     return out;
 }
-template <class T>
-inline std::string toString(const T& x) {
+template <typename T>
+inline auto toString(const T& x) -> decltype(string_cast(x)) {
     return string_cast(x);
 }
-template <class T, class U>
+template <typename T, typename U>
 inline std::string toString(const T& x, const U& y) {
     std::string res;
     xconvert(res, x).append(1, ',');
     return xconvert(res, y);
 }
-template <class T, class U, class V>
+template <typename T, typename U, typename V>
 std::string toString(const T& x, const U& y, const V& z) {
     std::string res;
     xconvert(res, x).append(1, ',');

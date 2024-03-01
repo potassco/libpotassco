@@ -426,34 +426,41 @@ TEST_CASE("Macro test", "[macro]") {
         // clang-format on
     }
 }
-struct Foo_t {
-    POTASSCO_ENUM_CONSTANTS(Foo_t, Value1 = 0, Value2 = 1, Value3 = 2, Value4, Value5 = 7, Value6);
-};
+
+POTASSCO_ENUM(Foo_t, unsigned, Value1 = 0, Value2 = 1, Value3 = 2, Value4, Value5 = 7, Value6 = 7 + 1);
+
 TEST_CASE("Enum test", "[enum]") {
-    static_assert(Foo_t::eMin == 0, "Wrong minimal value");
-    static_assert(Foo_t::eMax == 8, "Wrong maximal value");
-    SECTION("has enum class") {
-        EnumClass ec = Foo_t::enumClass();
-        REQUIRE(ec.min == Foo_t::eMin);
-        REQUIRE(ec.max == Foo_t::eMax);
-        REQUIRE(std::strcmp("Foo_t", ec.name) == 0);
+    using namespace std::literals;
+    static_assert(Potassco::enum_count<Foo_t>() == 6, "Wrong count");
+    static_assert(Potassco::enum_name(Foo_t::Value3) == "Value3"sv, "Wrong name");
+
+    SECTION("test entries") {
+        using Potassco::enumDecl;
+        using enum Foo_t;
+        REQUIRE(Potassco::enum_entries<Foo_t>() ==
+                std::array{enumDecl(Value1, "Value1"sv), enumDecl(Value2, "Value2"sv), enumDecl(Value3, "Value3"sv),
+                           enumDecl(Value4, "Value4"sv), enumDecl(Value5, "Value5"sv), enumDecl(Value6, "Value6"sv)});
     }
+
     SECTION("test enum to string") {
-        Foo_t x = Foo_t::Value2;
-        Foo_t y = Foo_t::Value4;
-        Foo_t z = Foo_t::Value6;
-        REQUIRE(toString(x) == "Value2");
-        REQUIRE(toString(y) == "Value4");
-        REQUIRE(toString(z) == "Value6");
-        REQUIRE(toString(Foo_t::Value6) == "8");
+        REQUIRE(toString(Foo_t::Value1) == "Value1");
+        REQUIRE(toString(Foo_t::Value2) == "Value2");
+        REQUIRE(toString(Foo_t::Value3) == "Value3");
+        REQUIRE(toString(Foo_t::Value4) == "Value4");
+        REQUIRE(toString(Foo_t::Value5) == "Value5");
+        REQUIRE(toString(Foo_t::Value6) == "Value6");
+        Foo_t unknown{12};
+        REQUIRE(toString(unknown) == "12");
     }
+
     SECTION("test enum from string") {
         REQUIRE(string_cast<Foo_t>("Value3") == Foo_t::Value3);
         REQUIRE(string_cast<Foo_t>("7") == Foo_t::Value5);
         REQUIRE(string_cast<Foo_t>("Value4") == Foo_t::Value4);
         REQUIRE(string_cast<Foo_t>("8") == Foo_t::Value6);
-        REQUIRE_THROWS(string_cast<Foo_t>("9"));
-        REQUIRE_THROWS(string_cast<Foo_t>("Value98"));
+        REQUIRE_THROWS_AS(string_cast<Foo_t>("9"), Potassco::bad_string_cast);
+        REQUIRE_THROWS_AS(string_cast<Foo_t>("Value98"), Potassco::bad_string_cast);
+        REQUIRE_THROWS_AS(string_cast<Foo_t>("Value"), Potassco::bad_string_cast);
     }
 }
 

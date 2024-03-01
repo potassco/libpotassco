@@ -51,7 +51,7 @@ protected:
      */
     bool doParse() override;
     //! Parses statements until next step directive or input is exhausted.
-    bool parseStatements();
+    void parseStatements();
 
 private:
     void             skipws();
@@ -68,6 +68,7 @@ private:
     void             matchTerm();
     void             matchAtomArg();
     void             matchStr();
+    const char*      matchWord();
     void             push(char c);
     AbstractProgram* out_;
     struct Data;
@@ -116,6 +117,11 @@ private:
     AspifTextOutput& push(const AtomSpan& atoms);
     AspifTextOutput& push(const LitSpan& lits);
     AspifTextOutput& push(const WeightLitSpan& wlits);
+    template <typename EnumT>
+    AspifTextOutput& push(EnumT t) {
+        return push(static_cast<uint32_t>(t));
+    }
+
     template <class T>
     T get();
 

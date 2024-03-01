@@ -299,7 +299,7 @@ void SmodelsConvert::flushHeuristic() {
             name = data_->addOutput(ma, buf.view(), true);
         }
         buf.clear();
-        buf.appendFormat("_heuristic(%s,%s,%d,%u)", name, toString(heu.type), heu.bias, heu.prio);
+        buf.appendFormat("_heuristic(%s,%s,%d,%u)", name, toString(heu.type).c_str(), heu.bias, heu.prio);
         auto c = static_cast<Lit_t>(heu.cond);
         out_.output(buf.view(), {&c, 1});
     }

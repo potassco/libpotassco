@@ -231,10 +231,12 @@ int readProgram(std::istream& str, ProgramReader& reader, ErrorHandler err) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // String matching
 /////////////////////////////////////////////////////////////////////////////////////////
-bool match(const char*& input, const char* word) {
-    std::size_t len = std::strlen(word);
-    if (std::strncmp(input, word, len) == 0) {
-        input += len;
+static constexpr std::string_view heuristicPred = "_heuristic(";
+using namespace std::literals;
+
+bool match(const char*& input, std::string_view word) {
+    if (std::strncmp(input, word.data(), word.length()) == 0) {
+        input += word.length();
         return true;
     }
     return false;
@@ -267,10 +269,11 @@ bool matchAtomArg(const char*& input, std::string_view& arg) {
     input = scan;
     return not arg.empty();
 }
+
 bool match(const char*& input, Heuristic_t& heuType) {
-    for (unsigned x = 0; x <= static_cast<unsigned>(Heuristic_t::eMax); ++x) {
-        if (match(input, toString(static_cast<Heuristic_t>(x)))) {
-            heuType = static_cast<Heuristic_t>(x);
+    for (const auto& [k, n] : enum_entries<Heuristic_t>()) {
+        if (not n.empty() && *input == n.front() && match(input, n)) {
+            heuType = static_cast<Heuristic_t>(k);
             return true;
         }
     }
@@ -290,27 +293,27 @@ bool match(const char*& input, int& out) {
 
 int matchDomHeuPred(const char*& in, std::string_view& atom, Heuristic_t& type, int& bias, unsigned& prio) {
     int p;
-    if (!match(in, begin(Heuristic_t::pred))) {
+    if (!match(in, heuristicPred)) {
         return 0;
     }
-    if (!matchAtomArg(in, atom) || !match(in, ",")) {
+    if (!matchAtomArg(in, atom) || !match(in, ","sv)) {
         return -1;
     }
-    if (!match(in, type) || !match(in, ",")) {
+    if (!match(in, type) || !match(in, ","sv)) {
         return -2;
     }
     if (!match(in, bias)) {
         return -3;
     }
     prio = static_cast<unsigned>(bias < 0 ? -bias : bias);
-    if (!match(in, ",")) {
-        return match(in, ")") ? 1 : -3;
+    if (!match(in, ","sv)) {
+        return match(in, ")"sv) ? 1 : -3;
     }
     if (!match(in, p) || p < 0) {
         return -4;
     }
     prio = static_cast<unsigned>(p);
-    return match(in, ")") ? 1 : -4;
+    return match(in, ")"sv) ? 1 : -4;
 }
 
 int matchEdgePred(const char*& in, std::string_view& n0, std::string_view& n1) {
@@ -322,11 +325,11 @@ int matchEdgePred(const char*& in, std::string_view& n0, std::string_view& n1) {
         in += ePos;
         return size(n0) > 0 && size(n1) > 0 ? 1 : -1;
     }
-    else if (match(in, "_edge(")) {
-        if (!matchAtomArg(in, n0) || !match(in, ",")) {
+    else if (match(in, "_edge("sv)) {
+        if (!matchAtomArg(in, n0) || !match(in, ","sv)) {
             return -1;
         }
-        if (!matchAtomArg(in, n1) || !match(in, ")")) {
+        if (!matchAtomArg(in, n1) || !match(in, ")"sv)) {
             return -2;
         }
         return 1;

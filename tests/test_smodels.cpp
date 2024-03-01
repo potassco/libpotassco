@@ -494,9 +494,9 @@ TEST_CASE("Convert to smodels", "[convert]") {
         convert.endStep();
         REQUIRE(observer.rules[Rule_t::ClaspAssignExt].size() == 3);
         REQUIRE(observer.rules[Rule_t::ClaspReleaseExt].size() == 1);
-        REQUIRE(observer.rules[Rule_t::ClaspAssignExt][0][1] == Value_t::Free);
-        REQUIRE(observer.rules[Rule_t::ClaspAssignExt][1][1] == Value_t::True);
-        REQUIRE(observer.rules[Rule_t::ClaspAssignExt][2][1] == Value_t::False);
+        REQUIRE(observer.rules[Rule_t::ClaspAssignExt][0][1] == int(Value_t::Free));
+        REQUIRE(observer.rules[Rule_t::ClaspAssignExt][1][1] == int(Value_t::True));
+        REQUIRE(observer.rules[Rule_t::ClaspAssignExt][2][1] == int(Value_t::False));
     }
     SECTION("edges are converted to atoms") {
         Lit_t a = 1;

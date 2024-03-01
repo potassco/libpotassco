@@ -62,15 +62,14 @@ bool AspifTextInput::doAttach(bool& inc) {
 
 bool AspifTextInput::doParse() {
     out_->beginStep();
-    if (!parseStatements()) {
-        return false;
-    }
+    parseStatements();
     out_->endStep();
     return true;
 }
 
-bool AspifTextInput::parseStatements() {
+void AspifTextInput::parseStatements() {
     require(out_ != nullptr, "output not set");
+    POTASSCO_SCOPE_EXIT({ data_ = nullptr; });
     Data data;
     data_ = &data;
     for (char c; (c = peek(true)) != 0; data.clear()) {
@@ -88,7 +87,6 @@ bool AspifTextInput::parseStatements() {
             matchRule(c);
         }
     }
-    return true;
 }
 
 void AspifTextInput::matchRule(char c) {
@@ -183,17 +181,12 @@ bool AspifTextInput::matchDirective() {
             require(p >= 0, "positive priority expected");
         }
         match(",");
-        int h = -1;
-        for (unsigned x = 0; x <= static_cast<unsigned>(Heuristic_t::eMax); ++x) {
-            if (match(toString(static_cast<Heuristic_t>(x)), false)) {
-                h = static_cast<int>(x);
-                break;
-            }
-        }
-        require(h >= 0, "unrecognized heuristic modification");
+        const char* w = matchWord();
+        Heuristic_t ht;
+        require(Potassco::match(w, ht), "unrecognized heuristic modification");
         skipws();
         match("]");
-        out_->heuristic(a, static_cast<Heuristic_t>(h), v, static_cast<unsigned>(p), data_->lits());
+        out_->heuristic(a, ht, v, static_cast<unsigned>(p), data_->lits());
     }
     else if (match("#edge", false)) {
         int s, t;
@@ -340,6 +333,12 @@ void AspifTextInput::matchStr() {
     }
     match("\""), push('"');
 }
+
+const char* AspifTextInput::matchWord() {
+    data_->symbol.clear();
+    for (unsigned char c; (c = stream()->peek()) != 0 && std::isalnum(c);) { push(stream()->get()); }
+    return data_->symbol.c_str();
+}
 /////////////////////////////////////////////////////////////////////////////////////////
 // AspifTextOutput
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -419,7 +418,7 @@ void AspifTextOutput::beginStep() {
     }
 }
 void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
-    push(Directive_t::Rule).push(static_cast<uint32_t>(ht)).push(head).push(Body_t::Normal).push(body);
+    push(Directive_t::Rule).push(ht).push(head).push(Body_t::Normal).push(body);
 }
 void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) {
     if (size(lits) == 0) {
@@ -511,7 +510,7 @@ AspifTextOutput& AspifTextOutput::push(const WeightLitSpan& wlits) {
 }
 void AspifTextOutput::writeDirectives() {
     data_->readPos = 0;
-    for (uint32_t x; (x = get<uint32_t>()) != Directive_t::End;) {
+    for (Directive_t x; (x = get<Directive_t>()) != Directive_t::End;) {
         auto sep = "", term = "";
         switch (x) {
             case Directive_t::Rule:
@@ -528,7 +527,7 @@ void AspifTextOutput::writeDirectives() {
                     os_ << ":- ";
                 }
                 term = ".";
-                switch (auto bt = get<uint32_t>()) {
+                switch (auto bt = get<Body_t>()) {
                     case Body_t::Normal:
                         for (auto n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
                         break;
@@ -571,7 +570,7 @@ void AspifTextOutput::writeDirectives() {
                 sep  = "#external ";
                 term = ".";
                 printName(os_ << sep, get<Atom_t>());
-                switch (get<uint32_t>()) {
+                switch (get<Value_t>()) {
                     default              : break;
                     case Value_t::Free   : term = ". [free]"; break;
                     case Value_t::True   : term = ". [true]"; break;
@@ -593,7 +592,7 @@ void AspifTextOutput::writeDirectives() {
                 if (auto p = get<uint32_t>()) {
                     os_ << "@" << p;
                 }
-                os_ << ", " << toString(static_cast<Heuristic_t>(get<uint32_t>())) << "]";
+                os_ << ", " << toString(get<Heuristic_t>()) << "]";
                 break;
             case Directive_t::Edge:
                 sep  = " : ";
@@ -602,7 +601,7 @@ void AspifTextOutput::writeDirectives() {
                 os_ << get<int32_t>() << ")";
                 for (auto n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
                 break;
-            default: break;
+            default: POTASSCO_ASSERT(false, "unexpected directive");
         }
         os_ << term << "\n";
     }
@@ -619,7 +618,7 @@ void AspifTextOutput::visitTheories() {
         }
         AspifTextOutput* self;
     } toStr(*this);
-    for (TheoryData::atom_iterator it = theory_.currBegin(), end = theory_.end(); it != end; ++it) {
+    for (auto it = theory_.currBegin(), end = theory_.end(); it != end; ++it) {
         Atom_t      atom = (*it)->atom();
         std::string name = toStr.toString(theory_, **it);
         if (!atom) {
@@ -649,9 +648,7 @@ std::string TheoryAtomStringBuilder::toString(const TheoryData& td, const Theory
     res_.clear();
     add('&').term(td, td.getTerm(a.term())).add('{');
     const char* sep = "";
-    for (TheoryElement::iterator eIt = a.begin(), eEnd = a.end(); eIt != eEnd; ++eIt, sep = "; ") {
-        add(sep).element(td, td.getElement(*eIt));
-    }
+    for (const auto& e : a) { add(std::exchange(sep, "; ")).element(td, td.getElement(e)); }
     add('}');
     if (a.guard()) {
         add(' ').term(td, td.getTerm(*a.guard()));
@@ -678,18 +675,16 @@ bool TheoryAtomStringBuilder::function(const TheoryData& td, const TheoryTerm& f
 }
 TheoryAtomStringBuilder& TheoryAtomStringBuilder::term(const TheoryData& data, const TheoryTerm& t) {
     switch (t.type()) {
-        default                : assert(false);
+        default                : POTASSCO_ASSERT(false, "unrecognized term");
         case Theory_t::Number  : add(Potassco::toString(t.number())); break;
         case Theory_t::Symbol  : add(t.symbol()); break;
         case Theory_t::Compound: {
             if (!t.isFunction() || function(data, t)) {
-                const char* parens = Potassco::toString(t.isTuple() ? t.tuple() : Potassco::Tuple_t::Paren);
+                auto        parens = Potassco::enum_name(t.isTuple() ? t.tuple() : Potassco::Tuple_t::Paren);
                 const char* sep    = "";
-                add(parens[0]);
-                for (TheoryTerm::iterator it = t.begin(), end = t.end(); it != end; ++it, sep = ", ") {
-                    add(sep).term(data, data.getTerm(*it));
-                }
-                add(parens[1]);
+                add(parens.at(0));
+                for (const auto& e : t) { add(std::exchange(sep, ", ")).term(data, data.getTerm(e)); }
+                add(parens.at(1));
             }
         }
     }
@@ -697,9 +692,7 @@ TheoryAtomStringBuilder& TheoryAtomStringBuilder::term(const TheoryData& data, c
 }
 TheoryAtomStringBuilder& TheoryAtomStringBuilder::element(const TheoryData& data, const TheoryElement& e) {
     const char* sep = "";
-    for (TheoryElement::iterator it = e.begin(), end = e.end(); it != end; ++it, sep = ", ") {
-        add(sep).term(data, data.getTerm(*it));
-    }
+    for (const auto& t : e) { add(std::exchange(sep, ", ")).term(data, data.getTerm(t)); }
     if (e.condition()) {
         LitSpan cond = getCondition(e.condition());
         sep          = " : ";

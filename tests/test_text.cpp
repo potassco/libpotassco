@@ -340,6 +340,13 @@ TEST_CASE("Text writer writes theory", "[text]") {
     AspifTextOutput   out(output);
     out.initProgram(false);
     out.beginStep();
+    SECTION("parens") {
+        using namespace std::literals;
+        CHECK(enum_name(Tuple_t::Paren) == "()"sv);
+        CHECK(enum_name(Tuple_t::Brace) == "{}"sv);
+        CHECK(enum_name(Tuple_t::Bracket) == "[]"sv);
+    }
+
     SECTION("write empty atom") {
         out.theoryAtom(0, 0, {});
         out.theoryTerm(0, "t");

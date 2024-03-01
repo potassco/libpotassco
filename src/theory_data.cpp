@@ -64,12 +64,12 @@ static uint64_t assertPtr(const void* p) {
 }
 
 TheoryTerm::TheoryTerm() : data_(nulTerm) {}
-TheoryTerm::TheoryTerm(int num) { data_ = (static_cast<uint64_t>(num) << 2) | Theory_t::Number; }
+TheoryTerm::TheoryTerm(int num) { data_ = (static_cast<uint64_t>(num) << 2) | uint32_t(Theory_t::Number); }
 TheoryTerm::TheoryTerm(const char* sym) {
-    data_ = (assertPtr(sym) | Theory_t::Symbol);
+    data_ = (assertPtr(sym) | uint32_t(Theory_t::Symbol));
     assert(sym == symbol());
 }
-TheoryTerm::TheoryTerm(const FuncData* c) { data_ = (assertPtr(c) | Theory_t::Compound); }
+TheoryTerm::TheoryTerm(const FuncData* c) { data_ = (assertPtr(c) | uint32_t(Theory_t::Compound)); }
 void     TheoryTerm::assertType(Theory_t t) const { POTASSCO_REQUIRE(type() == t, "Invalid term cast"); }
 bool     TheoryTerm::valid() const { return data_ != nulTerm; }
 Theory_t TheoryTerm::type() const {
