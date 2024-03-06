@@ -153,7 +153,7 @@ void SmodelsInput::matchSum(RuleBuilder& rule, bool weights) {
         std::swap(len, bnd);
         std::swap(bnd, neg);
     }
-    rule.startSum(bnd);
+    rule.startSum(static_cast<Weight_t>(bnd));
     for (uint32_t i = 0; i != len; ++i) {
         Lit_t p = lit(matchAtom());
         if (neg) {
@@ -249,7 +249,7 @@ bool SmodelsInput::readSymbols() {
             filter = opts_.filter;
         }
         if (atoms_) {
-            atoms_->add(atom, name, !filter);
+            atoms_->add(Potassco::atom(atom), name, !filter);
         }
         else if (!filter) {
             out_.output(name, {&atom, 1});
@@ -428,7 +428,7 @@ void SmodelsOutput::output(const std::string_view& str, const LitSpan& cond) {
         sec_ = 1;
     }
     os_ << unsigned(cond[0]) << " ";
-    os_.write(begin(str), size(str));
+    os_.write(begin(str), std::ssize(str));
     os_ << "\n";
 }
 void SmodelsOutput::external(Atom_t a, Value_t t) {

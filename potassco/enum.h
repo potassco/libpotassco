@@ -38,7 +38,7 @@ struct EnumHelper {
 
     template <typename T>
     constexpr EnumHelper operator=(T t) const noexcept { // NOLINT
-        return EnumHelper(t);
+        return EnumHelper(static_cast<UT>(t));
     }
 
     [[maybe_unused]] static void consteval_failure(const char*) {}

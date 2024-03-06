@@ -365,6 +365,37 @@ TEST_CASE("Text writer writes theory", "[text]") {
         out.endStep();
         REQUIRE(output.str() == "&t{x ^~\\?. y}.\n");
     }
+    SECTION("write compound") {
+        out.theoryTerm(0, "t");
+        out.theoryTerm(1, "x");
+        out.theoryTerm(2, "y");
+        auto comp = 0;
+        auto sep  = std::pair<std::string, std::string>{};
+        auto ids  = std::vector<Id_t>{};
+        REQUIRE_THROWS(out.theoryTerm(3, -4, (ids = {1, 2})));
+        SECTION("tuple") {
+            comp = int(Tuple_t::Paren);
+            sep  = std::make_pair("(", ")");
+        }
+        SECTION("set") {
+            comp = int(Tuple_t::Brace);
+            sep  = std::make_pair("{", "}");
+        }
+        SECTION("list") {
+            comp = int(Tuple_t::Bracket);
+            sep  = std::make_pair("[", "]");
+        }
+        SECTION("func") {
+            out.theoryTerm(4, "f");
+            comp = 4;
+            sep  = std::make_pair("f(", ")");
+        }
+        out.theoryTerm(3, comp, (ids = {1, 2}));
+        out.theoryElement(0, (ids = {3}), {});
+        out.theoryAtom(0, 0, (ids = {0}));
+        out.endStep();
+        REQUIRE(output.str() == std::string("&t{").append(sep.first).append("x, y").append(sep.second).append("}.\n"));
+    }
     SECTION("write complex atom") {
         out.theoryTerm(1, 200);
         out.theoryTerm(3, 400);

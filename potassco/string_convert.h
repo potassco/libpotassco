@@ -26,17 +26,14 @@
 #include <potassco/basic_types.h>
 #include <potassco/enum.h>
 
-#include <climits>
-#include <cstdarg>
-#include <cstring>
-#include <istream>
-#include <iterator>
-#include <stdexcept>
+#include <charconv>
+#include <cinttypes>
+#include <limits>
 #include <string>
-#include <type_traits>
-#include <typeinfo>
+#include <string_view>
 #include <utility>
 #include <vector>
+
 #if !defined(_MSC_VER)
 #include <strings.h>
 #else
@@ -45,274 +42,249 @@ inline int strncasecmp(const char* lhs, const char* rhs, size_t n) { return _str
 #endif
 namespace Potassco {
 namespace detail {
-// A primitive input stream buffer for fast extraction from a given string
-// NOTE: The input string is NOT COPIED, hence it
-//       MUST NOT CHANGE during extraction
-template <typename T, typename Traits = std::char_traits<T>>
-class input_from_string : public std::basic_streambuf<T, Traits> {
-    using base_type          = std::basic_streambuf<T, Traits>;
-    using pointer_type       = typename Traits::char_type*;
-    using const_pointer_type = const typename Traits::char_type*;
-    using pos_type           = typename base_type::pos_type;
-    using off_type           = typename base_type::off_type;
-
-public:
-    explicit input_from_string(const_pointer_type p, size_t size) : buffer_(const_cast<pointer_type>(p)), size_(size) {
-        base_type::setp(0, 0);                              // no write buffer
-        base_type::setg(buffer_, buffer_, buffer_ + size_); // read buffer
-    }
-    input_from_string(const input_from_string&)            = delete;
-    input_from_string& operator=(const input_from_string&) = delete;
-
-    pos_type seekoff(off_type offset, std::ios_base::seekdir dir, std::ios_base::openmode which) override {
-        if (which & std::ios_base::out) {
-            // not supported!
-            return base_type::seekoff(offset, dir, which);
-        }
-        if (dir == std::ios_base::cur) {
-            offset += static_cast<off_type>(base_type::gptr() - base_type::eback());
-        }
-        else if (dir == std::ios_base::end) {
-            offset = static_cast<off_type>(size_) - offset;
-        }
-        return seekpos(offset, which);
-    }
-    pos_type seekpos(pos_type offset, std::ios_base::openmode which) override {
-        if ((which & std::ios_base::out) == 0 && offset >= pos_type(0) && ((size_t) offset) <= size_) {
-            base_type::setg(buffer_, buffer_ + (size_t) offset, buffer_ + size_);
-            return offset;
-        }
-        return base_type::seekpos(offset, which);
-    }
-
-protected:
-    pointer_type buffer_;
-    size_t       size_;
-};
-
-template <typename T, typename Traits = std::char_traits<T>>
-class input_stream : public std::basic_istream<T, Traits> {
-public:
-    input_stream(const std::string& str) : std::basic_istream<T, Traits>(0), buffer_(str.data(), str.size()) {
-        std::basic_istream<T, Traits>::rdbuf(&buffer_);
-    }
-    input_stream(const char* x, size_t size) : std::basic_istream<T, Traits>(0), buffer_(x, size) {
-        std::basic_istream<T, Traits>::rdbuf(&buffer_);
-    }
-
-private:
-    input_from_string<T, Traits> buffer_;
-};
-struct no_stream_support {
-    template <typename T>
-    no_stream_support(const T&) {}
-};
-no_stream_support& operator>>(std::istream&, const no_stream_support&);
+std::from_chars_result parseChar(std::string_view in, unsigned char& out);
+std::from_chars_result parseUnsigned(std::string_view in, std::uintmax_t& out, std::uintmax_t max);
+std::from_chars_result parseSigned(std::string_view in, std::intmax_t& out, std::intmax_t min, std::intmax_t max);
+std::from_chars_result parseFloat(std::string_view in, double& out, double min, double max);
+std::from_chars_result error(std::string_view x, std::errc ec = std::errc::invalid_argument);
+std::from_chars_result success(std::string_view x, std::size_t pop);
+char*                  writeSigned(char* first, char* last, std::intmax_t);
+char*                  writeUnsigned(char* first, char* last, std::uintmax_t);
+char*                  writeFloat(char* first, char* last, double);
+bool                   matchOpt(std::string_view& in, char v);
 } // namespace detail
 ///////////////////////////////////////////////////////////////////////////////
-// primitive parser
+// chars -> T
 ///////////////////////////////////////////////////////////////////////////////
-template <typename T>
-int xconvert(const char* x, T& out, const char** errPos = nullptr, double = 0);
-int xconvert(const char* x, bool& out, const char** errPos = nullptr, int = 0);
-int xconvert(const char* x, char& out, const char** errPos = nullptr, int = 0);
-int xconvert(const char* x, unsigned& out, const char** errPos = nullptr, int = 0);
-int xconvert(const char* x, int& out, const char** errPos = nullptr, int = 0);
-int xconvert(const char* x, long& out, const char** errPos = nullptr, int = 0);
-int xconvert(const char* x, unsigned long& out, const char** errPos = nullptr, int = 0);
-int xconvert(const char* x, double& out, const char** errPos = nullptr, int = 0);
-int xconvert(const char* x, const char*& out, const char** errPos = nullptr, int = 0);
-int xconvert(const char* x, std::string& out, const char** errPos = nullptr, int sep = 0);
+std::from_chars_result fromChars(std::string_view in, bool& out);
+template <std::integral T>
+requires(not std::is_same_v<T, bool>)
+std::from_chars_result fromChars(std::string_view in, T& out) {
+    std::from_chars_result res{};
+    if constexpr (std::is_unsigned_v<T>) {
+        std::uintmax_t temp;
+        if (res = detail::parseUnsigned(in, temp, std::numeric_limits<T>::max()); res.ec == std::errc{})
+            out = static_cast<T>(temp);
+    }
+    else {
+        std::intmax_t temp;
+        if (res = detail::parseSigned(in, temp, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+            res.ec == std::errc{})
+            out = static_cast<T>(temp);
+    }
+    if (sizeof(T) == 1 && res.ec != std::errc{}) {
+        unsigned char temp;
+        if (res = detail::parseChar(in, temp); res.ec == std::errc{})
+            out = static_cast<T>(temp);
+    }
+    return res;
+}
+template <std::floating_point T>
+std::from_chars_result fromChars(std::string_view in, T& out) {
+    double temp;
+    auto   r = detail::parseFloat(in, temp, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+    if (r.ec == std::errc{})
+        out = static_cast<T>(temp);
+    return r;
+}
+inline std::from_chars_result fromChars(std::string_view in, std::string& out) {
+    out.append(in);
+    return detail::success(in, in.size());
+}
+inline std::from_chars_result fromChars(std::string_view in, std::string_view& out) {
+    out = in;
+    return detail::success(in, in.size());
+}
+
+// Parses T[,U] optionally enclosed in parentheses.
+// TODO: Why do we allow single values? This should be ok only if U is std::optional.
+template <typename T, typename U>
+std::from_chars_result fromChars(std::string_view in, std::pair<T, U>& out) {
+    auto temp(out);
+    bool m = detail::matchOpt(in, '(');
+    auto r = fromChars(in, temp.first);
+    if (r.ec != std::errc{})
+        return r;
+    in.remove_prefix(r.ptr - in.begin());
+    if (not in.empty() && in[0] == ',') {
+        in.remove_prefix(1);
+        if (r = fromChars(in, temp.second); r.ec != std::errc{})
+            return r;
+        in.remove_prefix(r.ptr - in.begin());
+    }
+    if (m && not detail::matchOpt(in, ')'))
+        return detail::error(in);
+    out = std::move(temp);
+    return detail::success(in, 0);
+}
+
+// parses T1 [, ..., Tn] optionally enclosed in brackets
+template <typename C>
+requires requires(C c, std::string_view in) {
+    typename C::value_type;
+    c.push_back(std::declval<typename C::value_type>());
+}
+std::from_chars_result fromChars(std::string_view in, C& out) {
+    auto m = detail::matchOpt(in, '[');
+    for (typename C::value_type temp; not in.empty();) {
+        auto r = fromChars(in, temp);
+        if (r.ec != std::errc{})
+            return r;
+        out.push_back(std::move(temp));
+        in.remove_prefix(r.ptr - in.begin());
+        if (in.size() < 2 || not detail::matchOpt(in, ','))
+            break;
+    }
+    if (m && not detail::matchOpt(in, ']'))
+        return detail::error(in);
+    return detail::success(in, 0);
+}
+
 template <typename EnumT>
 requires EnumReflect<EnumT>::value
-int xconvert(const char* x, EnumT& out, const char** errPos, int e = 0) {
+std::from_chars_result fromChars(std::string_view in, EnumT& out) {
     // try numeric extraction first
-    using UT        = std::underlying_type_t<EnumT>;
-    const char* err = nullptr;
-    UT          v;
-    auto        ret = xconvert(x, v, &err, e);
-    if (ret > 0) {
+    using UT = std::underlying_type_t<EnumT>;
+    UT   v;
+    auto ret = fromChars(in, v);
+    if (ret.ec == std::errc{}) {
         if (enum_cast<EnumT>(v).has_value()) {
             out = static_cast<EnumT>(v);
         }
         else {
-            err = x;
-            ret = 0;
+            ret = detail::error(in);
         }
     }
     else {
         // try extraction "by name"
         for (const auto& [key, val] : Potassco::enum_entries<EnumT>()) {
-            if (auto n = val.size(); strncasecmp(x, val.data(), n) == 0 && (!x[n] || x[n] == ',')) {
-                out  = static_cast<EnumT>(key);
-                err += n;
-                ret  = 1;
+            if (auto n = val.size();
+                n >= in.size() && strncasecmp(in.data(), val.data(), n) == 0 && (!in[n] || in[n] == ',')) {
+                out = static_cast<EnumT>(key);
+                ret = detail::success(in, n);
                 break;
             }
         }
     }
-    if (errPos) {
-        *errPos = err;
-    }
     return ret;
 }
+///////////////////////////////////////////////////////////////////////////////
+// T -> chars
+///////////////////////////////////////////////////////////////////////////////
+template <typename T>
+concept CharBuffer = requires(T buffer, std::string_view v) {
+    { buffer.append(v) } -> std::convertible_to<T&>;
+};
 
-std::string&        xconvert(std::string&, bool);
-std::string&        xconvert(std::string&, char);
-std::string&        xconvert(std::string&, int);
-std::string&        xconvert(std::string&, unsigned int);
-std::string&        xconvert(std::string&, long);
-std::string&        xconvert(std::string&, unsigned long);
-std::string&        xconvert(std::string&, double);
-inline std::string& xconvert(std::string& out, const std::string& s) { return out.append(s); }
-inline std::string& xconvert(std::string& out, const char* s) { return out.append(s ? s : ""); }
-template <typename EnumT>
+template <CharBuffer S>
+S& toChars(S& out, const char* in) {
+    return out.append(in ? std::string_view(in) : std::string_view());
+}
+template <CharBuffer S>
+S& toChars(S& out, const std::string& s) {
+    return out.append(std::string_view(s));
+}
+template <CharBuffer S>
+S& toChars(S& out, std::string_view s) {
+    return out.append(s);
+}
+template <CharBuffer S>
+S& toChars(S& out, bool b) {
+    return out.append(std::string_view(b ? "true" : "false"));
+}
+
+template <CharBuffer S, std::integral T>
+S& toChars(S& out, T in) {
+    char  temp[128];
+    char* end = temp;
+    if constexpr (std::is_unsigned_v<T>) {
+        if (in == static_cast<T>(-1)) {
+            return out.append(std::string_view("umax"));
+        }
+        else {
+            end = detail::writeUnsigned(std::begin(temp), std::end(temp), in);
+        }
+    }
+    else {
+        end = detail::writeSigned(std::begin(temp), std::end(temp), in);
+    }
+    return out.append(std::string_view{temp, end});
+}
+template <CharBuffer S, std::floating_point T>
+S& toChars(S& out, T in) {
+    char  temp[128];
+    auto* end = detail::writeFloat(std::begin(temp), std::end(temp), static_cast<double>(in));
+    return out.append(std::string_view{temp, end});
+}
+template <CharBuffer S, typename EnumT>
 requires EnumReflect<EnumT>::value
-std::string& xconvert(std::string& out, EnumT enumT) {
+S& toChars(S& out, EnumT enumT) {
     if (auto name = Potassco::enum_name(enumT); not name.empty())
         return out.append(name);
     else
-        return xconvert(out, static_cast<std::underlying_type_t<EnumT>>(enumT));
+        return toChars(out, static_cast<std::underlying_type_t<EnumT>>(enumT));
 }
-#if defined(LLONG_MAX)
-int          xconvert(const char* x, long long& out, const char** errPos = nullptr, int = 0);
-int          xconvert(const char* x, unsigned long long& out, const char** errPos = nullptr, int = 0);
-std::string& xconvert(std::string&, long long x);
-std::string& xconvert(std::string&, unsigned long long x);
-#endif
-///////////////////////////////////////////////////////////////////////////////
-// composite parser
-///////////////////////////////////////////////////////////////////////////////
-constexpr int def_sep = int(',');
-template <class T>
-int xconvert(const char* x, std::vector<T>& out, const char** errPos = nullptr, int sep = def_sep);
 
-// parses T[,U] optionally enclosed in parentheses
-template <typename T, typename U>
-int xconvert(const char* x, std::pair<T, U>& out, const char** errPos = nullptr, int sep = def_sep) {
-    if (!x) {
-        return 0;
-    }
-    if (sep == 0) {
-        sep = def_sep;
-    }
-    std::pair<T, U> temp(out);
-    const char*     n  = x;
-    int             ps = 0;
-    if (*n == '(') {
-        ++ps;
-        ++n;
-    }
-    int tokT = xconvert(n, temp.first, &n, sep);
-    int tokU = tokT && *n == (char) sep && n[1] ? xconvert(n + 1, temp.second, &n, sep) : 0;
-    int sum  = 0;
-    if (!ps || *n == ')') {
-        n += ps;
-        if (tokU) {
-            out.second = temp.second;
-            ++sum;
-        }
-        if (tokU || !*n) {
-            out.first = temp.first;
-            ++sum;
-        }
-    }
-    if (!sum) {
-        n = x;
-    }
-    if (errPos)
-        *errPos = n;
-    return sum;
+template <CharBuffer S, typename T, typename U>
+S& toChars(S& out, const std::pair<T, U>& p, char sep = ',') {
+    toChars(out, p.first).append(1, sep);
+    return toChars(out, p.second);
 }
-// parses T1 [, ..., Tn] optionally enclosed in brackets
-template <typename T, typename OutIt>
-std::size_t convert_seq(const char* x, std::size_t maxLen, OutIt out, char sep, const char** errPos = nullptr) {
-    if (!x) {
-        return 0;
+template <CharBuffer S, typename C>
+requires requires(S& s, C c) {
+    c.begin();
+    c.end();
+    toChars(s, *c.begin());
+}
+S& toChars(S& out, const C& c, char sep = ',') {
+    int n = 0;
+    for (const auto& v : c) {
+        out.append(std::string_view(&sep, std::exchange(n, 1)));
+        toChars(out, v);
     }
-    const char* n = x;
-    std::size_t t = 0;
-    std::size_t b = 0;
-    if (*n == '[') {
-        ++b;
-        ++n;
+    return out;
+}
+
+template <std::size_t N>
+struct FormatString : std::string_view {
+    template <typename StrT>
+    consteval FormatString(const StrT& s) : std::string_view(s) {
+        auto fmt = std::string_view(s);
+        auto n   = std::size_t(0);
+        for (std::string_view::size_type p = 0;;) {
+            if (p = fmt.find("{}", p); p >= fmt.size())
+                break;
+            if (++n > N)
+                Potassco::fail(EINVAL, nullptr, 0, nullptr, "too many arguments in format string");
+            p += 2;
+        }
     }
-    while (t != maxLen) {
-        T temp;
-        if (!xconvert(n, temp, &n, sep))
+};
+
+template <CharBuffer S, typename... Args>
+constexpr S& formatTo(S& out, FormatString<sizeof...(Args)> fmt, const Args&... args) {
+    using ArgFmt              = void (*)(S& s, const void*);
+    using ArgPtr              = const void*;
+    constexpr ArgFmt argFmt[] = {+[](S& s, ArgPtr a) { toChars(s, *static_cast<const Args*>(a)); }...};
+    ArgPtr           argPtr[] = {&args...};
+
+    auto n = std::size_t(0);
+    for (std::string_view::size_type p = 0;; ++n) {
+        auto ep = std::min(fmt.find("{}", p), fmt.size());
+        out.append(fmt.substr(p, ep - p));
+        if (ep == fmt.size())
             break;
-        *out++ = temp;
-        ++t;
-        if (!*n || *n != (char) sep || !n[1])
-            break;
-        n = n + 1;
+        POTASSCO_REQUIRE(n < sizeof...(Args), "too many arguments in format string");
+        argFmt[n](out, argPtr[n]);
+        p = ep + 2;
     }
-    if (!b || *n == ']') {
-        n += b;
-    }
-    else {
-        n = x;
-    }
-    if (errPos)
-        *errPos = n;
-    return t;
+    return out;
 }
-// parses T1 [, ..., Tn] optionally enclosed in brackets
-template <typename T>
-int xconvert(const char* x, std::vector<T>& out, const char** errPos, int sep) {
-    if (sep == 0) {
-        sep = def_sep;
-    }
-    std::size_t sz = out.size();
-    std::size_t t  = convert_seq<T>(x, out.max_size() - sz, std::back_inserter(out), static_cast<char>(sep), errPos);
-    if (!t) {
-        out.resize(sz);
-    }
-    return static_cast<int>(t);
-}
-template <typename T, int sz>
-int xconvert(const char* x, T (&out)[sz], const char** errPos = nullptr, int sep = 0) {
-    return static_cast<int>(convert_seq<T>(x, sz, out, static_cast<char>(sep ? sep : def_sep), errPos));
-}
-template <typename T, typename U>
-std::string& xconvert(std::string& out, const std::pair<T, U>& in, char sep = static_cast<char>(def_sep)) {
-    xconvert(out, in.first).append(1, sep);
-    return xconvert(out, in.second);
-}
-template <typename IT>
-std::string& xconvert(std::string& accu, IT begin, IT end, char sep = static_cast<char>(def_sep)) {
-    for (bool first = true; begin != end; first = false) {
-        if (!first) {
-            accu += sep;
-        }
-        xconvert(accu, *begin++);
-    }
-    return accu;
-}
-template <typename T>
-std::string& xconvert(std::string& out, const std::vector<T>& in, char sep = static_cast<char>(def_sep)) {
-    return xconvert(out, in.begin(), in.end(), sep);
-}
-///////////////////////////////////////////////////////////////////////////////
-// fall back parser
-///////////////////////////////////////////////////////////////////////////////
-template <typename T>
-int xconvert(const char* x, T& out, const char** errPos, double) {
-    std::size_t                xLen = std::strlen(x);
-    const char*                err  = x;
-    detail::input_stream<char> str(x, xLen);
-    if (str >> out) {
-        if (str.eof()) {
-            err += xLen;
-        }
-        else {
-            err += static_cast<std::size_t>(str.tellg());
-        }
-    }
-    if (errPos) {
-        *errPos = err;
-    }
-    return int(err != x);
+template <typename... Args>
+constexpr std::string formatToStr(FormatString<sizeof...(Args)> fmt, const Args&... args) {
+    std::string out;
+    formatTo(out, fmt, args...);
+    return out;
 }
 ///////////////////////////////////////////////////////////////////////////////
 // string -> T
@@ -323,8 +295,9 @@ public:
 };
 template <typename T>
 bool string_cast(const char* arg, T& to) {
-    const char* end;
-    return xconvert(arg, to, &end, 0) != 0 && !*end;
+    std::string_view view(arg);
+    auto             r = fromChars(view, to);
+    return r.ec == std::errc{} && !*r.ptr;
 }
 template <typename T>
 T string_cast(const char* s) {
@@ -353,7 +326,7 @@ bool stringTo(const char* str, T& x) {
 template <typename U>
 std::string string_cast(const U& num) {
     std::string out;
-    xconvert(out, num);
+    toChars(out, num);
     return out;
 }
 template <typename T>
@@ -363,106 +336,16 @@ inline auto toString(const T& x) -> decltype(string_cast(x)) {
 template <typename T, typename U>
 inline std::string toString(const T& x, const U& y) {
     std::string res;
-    xconvert(res, x).append(1, ',');
-    return xconvert(res, y);
+    toChars(res, x).append(1, ',');
+    return toChars(res, y);
 }
 template <typename T, typename U, typename V>
 std::string toString(const T& x, const U& y, const V& z) {
     std::string res;
-    xconvert(res, x).append(1, ',');
-    xconvert(res, y).append(1, ',');
-    return xconvert(res, z);
+    toChars(res, x).append(1, ',');
+    toChars(res, y).append(1, ',');
+    return toChars(res, z);
 }
-
-#define POTASSCO_FORMAT_S(str, fmt, ...) (Potassco::StringBuilder(str).appendFormat((fmt), __VA_ARGS__), (str))
-#define POTASSCO_FORMAT(fmt, ...)        (Potassco::StringBuilder().appendFormat((fmt), __VA_ARGS__).c_str())
-
-int vsnprintf(char* s, size_t n, const char* format, va_list arg);
-//! A class for creating a sequence of characters.
-class StringBuilder {
-public:
-    using ThisType = StringBuilder;
-    enum Mode { Fixed, Dynamic };
-    //! Constructs an empty object with an initial capacity of 63 characters.
-    explicit StringBuilder();
-    //! Constructs an object that appends new characters to the given string s.
-    explicit StringBuilder(std::string& s);
-    //! Constrcuts an object that stores up to n characters in the given array.
-    /*!
-     * If m is Fixed, the maximum size of this sequence is fixed to n.
-     * Otherwise, the sequence may switch to an internal buffer once size()
-     * exceeds n characters.
-     */
-    explicit StringBuilder(char* buf, std::size_t n, Mode m = Fixed);
-    ~StringBuilder();
-    StringBuilder(const StringBuilder&)            = delete;
-    StringBuilder& operator=(const StringBuilder&) = delete;
-
-    //! Returns the character sequence as a null-terminated string.
-    [[nodiscard]] const char* c_str() const;
-    //! Returns the length of this character sequence, i.e. std::strlen(c_str()).
-    [[nodiscard]] std::size_t size() const;
-    //! Returns if character sequence is empty, i.e. std::strlen(c_str()) == 0.
-    [[nodiscard]] bool             empty() const { return size() == std::size_t(0); }
-    [[nodiscard]] std::string_view view() const;
-    //! Resizes this character sequence to a length of n characters.
-    /*!
-     * \throw std::logic_error if n > maxSize()
-     * \throw std::bad_alloc if the function needs to allocate storage and fails.
-     */
-    ThisType& resize(std::size_t n, char c = '\0');
-    //! Returns the maximum size of this sequence.
-    [[nodiscard]] std::size_t maxSize() const;
-    //! Clears this character sequence.
-    ThisType& clear() { return resize(std::size_t(0)); }
-
-    //! Returns the character at the specified position.
-    char  operator[](std::size_t p) const { return buffer().head[p]; }
-    char& operator[](std::size_t p) { return buffer().head[p]; }
-
-    //! Appends the given null-terminated string.
-    ThisType& append(const char* str);
-    //! Appends the first n characters in str.
-    ThisType& append(const char* str, std::size_t n);
-    //! Appends n consecutive copies of character c.
-    ThisType& append(std::size_t n, char c);
-    //! Appends the given number.
-    ThisType& append(int n) { return append_(static_cast<uint64_t>(static_cast<int64_t>(n)), n >= 0); }
-    ThisType& append(long n) { return append_(static_cast<uint64_t>(static_cast<int64_t>(n)), n >= 0); }
-    ThisType& append(long long n) { return append_(static_cast<uint64_t>(static_cast<int64_t>(n)), n >= 0); }
-    ThisType& append(unsigned int n) { return append_(static_cast<uint64_t>(n), true); }
-    ThisType& append(unsigned long n) { return append_(static_cast<uint64_t>(n), true); }
-    ThisType& append(unsigned long long n) { return append_(static_cast<uint64_t>(n), true); }
-    ThisType& append(float x) { return append(static_cast<double>(x)); }
-    ThisType& append(double x);
-    //! Appends the null-terminated string fmt, replacing any format specifier in the same way as printf does.
-    ThisType& appendFormat(const char* fmt, ...);
-
-private:
-    ThisType& append_(uint64_t n, bool pos);
-    enum Type { Sbo = 0u, Str = 64u, Buf = 128u };
-    static constexpr uint8_t Own    = 1u;
-    static constexpr uint8_t SboCap = 63u;
-    struct Buffer {
-        [[nodiscard]] std::size_t free() const { return size - used; }
-        [[nodiscard]] char*       pos() const { return head + used; }
-        char*                     head;
-        std::size_t               used;
-        std::size_t               size;
-    };
-    [[nodiscard]] uint8_t tag() const { return static_cast<uint8_t>(sbo_[63]); }
-    [[nodiscard]] Type    type() const { return static_cast<Type>(tag() & uint8_t(Str | Buf)); }
-    [[nodiscard]] Buffer  buffer() const;
-
-    void   setTag(uint8_t t) { reinterpret_cast<uint8_t&>(sbo_[63]) = t; }
-    Buffer grow(std::size_t n);
-
-    union {
-        std::string* str_;
-        Buffer       buf_;
-        char         sbo_[64];
-    };
-};
 
 } // namespace Potassco
 

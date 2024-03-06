@@ -139,16 +139,17 @@ struct SmodelsConvert::SmData {
             }
         }
     }
-    AtomMap atoms_;     // maps input atoms to output atoms
-    MinMap  minimize_;  // maps priorities to minimize statements
-    AtomVec head_;      // active rule head
-    LitVec  lits_;      // active body literals
-    WLitVec wlits_;     // active weight body literals
-    AtomVec extern_;    // external atoms
-    HeuVec  heuristic_; // list of heuristic modifications not yet processed
-    SymTab  symTab_;
-    OutVec  output_; // list of output atoms not yet processed
-    Atom_t  next_;   // next unused output atom
+    AtomMap     atoms_;     // maps input atoms to output atoms
+    MinMap      minimize_;  // maps priorities to minimize statements
+    AtomVec     head_;      // active rule head
+    LitVec      lits_;      // active body literals
+    WLitVec     wlits_;     // active weight body literals
+    AtomVec     extern_;    // external atoms
+    HeuVec      heuristic_; // list of heuristic modifications not yet processed
+    SymTab      symTab_;
+    OutVec      output_; // list of output atoms not yet processed
+    Atom_t      next_;   // next unused output atom
+    std::string strBuffer_;
 };
 AtomSpan SmodelsConvert::SmData::mapHead(const AtomSpan& h) {
     head_.clear();
@@ -235,9 +236,8 @@ void SmodelsConvert::acycEdge(int s, int t, const LitSpan& condition) {
     if (!ext_) {
         out_.acycEdge(s, t, condition);
     }
-    StringBuilder buf;
-    buf.appendFormat("_edge(%d,%d)", s, t);
-    data_->addOutput(makeAtom(condition, true), buf.view(), false);
+    data_->strBuffer_.clear();
+    data_->addOutput(makeAtom(condition, true), formatTo(data_->strBuffer_, "_edge({},{})", s, t), false);
 }
 
 void SmodelsConvert::flush() {
@@ -285,7 +285,6 @@ void SmodelsConvert::flushExternal() {
     }
 }
 void SmodelsConvert::flushHeuristic() {
-    StringBuilder buf;
     for (const auto& heu : data_->heuristic_) {
         if (!data_->mapped(heu.atom)) {
             continue;
@@ -294,14 +293,13 @@ void SmodelsConvert::flushHeuristic() {
         const char*   name = ma.show ? getName(ma.smId) : nullptr;
         if (!name) {
             ma.show = 1;
-            buf.clear();
-            buf.appendFormat("_atom(%u)", ma.smId);
-            name = data_->addOutput(ma, buf.view(), true);
+            data_->strBuffer_.clear();
+            name = data_->addOutput(ma, formatTo(data_->strBuffer_, "_atom({})", ma.smId), true);
         }
-        buf.clear();
-        buf.appendFormat("_heuristic(%s,%s,%d,%u)", name, toString(heu.type).c_str(), heu.bias, heu.prio);
+        data_->strBuffer_.clear();
+        formatTo(data_->strBuffer_, "_heuristic({},{},{},{})", name, toString(heu.type).c_str(), heu.bias, heu.prio);
         auto c = static_cast<Lit_t>(heu.cond);
-        out_.output(buf.view(), {&c, 1});
+        out_.output(data_->strBuffer_, {&c, 1});
     }
 }
 void SmodelsConvert::flushSymbols() {

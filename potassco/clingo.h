@@ -137,7 +137,7 @@ public:
      * that was created with Solver::addVariable(), it is also considered volatile.
      *
      */
-    [[nodiscard]] virtual bool addClause(const Potassco::LitSpan& clause, Clause_t prop = Clause_t::Learnt) = 0;
+    [[nodiscard]] virtual bool addClause(const Potassco::LitSpan& clause, Clause_t prop) = 0;
 
     //! Adds a new volatile variable to this solver instance.
     /*!

@@ -37,6 +37,7 @@ namespace Potassco {
  * \addtogroup ParseType
  */
 ///@{
+using ErrorHandler = int (*)(int line, const char* what);
 
 //! A wrapper around an std::istream that provides buffering and a simple interface for extracting characters and
 //! integers.
@@ -47,7 +48,7 @@ public:
     //! Creates a new object wrapping the given stream.
     explicit BufferedStream(std::istream& str);
     ~BufferedStream();
-    BufferedStream& operator=(const BufferedStream&) = delete;
+    BufferedStream(BufferedStream&&) = delete;
 
     //! Returns the next character in the input stream, without extracting it.
     [[nodiscard]] char peek() const { return buf_[rpos_]; }
@@ -71,14 +72,14 @@ public:
     /*!
      * \return The number of characters copied to bufferOut.
      */
-    int copy(char* bufferOut, int max);
+    std::size_t copy(std::span<char> bufferOut);
     //! Returns the current line number in the input stream, i.e. the number of '\n' characters extracted so far.
     [[nodiscard]] unsigned line() const;
     //! Returns whether the given character is a decimal digit.
-    static inline bool isDigit(char c) { return c >= '0' && c <= '9'; }
+    static constexpr bool isDigit(char c) { return c >= '0' && c <= '9'; }
     //! Converts the given character to a decimal digit.
-    static inline int toDigit(char c) { return static_cast<int>(c - '0'); }
-    static void       fail(unsigned line, const char* error);
+    static constexpr int toDigit(char c) { return static_cast<int>(c - '0'); }
+    static void          fail(unsigned line, const char* error);
 
     void require(bool cnd, const char* error) const {
         if (!cnd) {
@@ -88,10 +89,11 @@ public:
 
 private:
     static constexpr auto ALLOC_SIZE = BUF_SIZE + 1;
+    using BufferType                 = char*;
 
-    char rget();
+    char pop();
     void underflow(bool up = true);
-    using BufferType = char*;
+
     std::istream& str_;
     BufferType    buf_;
     std::size_t   rpos_;
@@ -170,10 +172,9 @@ public:
     //! Enumeration type for supported read modes.
     enum ReadMode { Incremental, Complete };
     //! Creates a reader that is not yet associated with any input stream.
-    ProgramReader();
+    ProgramReader() = default;
     virtual ~ProgramReader();
-    ProgramReader(const ProgramReader&)            = delete;
-    ProgramReader& operator=(const ProgramReader&) = delete;
+    ProgramReader(ProgramReader&&) = delete;
 
     //! Associates the reader with the given input stream and returns whether the stream has the right format.
     bool accept(std::istream& str);
@@ -227,6 +228,7 @@ protected:
     unsigned matchPos(unsigned max = static_cast<unsigned>(-1), const char* err = "unsigned integer expected") {
         return Potassco::matchPos(*stream(), max, err);
     }
+
     //! Extracts a positive integer or fails with an std::exception.
     unsigned matchPos(const char* err) { return matchPos(static_cast<unsigned>(-1), err); }
     //! Extracts an atom (i.e. a positive integer > 0) or fails with an std::exception.
@@ -244,9 +246,9 @@ protected:
     void skipLine();
 
 private:
-    StreamType* str_;
-    unsigned    varMax_;
-    bool        inc_;
+    StreamType* str_    = nullptr;
+    unsigned    varMax_ = atomMax;
+    bool        inc_    = false;
 };
 //! Attaches the given stream to r and calls ProgramReader::parse() with the read mode set to ProgramReader::Complete.
 int readProgram(std::istream& str, ProgramReader& r, ErrorHandler err);

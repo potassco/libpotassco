@@ -86,11 +86,11 @@ void LpConvert::initOptions(OptionContext& root) {
 void LpConvert::run() {
     std::ifstream iFile;
     std::ofstream oFile;
-    if (!input_.empty() && input_ != "-") {
+    if (not input_.empty() && input_ != "-") {
         iFile.open(input_.c_str());
         POTASSCO_EXPECT(iFile.is_open(), "Could not open input file!");
     }
-    if (!output_.empty() && output_ != "-") {
+    if (not output_.empty() && output_ != "-") {
         POTASSCO_EXPECT(input_ != output_, "Input and output must be different!");
         oFile.open(output_.c_str());
         POTASSCO_EXPECT(oFile.is_open(), "Could not open output file!");
@@ -115,8 +115,6 @@ void LpConvert::run() {
         }
         Potassco::readSmodels(in, !text_ ? static_cast<Potassco::AbstractProgram&>(aspif) : text, &error, opts);
     }
-    iFile.close();
-    oFile.close();
 }
 
 int main(int argc, char** argv) {

@@ -131,7 +131,7 @@ public:
 
     void setDescriptionLevel(DescriptionLevel level) { level_ = level; }
 
-    //! Creates a formated description of all options with level() <= level in this group.
+    //! Creates a formatted description of all options with level() <= level in this group.
     void format(OptionOutput& out, size_t maxW, DescriptionLevel level = desc_level_default) const;
 
     [[nodiscard]] std::size_t maxColumn(DescriptionLevel level) const;
@@ -381,17 +381,17 @@ private:
 
 //! Default formatting for options.
 struct DefaultFormat {
-    std::size_t format(std::vector<char>&, const OptionContext&) { return 0; }
+    std::size_t format(std::string&, const OptionContext&) { return 0; }
     //! Writes g.caption() to buffer.
-    std::size_t format(std::vector<char>& buffer, const OptionGroup& g);
+    std::size_t format(std::string& buffer, const OptionGroup& g);
     //! Writes long name, short name, and argument name to buffer.
-    std::size_t format(std::vector<char>& buffer, const Option& o, std::size_t maxW);
+    std::size_t format(std::string& buffer, const Option& o, std::size_t maxW);
     //! Writes description to buffer.
     /*!
      * Occurrences of %D, %I and %A in desc are replaced with
      * the value's default value, implicit value, and name, respectively.
      */
-    std::size_t format(std::vector<char>& buffer, const char* desc, const Value&, std::size_t maxW);
+    std::size_t format(std::string& buffer, const char* desc, const Value&, std::size_t maxW);
 };
 
 //! Base class for printing options.
@@ -419,10 +419,10 @@ public:
               form) {}
     //! Writes formatted option descriptions to given std::string.
     explicit OptionOutputImpl(std::string& str, const Formatter& form = Formatter())
-        : OptionOutputImpl([&str](std::string_view view) { str.append(view.data(), view.size()); }, form) {}
+        : OptionOutputImpl([&str](std::string_view view) { str.append(view.data(), std::ssize(view)); }, form) {}
     //! Writes formatted option descriptions to given std::ostream.
     explicit OptionOutputImpl(std::ostream& os, const Formatter& form = Formatter())
-        : OptionOutputImpl([&os](std::string_view view) { os.write(view.data(), view.size()); }, form) {}
+        : OptionOutputImpl([&os](std::string_view view) { os.write(view.data(), std::ssize(view)); }, form) {}
     //! Writes formatted option descriptions to given sink.
     explicit OptionOutputImpl(Sink sink, const Formatter& form = Formatter())
         : sink_(std::move(sink))
@@ -446,10 +446,11 @@ private:
     void writeBuffer(std::size_t n) {
         if (sink_ && n)
             sink_(std::string_view{buffer_.data(), n});
+        buffer_.clear();
     }
-    std::vector<char> buffer_;
-    Sink              sink_;
-    Formatter         formatter_;
+    std::string buffer_;
+    Sink        sink_;
+    Formatter   formatter_;
 };
 using OptionPrinter = OptionOutputImpl<>;
 ///////////////////////////////////////////////////////////////////////////////
@@ -499,7 +500,7 @@ ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsign
  * \throw UnknownOption if allowUnregistered is false and an argument is found
  * that does not match any option.
  */
-ParsedValues parseCommandArray(const char* const args[], unsigned nArgs, const OptionContext& ctx,
+ParsedValues parseCommandArray(const char* const args[], int nArgs, const OptionContext& ctx,
                                bool allowUnregistered = true, PosOption posParser = nullptr, unsigned flags = 0);
 
 /*!

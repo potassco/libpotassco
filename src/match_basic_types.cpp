@@ -64,7 +64,7 @@ BufferedStream::BufferedStream(std::istream& str) : str_(str), rpos_(0), line_(1
     underflow();
 }
 BufferedStream::~BufferedStream() { delete[] buf_; }
-char BufferedStream::rget() {
+char BufferedStream::pop() {
     char c = peek();
     if (!buf_[++rpos_]) {
         underflow();
@@ -73,11 +73,11 @@ char BufferedStream::rget() {
 }
 char BufferedStream::get() {
     if (char c = peek()) {
-        rget();
+        pop();
         if (c == '\r') {
             c = '\n';
             if (peek() == '\n')
-                rget();
+                pop();
         }
         if (c == '\n') {
             ++line_;
@@ -100,7 +100,7 @@ void BufferedStream::underflow(bool upPos) {
     }
     auto n = static_cast<std::streamsize>(ALLOC_SIZE - (1 + rpos_));
     str_.read(buf_ + rpos_, n);
-    auto r          = str_.gcount();
+    auto r          = static_cast<std::size_t>(str_.gcount());
     buf_[r + rpos_] = 0;
 }
 bool BufferedStream::unget(char c) {
@@ -135,36 +135,35 @@ bool BufferedStream::match(int64_t& res, bool noSkipWs) {
     }
     char s = peek();
     if (s == '+' || s == '-') {
-        rget();
+        pop();
     }
     if (!isDigit(peek())) {
         return false;
     }
-    for (res = toDigit(rget()); isDigit(peek());) {
+    for (res = toDigit(pop()); isDigit(peek());) {
         res *= 10;
-        res += toDigit(rget());
+        res += toDigit(pop());
     }
     if (s == '-') {
         res = -res;
     }
     return true;
 }
-int BufferedStream::copy(char* out, int max) {
-    if (max < 0)
-        return max;
+std::size_t BufferedStream::copy(std::span<char> outBuf) {
     std::size_t os = 0;
-    for (auto n = static_cast<std::size_t>(max); n && peek();) {
-        std::size_t b  = (ALLOC_SIZE - rpos_) - 1;
-        std::size_t m  = std::min(n, b);
-        out            = std::copy(buf_ + rpos_, buf_ + rpos_ + m, out);
-        n             -= m;
-        os            += m;
-        rpos_         += m;
+    for (auto n = outBuf.size(); n && peek();) {
+        std::size_t b   = (ALLOC_SIZE - rpos_) - 1;
+        std::size_t m   = std::min(n, b);
+        char*       out = outBuf.data() + os;
+        std::copy(buf_ + rpos_, buf_ + rpos_ + m, out);
+        n     -= m;
+        os    += m;
+        rpos_ += m;
         if (!peek()) {
             underflow();
         }
     }
-    return static_cast<int>(os);
+    return os;
 }
 unsigned BufferedStream::line() const { return line_; }
 void     BufferedStream::fail(unsigned line, const char* err) {
@@ -173,7 +172,6 @@ void     BufferedStream::fail(unsigned line, const char* err) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // ProgramReader
 /////////////////////////////////////////////////////////////////////////////////////////
-ProgramReader::ProgramReader() : str_(nullptr), varMax_(static_cast<unsigned>(INT_MAX)), inc_(false) {}
 ProgramReader::~ProgramReader() { delete str_; }
 bool ProgramReader::accept(std::istream& str) {
     reset();

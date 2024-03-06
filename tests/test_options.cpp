@@ -23,6 +23,9 @@
 #include <potassco/program_opts/typed_value.h>
 
 #include "catch.hpp"
+#include <cstring>
+
+#include <cstring>
 
 namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;

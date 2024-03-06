@@ -61,7 +61,8 @@ private:
     void             matchLits();
     void             matchCondition();
     void             matchAgg();
-    bool             match(const char* ts, bool required = true);
+    void             matchDelim(char);
+    bool             matchOpt(const char* ts);
     Atom_t           matchId();
     Lit_t            matchLit();
     int              matchInt();
@@ -84,8 +85,7 @@ class AspifTextOutput : public Potassco::AbstractProgram {
 public:
     AspifTextOutput(std::ostream& os);
     ~AspifTextOutput() override;
-    AspifTextOutput(const AspifTextOutput&)            = delete;
-    AspifTextOutput& operator=(const AspifTextOutput&) = delete;
+    AspifTextOutput(AspifTextOutput&&) = delete;
 
     void initProgram(bool incremental) override;
     void beginStep() override;
@@ -111,6 +111,7 @@ public:
 
 private:
     std::ostream&    printName(std::ostream& os, Lit_t lit) const;
+    std::ostream&    printName(std::ostream& os, Atom_t at) const { return printName(os, lit(at)); }
     void             writeDirectives();
     void             visitTheories();
     AspifTextOutput& push(uint32_t x);

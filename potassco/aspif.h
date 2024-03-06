@@ -32,10 +32,12 @@ namespace Potassco {
  */
 ///@{
 /*!
- * Parses the given program in asp intermediate format and calls ctx on each parsed element.
+ * Parses the given program in asp intermediate format and calls out on each parsed element.
  * The error handler h is called on error. If h is 0, std::exceptions are used to signal errors.
  */
 int readAspif(std::istream& prg, AbstractProgram& out, ErrorHandler h = nullptr);
+
+enum class Theory_t;
 
 //! Class for parsing logic programs in asp intermediate format.
 class AspifInput : public ProgramReader {
@@ -56,15 +58,19 @@ protected:
     /*!
      * \see Potassco::Theory_t
      */
-    virtual void matchTheory(unsigned t);
+    virtual void matchTheory(Theory_t t);
 
 private:
     struct Extra;
-    void             matchAtoms();
-    void             matchLits();
-    void             matchWLits(int32_t minW);
-    void             matchString();
-    void             matchIds();
+    void matchAtoms();
+    void matchLits();
+    void matchWLits(int32_t minW);
+    void matchString();
+    void matchIds();
+    template <typename EnumT>
+    EnumT matchType(const char* err) {
+        return static_cast<EnumT>(matchPos(enum_count<EnumT>() - 1, err));
+    }
     AbstractProgram& out_;
     RuleBuilder*     rule_;
     Extra*           data_;

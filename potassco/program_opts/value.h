@@ -88,7 +88,7 @@ public:
 
     //! Sets an alias name for the corresponding option.
     Value* alias(char c) {
-        optAlias_ = c;
+        optAlias_ = static_cast<byte_t>(c);
         return this;
     }
     [[nodiscard]] char alias() const { return static_cast<char>(optAlias_); }

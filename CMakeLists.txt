@@ -53,6 +53,21 @@ else()
 	SET(CMAKE_STATIC_LINKER_FLAGS_RELEASE "${CMAKE_STATIC_LINKER_FLAGS_RELEASE} ${VC_RELEASE_LINK_OPTIONS}")
 endif()
 
+add_library(potassco_default_warnings INTERFACE)
+add_library(potassco::potassco_default_warnings ALIAS potassco_default_warnings)
+if(MSVC)
+	set(PROJECT_WARNINGS_CXX /W4)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+	set(PROJECT_WARNINGS_CXX
+		-Wall -Wextra -Wpedantic -Wshadow -Wundef -Wformat -Wformat=2 -Wunused -Wsign-conversion -Wimplicit-fallthrough
+		-Wextra-semi -Woverloaded-virtual -Wnon-virtual-dtor
+	)
+endif()
+target_compile_options(potassco_default_warnings
+	INTERFACE
+	$<$<COMPILE_LANGUAGE:CXX>:${PROJECT_WARNINGS_CXX}>
+)
+
 add_subdirectory(src)
 if(LIB_POTASSCO_BUILD_TESTS)
 	enable_testing()

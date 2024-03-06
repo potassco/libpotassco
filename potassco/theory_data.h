@@ -186,8 +186,7 @@ public:
     using Element       = TheoryElement;
     TheoryData();
     ~TheoryData();
-    TheoryData(const TheoryData&)            = delete;
-    TheoryData& operator=(const TheoryData&) = delete;
+    TheoryData(TheoryData&&) = delete;
 
     //! Sentinel for marking a condition to be set later.
     static constexpr auto COND_DEFERRED = static_cast<Id_t>(-1);
@@ -336,7 +335,7 @@ public:
     using pointer           = const T*;
     using difference_type   = std::ptrdiff_t;
     IteratorAdaptor(const TheoryData& t, const Id_t* e) : data_(&t), elem_(e) {}
-    IteratorAdaptor() : data_(nullptr), elem_(nullptr) {}
+    IteratorAdaptor() = default;
     this_type& operator++() {
         ++elem_;
         return *this;
@@ -371,8 +370,8 @@ public:
     [[nodiscard]] const TheoryData& theory() const { return *data_; }
 
 private:
-    const TheoryData* data_;
-    const Id_t*       elem_;
+    const TheoryData* data_ = nullptr;
+    const Id_t*       elem_ = nullptr;
 };
 
 using TheoryElementIterator = IteratorAdaptor<TheoryElement, &TheoryData::getElement>;
@@ -388,6 +387,7 @@ inline void print(AbstractProgram& out, Id_t termId, const TheoryTerm& term) {
         case Potassco::Theory_t::Number  : out.theoryTerm(termId, term.number()); break;
         case Potassco::Theory_t::Symbol  : out.theoryTerm(termId, term.symbol()); break;
         case Potassco::Theory_t::Compound: out.theoryTerm(termId, term.compound(), term.terms()); break;
+        default                          : break;
     }
 }
 inline void print(AbstractProgram& out, const TheoryAtom& a) {

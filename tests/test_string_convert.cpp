@@ -30,30 +30,31 @@ namespace Potassco::Test {
 
 TEST_CASE("String conversion", "[string]") {
     errno = 0;
+#define REQUIRE_CONV_FAIL(X, Y) REQUIRE((X).ec == Y)
+
     SECTION("empty string is not an int") {
         REQUIRE_THROWS(Potassco::string_cast<int>(""));
         REQUIRE_THROWS(Potassco::string_cast<unsigned>(""));
         int      iVal;
         unsigned uVal;
-        REQUIRE_FALSE(Potassco::xconvert("", iVal));
-        REQUIRE_FALSE(Potassco::xconvert("", uVal));
+        REQUIRE_CONV_FAIL(Potassco::fromChars("", iVal), std::errc::invalid_argument);
+        REQUIRE_CONV_FAIL(Potassco::fromChars("", uVal), std::errc::invalid_argument);
     }
     SECTION("at least one digit") {
         REQUIRE_THROWS(Potassco::string_cast<int>("+"));
         REQUIRE_THROWS(Potassco::string_cast<unsigned>("+"));
         int      iVal;
         unsigned uVal;
-        REQUIRE_FALSE(Potassco::xconvert("+", iVal));
-        REQUIRE_FALSE(Potassco::xconvert("+", uVal));
+        REQUIRE_CONV_FAIL(Potassco::fromChars("+", iVal), std::errc::invalid_argument);
+        REQUIRE_CONV_FAIL(Potassco::fromChars("+", uVal), std::errc::invalid_argument);
     }
     SECTION("overflow is an error") {
         REQUIRE_THROWS(Potassco::string_cast<int64_t>("18446744073709551616"));
         REQUIRE_THROWS(Potassco::string_cast<uint64_t>("18446744073709551616"));
         int64_t  iVal;
         uint64_t uVal;
-        REQUIRE_FALSE(Potassco::xconvert("18446744073709551616", iVal));
-        REQUIRE(errno == ERANGE);
-        REQUIRE_FALSE(Potassco::xconvert("18446744073709551616", uVal));
+        REQUIRE_CONV_FAIL(Potassco::fromChars("18446744073709551616", iVal), std::errc::result_out_of_range);
+        REQUIRE_CONV_FAIL(Potassco::fromChars("18446744073709551616", uVal), std::errc::result_out_of_range);
     }
     SECTION("positive and negative ints convert to string") {
         REQUIRE(Potassco::string_cast(10) == "10");
@@ -86,6 +87,47 @@ TEST_CASE("String conversion", "[string]") {
 
         REQUIRE(Potassco::string_cast<long long>("imax") == LLONG_MAX);
         REQUIRE(Potassco::string_cast<long long>("imin") == LLONG_MIN);
+    }
+
+    SECTION("chars are handled") {
+        REQUIRE(Potassco::string_cast<char>("\t") == '\t');
+        REQUIRE(Potassco::string_cast<char>("\r") == '\r');
+        REQUIRE(Potassco::string_cast<char>("\n") == '\n');
+        REQUIRE(Potassco::string_cast<char>("\v") == '\v');
+        REQUIRE(Potassco::string_cast<char>("\f") == '\f');
+        REQUIRE(Potassco::string_cast<char>("\a") == '\a');
+
+        REQUIRE(Potassco::string_cast<char>("x") == 'x');
+        REQUIRE(Potassco::string_cast<char>("a") == 'a');
+        REQUIRE(Potassco::string_cast<char>("H") == 'H');
+
+        REQUIRE(Potassco::string_cast<char>("49") == 49);
+        REQUIRE_THROWS_AS(Potassco::string_cast<char>("256"), Potassco::bad_string_cast);
+    }
+
+    SECTION("char accepts escaped space") {
+        REQUIRE(Potassco::string_cast<char>("\\t") == '\t');
+        REQUIRE(Potassco::string_cast<char>("\\r") == '\r');
+        REQUIRE(Potassco::string_cast<char>("\\n") == '\n');
+        REQUIRE(Potassco::string_cast<char>("\\v") == '\v');
+        REQUIRE(Potassco::string_cast<char>("\\f") == '\f');
+
+        REQUIRE_THROWS_AS(Potassco::string_cast<char>("\\a"), Potassco::bad_string_cast);
+    }
+
+    SECTION("bools are handled") {
+        REQUIRE(Potassco::string_cast<bool>("1"));
+        REQUIRE(Potassco::string_cast<bool>("true"));
+        REQUIRE(Potassco::string_cast<bool>("on"));
+        REQUIRE(Potassco::string_cast<bool>("yes"));
+
+        REQUIRE_FALSE(Potassco::string_cast<bool>("0"));
+        REQUIRE_FALSE(Potassco::string_cast<bool>("false"));
+        REQUIRE_FALSE(Potassco::string_cast<bool>("off"));
+        REQUIRE_FALSE(Potassco::string_cast<bool>("no"));
+
+        REQUIRE(Potassco::toString(true) == "true");
+        REQUIRE(Potassco::toString(false) == "false");
     }
 
     SECTION("double converts to string") { REQUIRE(Potassco::string_cast(10.2) == "10.2"); }
@@ -126,6 +168,8 @@ TEST_CASE("String conversion", "[string]") {
     SECTION("Sequence can be converted") {
         REQUIRE(Potassco::toString(1, 2, 3) == "1,2,3");
         REQUIRE(Potassco::toString(1, "Hallo") == "1,Hallo");
+
+        REQUIRE(Potassco::toString(std::vector{1, 2, 3}) == "1,2,3");
     }
     SECTION("conversion works with long long") {
         long long mx = LLONG_MAX, mn = LLONG_MIN, y;
@@ -137,29 +181,33 @@ TEST_CASE("String conversion", "[string]") {
         unsigned long long umx = ULLONG_MAX, z;
         errno                  = ERANGE;
         REQUIRE((Potassco::stringTo(Potassco::toString(mx).c_str(), y) && mx == y));
-        errno = ERANGE;
-        StringBuilder str;
-        str.appendFormat("%llu", ULLONG_MAX);
-        REQUIRE((Potassco::stringTo(str.c_str(), z) && umx == z));
+
+        auto s = Potassco::toString(ULLONG_MAX);
+        errno  = ERANGE;
+        REQUIRE((Potassco::stringTo(s.c_str(), z) && umx == z));
     }
 
     SECTION("double parsing is locale-independent") {
-        using P           = std::pair<std::string, std::string>;
-        P           lcg[] = {P("de", "DE"), P("el", "GR"), P("ru", "RU"), P("es", "ES"), P("it", "IT")};
-        const char* x     = nullptr;
-#if defined(_MSC_VER) && _MSC_VER <= 1600
-        x = setlocale(LC_ALL, "deu_deu");
-#endif
-        for (const P *it = lcg, *end = it + sizeof(lcg) / sizeof(P); it != end && !x; ++it) {
-            x = setlocale(LC_ALL, std::string(it->first).append(1, '_').append(it->second).c_str());
-            if (x != nullptr) {
-                break;
+        const auto* restore = []() -> const char* {
+            using P             = std::pair<std::string, std::string>;
+            const char* restore = setlocale(LC_ALL, nullptr);
+            if (setlocale(LC_ALL, "deu_deu"))
+                return restore;
+            for (const auto& [language, territory] :
+                 {P("de", "DE"), P("el", "GR"), P("ru", "RU"), P("es", "ES"), P("it", "IT")}) {
+                for (auto sep : {'_', '-'}) {
+                    for (const auto* codeset : {"", ".utf8"}) {
+                        auto loc = std::string(language).append(1, sep).append(territory).append(codeset);
+                        if (setlocale(LC_ALL, loc.c_str()))
+                            return restore;
+                    }
+                }
             }
-            x = setlocale(LC_ALL, std::string(it->first).append(1, '-').append(it->second).c_str());
-        }
-        if (x) {
+            return nullptr;
+        }();
+        if (restore) {
+            POTASSCO_SCOPE_EXIT({ setlocale(LC_ALL, restore); });
             REQUIRE(Potassco::string_cast<double>("12.32") == 12.32);
-            setlocale(LC_ALL, "C");
         }
         else {
             WARN("could not set locale - test ignored");
@@ -193,189 +241,31 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(x[1][1] == 4);
     }
 }
-TEST_CASE("String builder", "[string]") {
-    errno = 0;
-    SECTION("vsprintf behaves as expected") {
-        char buf[5], buf2[6];
-        struct Temp {
-            int operator()(char* s, std::size_t n, const char* fmt, ...) const {
-                va_list args;
-                va_start(args, fmt);
-                int r = Potassco::vsnprintf(s, n, fmt, args);
-                va_end(args);
-                return r;
-            }
-        } t;
-        REQUIRE(t(buf, sizeof(buf), "%s", "Hello") == 5);
-        REQUIRE(errno == 0);
-        REQUIRE(buf[4] == 0);
-        REQUIRE(std::strcmp(buf, "Hell") == 0);
-        REQUIRE(t(buf2, sizeof(buf2), "%s", "Hello") == 5);
-        REQUIRE(errno == 0);
-        REQUIRE(std::strcmp(buf2, "Hello") == 0);
-    }
-    SECTION("empty builder") {
-        StringBuilder builder;
-        REQUIRE(std::strcmp(builder.c_str(), "") == 0);
-        REQUIRE(builder.empty());
-    }
-    SECTION("append string") {
-        StringBuilder builder;
-        builder.append("Hello");
-        REQUIRE(std::strcmp(builder.c_str(), "Hello") == 0);
-        builder.append(" World");
-        REQUIRE(std::strcmp(builder.c_str(), "Hello World") == 0);
-        builder.append("!");
-        REQUIRE(std::strcmp(builder.c_str(), "Hello World!") == 0);
-    }
-    SECTION("append format") {
-        StringBuilder builder;
-        builder.appendFormat("Hello %d", 100);
-        REQUIRE(std::strcmp(builder.c_str(), "Hello 100") == 0);
-        builder.appendFormat("%s - %u!!!", " World", 22u);
-        REQUIRE(std::strcmp(builder.c_str(), "Hello 100 World - 22!!!") == 0);
-    }
-    SECTION("append format grow") {
-        std::stringstream exp;
-        std::srand(0);
-        StringBuilder builder;
-        builder.append("Start ");
-        exp << builder.c_str();
-        for (int i = 0; i != 100; ++i) {
-            int n = std::rand();
-            exp << " " << n;
-            builder.appendFormat(" %d", n);
-        }
-        REQUIRE(std::strcmp(builder.c_str(), exp.str().c_str()) == 0);
-    }
-    SECTION("small buffer append") {
-        StringBuilder builder;
-        const char*   address = builder.c_str();
-        std::string   str;
-        do {
-            builder.append("X", 1);
-            str.append(1, 'X');
-            REQUIRE(std::strcmp(builder.c_str(), str.c_str()) == 0);
-        } while (address == builder.c_str());
-        REQUIRE(builder.size() == 64);
-    }
-    SECTION("small buffer append format") {
-        StringBuilder builder;
-        const char*   address = builder.c_str();
-        std::string   str;
-        do {
-            builder.appendFormat("%d", 1);
-            REQUIRE(errno == 0);
-            str.append(1, '1');
-            REQUIRE(std::strcmp(builder.c_str(), str.c_str()) == 0);
-        } while (address == builder.c_str());
-        REQUIRE(builder.size() == 64);
-    }
-    SECTION("small buffer resize") {
-        StringBuilder builder;
-        builder.append(5, 'X');
-        builder.resize(2);
-        REQUIRE(builder.size() == 2);
-        REQUIRE(std::strcmp(builder.c_str(), "XX") == 0);
-        builder.resize(4, '^');
-        REQUIRE(builder.size() == 4);
-        REQUIRE(std::strcmp(builder.c_str(), "XX^^") == 0);
-        builder[2] = 'Y';
-        builder[3] = 'Z';
-        REQUIRE(std::strcmp(builder.c_str(), "XXYZ") == 0);
-    }
-    SECTION("append to string") {
-        std::string   exp(1024, '?');
-        std::string   res;
-        StringBuilder sb(res);
-        for (std::size_t i = 0; i != exp.size(); ++i) {
-            sb.append("?");
-            REQUIRE(res == exp.substr(0, i + 1));
-            REQUIRE(std::strcmp(sb.c_str(), exp.substr(0, i + 1).c_str()) == 0);
-        }
-        REQUIRE(res == exp);
-    }
-    SECTION("fixed array buffer append") {
-        char          buf[10];
-        StringBuilder fixed(buf, sizeof(buf));
-        fixed.append("123456789");
-        REQUIRE(fixed.size() == 9);
-        REQUIRE(fixed.c_str() == buf);
-        REQUIRE(std::strcmp(fixed.c_str(), "123456789") == 0);
-        fixed.append("1");
-        REQUIRE(std::strcmp(fixed.c_str(), "123456789") == 0);
-        REQUIRE(errno == ERANGE);
-        errno = 0;
-        fixed.resize(3);
-        REQUIRE(std::strcmp(fixed.c_str(), "123") == 0);
-        fixed.resize(7, '+');
-        REQUIRE(std::strcmp(fixed.c_str(), "123++++") == 0);
-        REQUIRE_THROWS(fixed.resize(sizeof(buf)));
-    }
-    SECTION("fixed array buffer append format") {
-        char          buf[10];
-        StringBuilder fixed(buf, sizeof(buf));
-        for (int i = 1; i != 10; ++i) { fixed.appendFormat("%d", i); }
-        REQUIRE(fixed.size() == 9);
-        REQUIRE(fixed.c_str() == buf);
-        REQUIRE(std::strcmp(fixed.c_str(), "123456789") == 0);
-        fixed.appendFormat("%d", 1);
-        REQUIRE(std::strcmp(fixed.c_str(), "123456789") == 0);
-        REQUIRE(errno == ERANGE);
-        errno = 0;
-    }
-    SECTION("fixed array buffer append number") {
-        char          buf[5];
-        StringBuilder fixed(buf, sizeof(buf));
-        fixed.append(1234567);
-        REQUIRE(errno == ERANGE);
-        REQUIRE(fixed.size() == (sizeof(buf) - 1));
-        REQUIRE(std::strcmp(fixed.c_str(), "1234") == 0);
-        errno = 0;
-    }
-    SECTION("dynamic array buffer append format") {
-        char          buf[10];
-        StringBuilder dynamic(buf, sizeof(buf), StringBuilder::Dynamic);
-        dynamic.append("123456789");
-        REQUIRE(dynamic.size() == 9);
-        REQUIRE(dynamic.c_str() == buf);
-        dynamic.appendFormat("%d", 123);
-        REQUIRE(std::strcmp(dynamic.c_str(), "123456789123") == 0);
-        REQUIRE(dynamic.size() == 12);
-        REQUIRE(dynamic.c_str() != buf);
-    }
-    SECTION("buffer append number types") {
-        StringBuilder str;
-        str.append(static_cast<char>(127))
-            .append(" ")
-            .append(static_cast<signed char>(-128))
-            .append(" ")
-            .append(static_cast<unsigned char>(255));
-        REQUIRE(std::strcmp(str.c_str(), "127 -128 255") == 0);
-        str.clear().append(true).append(" ").append(false);
-        REQUIRE(std::strcmp(str.c_str(), "1 0") == 0);
-        str.clear().append(static_cast<wchar_t>(255));
-        REQUIRE(std::strcmp(str.c_str(), "255") == 0);
-        str.clear().append(static_cast<short>(-32768)).append(" ").append(static_cast<unsigned short>(65535));
-        REQUIRE(std::strcmp(str.c_str(), "-32768 65535") == 0);
-        str.clear().append(static_cast<int>(-1)).append(" ").append(static_cast<unsigned int>(1234));
-        REQUIRE(std::strcmp(str.c_str(), "-1 1234") == 0);
-        str.clear().append(static_cast<long>(-1)).append(" ").append(static_cast<unsigned long>(1234));
-        REQUIRE(std::strcmp(str.c_str(), "-1 1234") == 0);
-        str.clear().append(static_cast<long long>(-1)).append(" ").append(static_cast<unsigned long long>(1234));
-        REQUIRE(std::strcmp(str.c_str(), "-1 1234") == 0);
-        str.clear().append(12.34f).append(" ").append(12.34);
-        REQUIRE(std::strcmp(str.c_str(), "12.34 12.34") == 0);
 
-        str.clear()
-            .append(static_cast<int32_t>(-1))
-            .append(" ")
-            .append(static_cast<int64_t>(-1))
-            .append(" ")
-            .append(static_cast<uint32_t>(1234))
-            .append(" ")
-            .append(static_cast<uint64_t>(1234));
-        REQUIRE(std::strcmp(str.c_str(), "-1 -1 1234 1234") == 0);
+TEST_CASE("Format test", "[string]") {
+    SECTION("No arg") {
+        std::string x;
+        formatTo(x, "123");
+        formatTo(x, "Bla");
+        CHECK(x == "123Bla");
+    }
+    SECTION("One arg") {
+        std::string x;
+        formatTo(x, "heuristic('{}')", "level");
+        CHECK(x == "heuristic('level')");
+    }
+    SECTION("Multi arg") {
+        std::string x;
+        formatTo(x, "_edge({},{})", 29, 32);
+        CHECK(x == "_edge(29,32)");
+        x.clear();
+        formatTo(x, "_heuristic({},{},{},{})", "foo", "level", -20, 30);
+        CHECK(x == "_heuristic(foo,level,-20,30)");
+    }
+    SECTION("Extra args") {
+        std::string x;
+        formatTo(x, "Hello {}", "Foo", 22);
+        CHECK(x == "Hello Foo");
     }
 }
 
@@ -421,8 +311,8 @@ TEST_CASE("Macro test", "[macro]") {
     }
     SECTION("test assert contains location") {
         // clang-format off
-        REQUIRE_THROWS_WITH(POTASSCO_ASSERT(false), Catch::Contains(POTASSCO_FORMAT("%s@%u: assertion failure: check('false')", POTASSCO_FUNC_NAME, __LINE__)));
-        REQUIRE_THROWS_WITH(POTASSCO_ASSERT(false, "Shall fail %d", 123), Catch::Contains(POTASSCO_FORMAT("%s@%u: assertion failure: Shall fail 123", POTASSCO_FUNC_NAME, __LINE__)));
+        REQUIRE_THROWS_WITH(POTASSCO_ASSERT(false), Catch::Contains(formatToStr("{}@{}: assertion failure: check('false')", POTASSCO_FUNC_NAME, __LINE__)));
+        REQUIRE_THROWS_WITH(POTASSCO_ASSERT(false, "Shall fail %d", 123), Catch::Contains(formatToStr("{}@{}: assertion failure: Shall fail 123", POTASSCO_FUNC_NAME, __LINE__)));
         // clang-format on
     }
 }

@@ -47,52 +47,51 @@ namespace Potassco::ProgramOptions {
 ///////////////////////////////////////////////////////////////////////////////
 // DefaultFormat
 ///////////////////////////////////////////////////////////////////////////////
-std::size_t DefaultFormat::format(std::vector<char>& buf, const Option& o, std::size_t maxW) {
-    buf.clear();
-    size_t      bufSize = std::max(maxW, o.maxColumn()) + 3;
-    const char* arg     = o.argName();
-    const char* np      = "";
-    const char* ap      = "";
+std::size_t DefaultFormat::format(std::string& buf, const Option& o, std::size_t maxW) {
+    auto        bufSize = std::max(maxW, o.maxColumn()) + 3;
+    const auto* arg     = o.argName();
+    auto        np      = ""sv;
+    auto        ap      = ""sv;
     if (o.value()->isNegatable()) {
         if (!*arg) {
-            np = "[no-]";
+            np = "[no-]"sv;
         }
         else {
-            ap       = "|no";
-            bufSize += strlen(ap);
+            ap       = "|no"sv;
+            bufSize += ap.size();
         }
     }
-    buf.resize(bufSize);
-    char*  buffer = &buf[0];
-    size_t n      = sprintf(buffer, "  --%s%s", np, o.name().c_str());
+    const auto startSize = buf.size();
+    buf.reserve(startSize + bufSize);
+    buf.append("  --"sv).append(np).append(o.name());
     if (o.value()->isImplicit() && *arg) {
-        n += sprintf(buffer + n, "[=%s%s]", arg, ap);
+        buf.append("[="sv).append(arg).append(ap).append("]"sv);
     }
-    if (o.alias()) {
-        n += sprintf(buffer + n, ",-%c", o.alias());
+    if (auto c = o.alias(); c) {
+        buf.append(",-"sv).append(1, c);
     }
     if (!o.value()->isImplicit()) {
-        n += sprintf(buffer + n, "%c%s%s", (!o.alias() ? '=' : ' '), arg, ap);
+        buf.append(1, !o.alias() ? '=' : ' ').append(arg).append(ap);
     }
-    if (n < maxW)
-        n += sprintf(buffer + n, "%-*.*s", int(maxW - n), int(maxW - n), " ");
-    assert(n <= bufSize);
-    return n;
+    if (auto sz = buf.size() - startSize; sz < maxW) {
+        buf.append(maxW - sz, ' ');
+    }
+    return buf.size() - startSize;
 }
-std::size_t DefaultFormat::format(std::vector<char>& buf, const char* desc, const Value& val, std::size_t) {
+std::size_t DefaultFormat::format(std::string& buf, const char* desc, const Value& val, std::size_t) {
     std::size_t minS = strlen(desc);
     const char* temp = nullptr;
     if (!desc)
         desc = "";
-    buf.clear();
-    buf.reserve(minS + 2);
-    buf.push_back(':');
-    buf.push_back(' ');
+
+    const auto startSize = buf.size();
+    buf.reserve(startSize + minS + 2);
+    buf.append(1, ':').append(1, ' ');
     for (const char* look;; ++desc) {
         look = desc;
         while (*look && *look != '%') { ++look; }
         if (look != desc) {
-            buf.insert(buf.end(), desc, look);
+            buf.append(desc, look);
         }
         if (!*look++ || !*look)
             break;
@@ -109,39 +108,35 @@ std::size_t DefaultFormat::format(std::vector<char>& buf, const char* desc, cons
             buf.push_back(*look);
         }
         if (temp) {
-            buf.insert(buf.end(), temp, temp + strlen(temp));
+            buf.append(temp);
         }
         desc = look;
         temp = nullptr;
     }
     buf.push_back('\n');
-    return buf.size();
+    return buf.size() - startSize;
 }
-std::size_t DefaultFormat::format(std::vector<char>& buffer, const OptionGroup& grp) {
-    buffer.clear();
-    if (grp.caption().length()) {
-        buffer.reserve(grp.caption().length() + 4);
-        buffer.push_back('\n');
-        buffer.insert(buffer.end(), grp.caption().begin(), grp.caption().end());
-        buffer.push_back(':');
-        buffer.push_back('\n');
-        buffer.push_back('\n');
+std::size_t DefaultFormat::format(std::string& buffer, const OptionGroup& grp) {
+    const auto startSize = buffer.size();
+    if (auto length = grp.caption().length(); length) {
+        buffer.reserve(startSize + length + 4);
+        buffer.append(1, '\n').append(grp.caption()).append(1, ':').append(2, '\n');
     }
-    return buffer.size();
+    return buffer.size() - startSize;
 }
 ///////////////////////////////////////////////////////////////////////////////
 // class Value
 ///////////////////////////////////////////////////////////////////////////////
 Value::Value(State initial)
-    : state_(static_cast<byte_t>(initial))
+    : desc_()
+    , state_(static_cast<byte_t>(initial))
     , descFlag_(0)
     , optAlias_(0)
     , implicit_(0)
     , flag_(0)
     , composing_(0)
     , negatable_(0)
-    , level_(0)
-    , desc_() {
+    , level_(0) {
     desc_.value = nullptr;
     static_assert(sizeof(Value) == sizeof(void*) * 3, "unexpected size");
 }
@@ -298,7 +293,7 @@ OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, con
             level = 0;
             while (*x >= '0' && *x <= '9') {
                 level *= 10;
-                level += *x - '0';
+                level += static_cast<unsigned>(*x - '0');
                 ++x;
             }
         }
@@ -349,7 +344,7 @@ OptionContext& OptionContext::add(const OptionGroup& options) {
 
 OptionContext& OptionContext::addAlias(const std::string& aliasName, option_iterator option) {
     if (option != end() && !aliasName.empty()) {
-        key_type k(option - begin());
+        auto k = static_cast<key_type>(option - begin());
         if (!index_.insert(Name2Key::value_type(aliasName, k)).second) {
             throw DuplicateOption(caption(), aliasName);
         }
@@ -396,12 +391,13 @@ void OptionContext::insertOption(size_t groupId, const SharedOptPtr& opt) {
 }
 
 OptionContext::option_iterator OptionContext::find(const char* key, FindType t) const {
-    return options_.begin() + findImpl(key, t, unsigned(-1)).first->second;
+    return options_.begin() + static_cast<std::ptrdiff_t>(findImpl(key, t, unsigned(-1)).first->second);
 }
 
 OptionContext::option_iterator OptionContext::tryFind(const char* key, FindType t) const {
     PrefixRange r = findImpl(key, t, 0u);
-    return std::distance(r.first, r.second) == 1 ? options_.begin() + r.first->second : end();
+    return std::distance(r.first, r.second) == 1 ? options_.begin() + static_cast<std::ptrdiff_t>(r.first->second)
+                                                 : end();
 }
 
 OptionContext::PrefixRange OptionContext::findImpl(const char* key, FindType t, unsigned eMask,
@@ -728,8 +724,8 @@ private:
 
 class ArgvParser : public CommandLineParser {
 public:
-    ArgvParser(ParseContext& ctx, int startPos, int endPos, const char* const* argv, unsigned flags)
-        : CommandLineParser(ctx, flags)
+    ArgvParser(ParseContext& ctx, int startPos, int endPos, const char* const* argv, unsigned cmdFlags)
+        : CommandLineParser(ctx, cmdFlags)
         , currentArg_(nullptr)
         , argPos_(startPos)
         , endPos_(endPos)
@@ -748,8 +744,8 @@ private:
 
 class CommandStringParser : public CommandLineParser {
 public:
-    CommandStringParser(const char* cmd, ParseContext& ctx, unsigned flags)
-        : CommandLineParser(ctx, flags)
+    CommandStringParser(const char* cmd, ParseContext& ctx, unsigned cmdFlags)
+        : CommandLineParser(ctx, cmdFlags)
         , cmd_(cmd ? cmd : "") {
         tok_.reserve(80);
     }
@@ -880,7 +876,7 @@ public:
     SharedOptPtr getOption(const char* name, FindType ft) override {
         OptionContext::OptionRange r = parsed.ctx->findImpl(name, ft, eMask);
         if (r.first != r.second) {
-            return *(parsed.ctx->begin() + r.first->second);
+            return *(parsed.ctx->begin() + static_cast<std::ptrdiff_t>(r.first->second));
         }
         return SharedOptPtr(nullptr);
     }
@@ -908,12 +904,14 @@ ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsign
     while (argv[argc]) ++argc;
     ArgvParser parser(ctx, 1, argc, argv, flags);
     parser.parse();
-    argc = 1 + (int) parser.remaining.size();
-    for (int i = 1; i != argc; ++i) { argv[i] = const_cast<char*>(parser.remaining[i - 1]); }
+
+    argc  = 1 + (int) parser.remaining.size();
+    int i = 1;
+    for (const char* r : parser.remaining) { argv[i++] = const_cast<char*>(r); }
     argv[argc] = nullptr;
     return ctx;
 }
-ParsedValues parseCommandArray(const char* const* argv, unsigned nArgs, const OptionContext& o, bool allowUnreg,
+ParsedValues parseCommandArray(const char* const* argv, int nArgs, const OptionContext& o, bool allowUnreg,
                                PosOption po, unsigned flags) {
     DefaultContext ctx(o, allowUnreg, po);
     ArgvParser     parser(ctx, 0, nArgs, argv, flags);

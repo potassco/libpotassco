@@ -178,7 +178,6 @@ public:
     //! Called once after all rules and directives of the current program step were added.
     virtual void endStep();
 };
-using ErrorHandler = int (*)(int line, const char* what);
 
 /*!
  * \defgroup BasicFunc Basic functions
@@ -231,8 +230,7 @@ class MemoryRegion {
 public:
     explicit MemoryRegion(std::size_t initialSize = 0);
     ~MemoryRegion();
-    MemoryRegion(const MemoryRegion&)            = delete;
-    MemoryRegion& operator=(const MemoryRegion&) = delete;
+    MemoryRegion(MemoryRegion&&) = delete;
 
     //! Returns the current region size.
     [[nodiscard]] std::size_t size() const {

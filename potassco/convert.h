@@ -46,8 +46,7 @@ public:
      */
     SmodelsConvert(AbstractProgram& out, bool enableClaspExt);
     ~SmodelsConvert() override;
-    SmodelsConvert(const SmodelsConvert&)            = delete;
-    SmodelsConvert& operator=(const SmodelsConvert&) = delete;
+    SmodelsConvert(SmodelsConvert&&) = delete;
 
     //! Calls initProgram() on the associated output program.
     void initProgram(bool incremental) override;

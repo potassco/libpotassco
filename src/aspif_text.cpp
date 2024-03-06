@@ -26,7 +26,6 @@
 #include <potassco/rule_utils.h>
 #include <potassco/string_convert.h>
 
-#include <cassert>
 #include <cctype>
 #include <cstring>
 #include <ostream>
@@ -47,13 +46,15 @@ struct AspifTextInput::Data {
 AspifTextInput::AspifTextInput(AbstractProgram* out) : out_(out), data_(nullptr) {}
 void AspifTextInput::setOutput(AbstractProgram& out) { out_ = &out; }
 bool AspifTextInput::doAttach(bool& inc) {
-    char n = peek(true);
+    auto n = peek(true);
     if (out_ && (!n || std::islower(static_cast<unsigned char>(n)) || std::strchr(".#%{:", n))) {
         while (n == '%') {
             skipLine();
             n = peek(true);
         }
-        inc = match("#incremental", false) && require(match("."), "unrecognized directive");
+        inc = matchOpt("#incremental");
+        if (inc)
+            matchDelim('.');
         out_->initProgram(inc);
         return true;
     }
@@ -74,10 +75,10 @@ void AspifTextInput::parseStatements() {
     data_ = &data;
     for (char c; (c = peek(true)) != 0; data.clear()) {
         if (c == '.') {
-            match(".");
+            matchDelim('.');
         }
         else if (c == '#') {
-            if (!matchDirective())
+            if (not matchDirective())
                 break;
         }
         else if (c == '%') {
@@ -91,18 +92,18 @@ void AspifTextInput::parseStatements() {
 
 void AspifTextInput::matchRule(char c) {
     if (c == '{') {
-        match("{");
+        matchDelim('{');
         data_->rule.start(Head_t::Choice);
         matchAtoms(";,");
-        match("}");
+        matchDelim('}');
     }
     else {
         data_->rule.start();
         matchAtoms(";|");
     }
-    if (match(":-", false)) {
+    if (matchOpt(":-")) {
         c = peek(true);
-        if (!StreamType::isDigit(c) && c != '-') {
+        if (not StreamType::isDigit(c) && c != '-') {
             data_->rule.startBody();
             matchLits();
         }
@@ -111,97 +112,97 @@ void AspifTextInput::matchRule(char c) {
             matchAgg();
         }
     }
-    match(".");
+    matchDelim('.');
     data_->rule.end(out_);
 }
 
 bool AspifTextInput::matchDirective() {
-    if (match("#minimize", false)) {
+    if (matchOpt("#minimize")) {
         data_->rule.startMinimize(0);
         matchAgg();
-        Weight_t prio = match("@", false) ? matchInt() : 0;
-        match(".");
+        Weight_t prio = matchOpt("@") ? matchInt() : 0;
+        matchDelim('.');
         data_->rule.setBound(prio);
         data_->rule.end(out_);
     }
-    else if (match("#project", false)) {
+    else if (matchOpt("#project")) {
         data_->rule.start();
-        if (match("{", false)) {
+        if (matchOpt("{")) {
             matchAtoms(",");
-            match("}");
+            matchDelim('}');
         }
-        match(".");
+        matchDelim('.');
         out_->project(data_->atoms());
     }
-    else if (match("#output", false)) {
+    else if (matchOpt("#output")) {
         matchTerm();
         matchCondition();
-        match(".");
+        matchDelim('.');
         out_->output(data_->symbol, data_->lits());
     }
-    else if (match("#external", false)) {
+    else if (matchOpt("#external")) {
         Atom_t  a = matchId();
         Value_t v = Value_t::False;
-        match(".");
-        if (match("[", false)) {
-            if (match("true", false)) {
+        matchDelim('.');
+        if (matchOpt("[")) {
+            if (matchOpt("true")) {
                 v = Value_t::True;
             }
-            else if (match("free", false)) {
+            else if (matchOpt("free")) {
                 v = Value_t::Free;
             }
-            else if (match("release", false)) {
+            else if (matchOpt("release")) {
                 v = Value_t::Release;
             }
             else {
-                match("false");
+                require(matchOpt("false"), "<value> expected");
             }
-            match("]");
+            matchDelim(']');
         }
         out_->external(a, v);
     }
-    else if (match("#assume", false)) {
+    else if (matchOpt("#assume")) {
         data_->rule.startBody();
-        if (match("{", false)) {
+        if (matchOpt("{")) {
             matchLits();
-            match("}");
+            matchDelim('}');
         }
-        match(".");
+        matchDelim('.');
         out_->assume(data_->lits());
     }
-    else if (match("#heuristic", false)) {
+    else if (matchOpt("#heuristic")) {
         Atom_t a = matchId();
         matchCondition();
-        match(".");
-        match("[");
+        matchDelim('.');
+        matchDelim('[');
         int v = matchInt();
         int p = 0;
-        if (match("@", false)) {
+        if (matchOpt("@")) {
             p = matchInt();
             require(p >= 0, "positive priority expected");
         }
-        match(",");
+        matchDelim(',');
         const char* w = matchWord();
         Heuristic_t ht;
         require(Potassco::match(w, ht), "unrecognized heuristic modification");
         skipws();
-        match("]");
+        matchDelim(']');
         out_->heuristic(a, ht, v, static_cast<unsigned>(p), data_->lits());
     }
-    else if (match("#edge", false)) {
+    else if (matchOpt("#edge")) {
         int s, t;
-        match("("), s = matchInt(), match(","), t = matchInt(), match(")");
+        matchDelim('('), s = matchInt(), matchDelim(','), t = matchInt(), matchDelim(')');
         matchCondition();
-        match(".");
+        matchDelim('.');
         out_->acycEdge(s, t, data_->lits());
     }
-    else if (match("#step", false)) {
+    else if (matchOpt("#step")) {
         require(incremental(), "#step requires incremental program");
-        match(".");
+        matchDelim('.');
         return false;
     }
-    else if (match("#incremental", false)) {
-        match(".");
+    else if (matchOpt("#incremental")) {
+        matchDelim('.');
     }
     else {
         require(false, "unrecognized directive");
@@ -210,14 +211,23 @@ bool AspifTextInput::matchDirective() {
 }
 
 void AspifTextInput::skipws() { stream()->skipWs(); }
-bool AspifTextInput::match(const char* term, bool req) {
+bool AspifTextInput::matchOpt(const char* term) {
     if (ProgramReader::match(term, false)) {
         skipws();
         return true;
     }
-    require(!req, POTASSCO_FORMAT("'%s' expected", term));
     return false;
 }
+
+void AspifTextInput::matchDelim(char c) {
+    if (stream()->get() == c)
+        return skipws();
+
+    char err[] = "'x' expected";
+    err[1]     = c;
+    require(false, err);
+}
+
 void AspifTextInput::matchAtoms(const char* seps) {
     if (std::islower(static_cast<unsigned char>(peek(true))) != 0) {
         do {
@@ -229,30 +239,31 @@ void AspifTextInput::matchAtoms(const char* seps) {
 }
 void AspifTextInput::matchLits() {
     if (std::islower(static_cast<unsigned char>(peek(true))) != 0) {
-        do { data_->rule.addGoal(matchLit()); } while (match(",", false));
+        do { data_->rule.addGoal(matchLit()); } while (matchOpt(","));
     }
 }
 void AspifTextInput::matchCondition() {
     data_->rule.startBody();
-    if (match(":", false)) {
+    if (matchOpt(":")) {
         matchLits();
     }
 }
 void AspifTextInput::matchAgg() {
-    if (match("{") && !match("}", false)) {
+    matchDelim('{');
+    if (not matchOpt("}")) {
         do {
             WeightLit_t wl = {matchLit(), 1};
-            if (match("=", false)) {
+            if (matchOpt("=")) {
                 wl.weight = matchInt();
             }
             data_->rule.addGoal(wl);
-        } while (match(",", false));
-        match("}");
+        } while (matchOpt(","));
+        matchDelim('}');
     }
 }
 
 Lit_t AspifTextInput::matchLit() {
-    int s = match("not ", false) ? -1 : 1;
+    int s = matchOpt("not ") ? -1 : 1;
     return static_cast<Lit_t>(matchId()) * s;
 }
 
@@ -288,15 +299,15 @@ void AspifTextInput::matchTerm() {
             push(stream()->get());
         } while (std::isalnum(static_cast<unsigned char>(c = stream()->peek())) != 0 || c == '_');
         skipws();
-        if (match("(", false)) {
+        if (matchOpt("(")) {
             push('(');
             for (;;) {
                 matchAtomArg();
-                if (!match(",", false))
+                if (not matchOpt(","))
                     break;
                 push(',');
             }
-            match(")");
+            matchDelim(')');
             push(')');
         }
     }
@@ -325,18 +336,20 @@ void AspifTextInput::matchAtomArg() {
     }
 }
 void AspifTextInput::matchStr() {
-    match("\""), push('"');
+    matchDelim('"');
+    push('"');
     bool quoted = false;
     for (char c; (c = stream()->peek()) != 0 && (c != '\"' || quoted);) {
-        quoted = !quoted && c == '\\';
+        quoted = not quoted && c == '\\';
         push(stream()->get());
     }
-    match("\""), push('"');
+    matchDelim('"');
+    push('"');
 }
 
 const char* AspifTextInput::matchWord() {
     data_->symbol.clear();
-    for (unsigned char c; (c = stream()->peek()) != 0 && std::isalnum(c);) { push(stream()->get()); }
+    for (char c; (c = stream()->peek()) != 0 && std::isalnum(static_cast<unsigned char>(c));) { push(stream()->get()); }
     return data_->symbol.c_str();
 }
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -470,7 +483,10 @@ void AspifTextOutput::heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio
 void AspifTextOutput::theoryTerm(Id_t termId, int number) { theory_.addTerm(termId, number); }
 void AspifTextOutput::theoryTerm(Id_t termId, const std::string_view& name) { theory_.addTerm(termId, name); }
 void AspifTextOutput::theoryTerm(Id_t termId, int compound, const IdSpan& args) {
-    theory_.addTerm(termId, compound, args);
+    if (compound >= 0)
+        theory_.addTerm(termId, static_cast<Id_t>(compound), args);
+    else
+        theory_.addTerm(termId, Potassco::enum_cast<Tuple_t>(compound).value(), args);
 }
 void AspifTextOutput::theoryElement(Id_t id, const IdSpan& terms, const LitSpan& cond) {
     theory_.addElement(id, terms, data_->addCondition(cond));
@@ -621,7 +637,7 @@ void AspifTextOutput::visitTheories() {
     for (auto it = theory_.currBegin(), end = theory_.end(); it != end; ++it) {
         Atom_t      atom = (*it)->atom();
         std::string name = toStr.toString(theory_, **it);
-        if (!atom) {
+        if (not atom) {
             os_ << name << ".\n";
         }
         else {
@@ -679,7 +695,7 @@ TheoryAtomStringBuilder& TheoryAtomStringBuilder::term(const TheoryData& data, c
         case Theory_t::Number  : add(Potassco::toString(t.number())); break;
         case Theory_t::Symbol  : add(t.symbol()); break;
         case Theory_t::Compound: {
-            if (!t.isFunction() || function(data, t)) {
+            if (not t.isFunction() || function(data, t)) {
                 auto        parens = Potassco::enum_name(t.isTuple() ? t.tuple() : Potassco::Tuple_t::Paren);
                 const char* sep    = "";
                 add(parens.at(0));

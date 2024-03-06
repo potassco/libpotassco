@@ -57,21 +57,18 @@ bool AspifInput::doAttach(bool& inc) {
     return require(stream()->get() == '\n', "invalid extra characters in problem line");
 }
 bool AspifInput::doParse() {
-#define CR(r)   Directive_t::r
-#define EMAX(X) (enum_count<X>() - 1)
-
     RuleBuilder rule;
     Extra       data;
     rule_ = &rule;
     data_ = &data;
     out_.beginStep();
-    for (unsigned rt; (rt = matchPos(EMAX(Directive_t), "rule type or 0 expected")) != 0; rule.clear()) {
+    for (Directive_t rt; (rt = matchType<Directive_t>("rule type or 0 expected")) != Directive_t::End; rule.clear()) {
         switch (static_cast<Directive_t>(rt)) {
-            default      : return require(false, "unrecognized rule type");
-            case CR(Rule): {
-                rule.start(static_cast<Head_t>(matchPos(EMAX(Head_t), "invalid head type")));
+            default               : return require(false, "unrecognized rule type");
+            case Directive_t::Rule: {
+                rule.start(matchType<Head_t>("invalid head type"));
                 matchAtoms();
-                auto bt = static_cast<Body_t>(matchPos(EMAX(Body_t), "invalid body type"));
+                auto bt = matchType<Body_t>("invalid body type");
                 if (bt == Body_t::Normal) {
                     matchLits();
                 }
@@ -82,33 +79,33 @@ bool AspifInput::doParse() {
                 rule.end(&out_);
                 break;
             }
-            case CR(Minimize):
+            case Directive_t::Minimize:
                 rule.startMinimize(matchInt());
                 matchWLits(INT_MIN);
                 rule.end(&out_);
                 break;
-            case CR(Project):
+            case Directive_t::Project:
                 matchAtoms();
                 out_.project(rule.head());
                 break;
-            case CR(Output): {
+            case Directive_t::Output: {
                 matchString();
                 matchLits();
                 out_.output(data.sym, rule.body());
                 break;
             }
-            case CR(External):
+            case Directive_t::External:
                 if (Atom_t atom = matchAtom()) {
-                    auto val = static_cast<Value_t>(matchPos(EMAX(Value_t), "value expected"));
+                    auto val = matchType<Value_t>("value expected");
                     out_.external(atom, val);
                 }
                 break;
-            case CR(Assume):
+            case Directive_t::Assume:
                 matchLits();
                 out_.assume(rule.body());
                 break;
-            case CR(Heuristic): {
-                auto type = static_cast<Heuristic_t>(matchPos(EMAX(Heuristic_t), "invalid heuristic modifier"));
+            case Directive_t::Heuristic: {
+                auto type = matchType<Heuristic_t>("invalid heuristic modifier");
                 auto atom = matchAtom();
                 auto bias = matchInt();
                 auto prio = matchPos(INT_MAX, "invalid heuristic priority");
@@ -116,18 +113,17 @@ bool AspifInput::doParse() {
                 out_.heuristic(atom, type, bias, prio, rule.body());
                 break;
             }
-            case CR(Edge): {
+            case Directive_t::Edge: {
                 auto start = matchPos(INT_MAX, "invalid edge, start node expected");
                 auto end   = matchPos(INT_MAX, "invalid edge, end node expected");
                 matchLits();
                 out_.acycEdge((int) start, (int) end, rule.body());
                 break;
             }
-            case CR(Theory) : matchTheory(matchPos()); break;
-            case CR(Comment): skipLine(); break;
+            case Directive_t::Theory : matchTheory(static_cast<Theory_t>(matchPos())); break;
+            case Directive_t::Comment: skipLine(); break;
         }
     }
-#undef CR
     out_.endStep();
     rule_ = nullptr;
     data_ = nullptr;
@@ -148,17 +144,16 @@ void AspifInput::matchString() {
     uint32_t len = matchPos("non-negative string length expected");
     stream()->get();
     data_->sym.resize(len);
-    require(stream()->copy(len ? &data_->sym[0] : static_cast<char*>(nullptr), (int) len) == (int) len,
-            "invalid string");
+    require(not len || stream()->copy(data_->sym) == len, "invalid string");
 }
 void AspifInput::matchIds() {
     uint32_t len = matchPos("number of terms expected");
     data_->ids.resize(len);
     for (uint32_t i = 0; i != len; ++i) { data_->ids[i] = matchPos(); }
 }
-void AspifInput::matchTheory(unsigned rt) {
+void AspifInput::matchTheory(Theory_t rt) {
     Id_t tId = matchPos();
-    switch (static_cast<Theory_t>(rt)) {
+    switch (rt) {
         default              : require(false, "unrecognized theory directive type"); return;
         case Theory_t::Number: out_.theoryTerm(tId, matchInt()); break;
         case Theory_t::Symbol:
@@ -231,7 +226,7 @@ AspifOutput& AspifOutput::add(const AtomSpan& atoms) {
 }
 AspifOutput& AspifOutput::add(const std::string_view& str) {
     os_ << " " << size(str) << " ";
-    os_.write(begin(str), size(str));
+    os_.write(begin(str), std::ssize(str));
     return *this;
 }
 AspifOutput& AspifOutput::endDir() {
