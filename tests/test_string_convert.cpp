@@ -18,43 +18,45 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
-#include "catch.hpp"
-
 #include <potassco/string_convert.h>
 
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
+
+#include <climits>
 #include <sstream>
 #include <string>
 #include <vector>
 
 namespace Potassco::Test {
+namespace CM = Catch::Matchers;
 
 TEST_CASE("String conversion", "[string]") {
     errno = 0;
-#define REQUIRE_CONV_FAIL(X, Y) REQUIRE((X).ec == Y)
-
     SECTION("empty string is not an int") {
         REQUIRE_THROWS(Potassco::string_cast<int>(""));
         REQUIRE_THROWS(Potassco::string_cast<unsigned>(""));
         int      iVal;
         unsigned uVal;
-        REQUIRE_CONV_FAIL(Potassco::fromChars("", iVal), std::errc::invalid_argument);
-        REQUIRE_CONV_FAIL(Potassco::fromChars("", uVal), std::errc::invalid_argument);
+        REQUIRE(Potassco::fromChars("", iVal).ec == std::errc::invalid_argument);
+        REQUIRE(Potassco::fromChars("", uVal).ec == std::errc::invalid_argument);
     }
     SECTION("at least one digit") {
         REQUIRE_THROWS(Potassco::string_cast<int>("+"));
         REQUIRE_THROWS(Potassco::string_cast<unsigned>("+"));
         int      iVal;
         unsigned uVal;
-        REQUIRE_CONV_FAIL(Potassco::fromChars("+", iVal), std::errc::invalid_argument);
-        REQUIRE_CONV_FAIL(Potassco::fromChars("+", uVal), std::errc::invalid_argument);
+        REQUIRE(Potassco::fromChars("+", iVal).ec == std::errc::invalid_argument);
+        REQUIRE(Potassco::fromChars("+", uVal).ec == std::errc::invalid_argument);
     }
     SECTION("overflow is an error") {
         REQUIRE_THROWS(Potassco::string_cast<int64_t>("18446744073709551616"));
         REQUIRE_THROWS(Potassco::string_cast<uint64_t>("18446744073709551616"));
         int64_t  iVal;
         uint64_t uVal;
-        REQUIRE_CONV_FAIL(Potassco::fromChars("18446744073709551616", iVal), std::errc::result_out_of_range);
-        REQUIRE_CONV_FAIL(Potassco::fromChars("18446744073709551616", uVal), std::errc::result_out_of_range);
+        REQUIRE(Potassco::fromChars("18446744073709551616", iVal).ec == std::errc::result_out_of_range);
+        REQUIRE(Potassco::fromChars("18446744073709551616", uVal).ec == std::errc::result_out_of_range);
     }
     SECTION("positive and negative ints convert to string") {
         REQUIRE(Potassco::string_cast(10) == "10");
@@ -293,16 +295,18 @@ TEST_CASE("Macro test", "[macro]") {
         REQUIRE_THROWS_AS(POTASSCO_CHECK(false, ENOMEM), std::bad_alloc);
     }
     SECTION("test check takes arguments") {
-        REQUIRE_THROWS_WITH(POTASSCO_CHECK(false, EINVAL, "Shall fail %d", 123), Catch::Contains("Shall fail 123"));
+        REQUIRE_THROWS_MATCHES(POTASSCO_CHECK(false, EINVAL, "Shall fail %d", 123), std::logic_error,
+                               CM::MessageMatches(CM::ContainsSubstring("Shall fail 123")));
     }
     SECTION("test require") {
         REQUIRE_NOTHROW(POTASSCO_REQUIRE(true));
         REQUIRE_NOTHROW(POTASSCO_REQUIRE(true, "with arg"));
-        REQUIRE_THROWS_AS(POTASSCO_REQUIRE(false), std::logic_error);
-        REQUIRE_THROWS_WITH(POTASSCO_REQUIRE(false, "Shall fail %d", 123), "Shall fail 123");
+        REQUIRE_THROWS_MATCHES(POTASSCO_REQUIRE(false, "Shall fail %d", 123), std::logic_error,
+                               CM::MessageMatches(CM::ContainsSubstring("Shall fail 123")));
     }
     SECTION("test require without message contains expression") {
-        REQUIRE_THROWS_WITH(POTASSCO_REQUIRE(false), Catch::Contains("check('false') failed"));
+        REQUIRE_THROWS_MATCHES(POTASSCO_REQUIRE(false), std::logic_error,
+                               CM::MessageMatches(CM::ContainsSubstring("check('false') failed")));
     }
     SECTION("test assert") {
         REQUIRE_NOTHROW(POTASSCO_ASSERT(true));
@@ -311,8 +315,8 @@ TEST_CASE("Macro test", "[macro]") {
     }
     SECTION("test assert contains location") {
         // clang-format off
-        REQUIRE_THROWS_WITH(POTASSCO_ASSERT(false), Catch::Contains(formatToStr("{}@{}: assertion failure: check('false')", POTASSCO_FUNC_NAME, __LINE__)));
-        REQUIRE_THROWS_WITH(POTASSCO_ASSERT(false, "Shall fail %d", 123), Catch::Contains(formatToStr("{}@{}: assertion failure: Shall fail 123", POTASSCO_FUNC_NAME, __LINE__)));
+        REQUIRE_THROWS_WITH(POTASSCO_ASSERT(false), CM::ContainsSubstring(formatToStr("{}@{}: assertion failure: check('false')", POTASSCO_FUNC_NAME, __LINE__)));
+        REQUIRE_THROWS_WITH(POTASSCO_ASSERT(false, "Shall fail %d", 123), CM::ContainsSubstring(formatToStr("{}@{}: assertion failure: Shall fail 123", POTASSCO_FUNC_NAME, __LINE__)));
         // clang-format on
     }
 }

@@ -22,8 +22,7 @@
 #include <potassco/program_opts/program_options.h>
 #include <potassco/program_opts/typed_value.h>
 
-#include "catch.hpp"
-#include <cstring>
+#include <catch2/catch_test_macros.hpp>
 
 #include <cstring>
 

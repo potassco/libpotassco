@@ -1,30 +1,23 @@
 enable_testing()
-set(test_lp
+add_executable(test_potassco_lp)
+target_sources(test_potassco_lp PRIVATE
 	test_aspif.cpp
 	test_smodels.cpp
 	test_text.cpp
 	test_string_convert.cpp
-	main.cpp
 )
-add_executable(test_potassco_lp ${test_lp})
-target_link_libraries(test_potassco_lp libpotassco)
-target_include_directories(test_potassco_lp	 PRIVATE
-	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-)
-set(test_opts
+add_executable(test_potassco_opts)
+target_sources(test_potassco_opts PRIVATE
 	test_application.cpp
 	test_options.cpp
 	test_value.cpp
-	main.cpp
 )
 
-add_executable(test_potassco_opts ${test_opts})
-target_link_libraries(test_potassco_opts libpotassco)
-target_include_directories(test_potassco_opts PRIVATE
-	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-)
+foreach(target test_potassco_lp test_potassco_opts)
+	target_link_libraries(${target} PRIVATE libpotassco Catch2::Catch2WithMain potassco_default_warnings)
+	target_include_directories(${target} PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+	set_target_properties(${target} PROPERTIES FOLDER test)
+endforeach()
 
 add_test(NAME test_lp	COMMAND test_potassco_lp)
 add_test(NAME test_opts COMMAND test_potassco_opts)
-set_target_properties(test_potassco_lp	 PROPERTIES FOLDER test)
-set_target_properties(test_potassco_opts PROPERTIES FOLDER test)

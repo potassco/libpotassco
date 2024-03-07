@@ -31,9 +31,9 @@
 #include <potassco/rule_utils.h>
 #include <potassco/theory_data.h>
 
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
 
-#include <cstring>
+#include <algorithm>
 #include <sstream>
 
 namespace Potassco::Test::Aspif {

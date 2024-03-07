@@ -20,7 +20,7 @@
 // IN THE SOFTWARE.
 #include <potassco/program_opts/typed_value.h>
 
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
 
 #include <cstring>
 #include <map>
