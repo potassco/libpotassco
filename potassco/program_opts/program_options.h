@@ -23,9 +23,7 @@
 // NOTE: ProgramOptions is inspired by Boost.Program_options
 //       see: www.boost.org/libs/program_options
 //
-#ifndef PROGRAM_OPTIONS_PROGRAM_OPTIONS_H_INCLUDED
-#define PROGRAM_OPTIONS_PROGRAM_OPTIONS_H_INCLUDED
-
+#pragma once
 #include <potassco/program_opts/detail/refcountable.h>
 #include <potassco/program_opts/value.h>
 
@@ -535,4 +533,3 @@ ParseContext& parseCommandString(const char* cmd, ParseContext& ctx, unsigned fl
 ParsedValues parseCfgFile(std::istream& is, const OptionContext& o, bool allowUnregistered);
 
 } // namespace Potassco::ProgramOptions
-#endif

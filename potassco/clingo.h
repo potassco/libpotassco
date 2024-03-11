@@ -21,8 +21,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#ifndef POTASSCO_CLINGO_H_INCLUDED
-#define POTASSCO_CLINGO_H_INCLUDED
+#pragma once
 
 #include <potassco/basic_types.h>
 
@@ -308,4 +307,3 @@ public:
 ///@}
 
 } // namespace Potassco
-#endif

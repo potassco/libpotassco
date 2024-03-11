@@ -21,8 +21,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#ifndef POTASSCO_THEORY_DATA_H_INCLUDED
-#define POTASSCO_THEORY_DATA_H_INCLUDED
+#pragma once
 
 #include <potassco/basic_types.h>
 
@@ -400,4 +399,3 @@ inline void print(AbstractProgram& out, const TheoryAtom& a) {
 }
 ///@}
 } // namespace Potassco
-#endif

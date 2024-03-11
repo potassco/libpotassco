@@ -23,8 +23,7 @@
 // NOTE: ProgramOptions is inspired by Boost.Program_options
 //       see: www.boost.org/libs/program_options
 //
-#ifndef PROGRAM_OPTIONS_VALUE_H_INCLUDED
-#define PROGRAM_OPTIONS_VALUE_H_INCLUDED
+#pragma once
 #ifdef _MSC_VER
 #pragma warning(disable : 4786)
 #pragma warning(disable : 4503)
@@ -219,4 +218,3 @@ private:
     byte_t level_     : 4; // help level
 };
 } // namespace Potassco::ProgramOptions
-#endif

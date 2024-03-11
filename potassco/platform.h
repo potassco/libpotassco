@@ -21,8 +21,8 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#ifndef POTASSCO_PLATFORM_H_INCLUDED
-#define POTASSCO_PLATFORM_H_INCLUDED
+#pragma once
+
 #include <cassert>
 #include <cerrno>
 #include <cinttypes>
@@ -125,6 +125,4 @@ POTASSCO_ATTR_NORETURN extern void fail(int ec, const char* file, unsigned line,
 #pragma GCC diagnostic pop
 #elif defined(__clang__)
 #pragma clang diagnostic pop
-#endif
-
 #endif

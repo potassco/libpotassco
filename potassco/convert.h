@@ -21,8 +21,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#ifndef POTASSCO_CONVERT_H_INCLUDED
-#define POTASSCO_CONVERT_H_INCLUDED
+#pragma once
 
 #include <potassco/smodels.h>
 
@@ -99,4 +98,3 @@ private:
 };
 
 } // namespace Potassco
-#endif

@@ -21,9 +21,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#ifndef POTASSCO_ASPIF_H_INCLUDED
-#define POTASSCO_ASPIF_H_INCLUDED
-
+#pragma once
 #include <potassco/match_basic_types.h>
 
 namespace Potassco {
@@ -147,4 +145,3 @@ private:
     std::ostream& os_;
 };
 } // namespace Potassco
-#endif

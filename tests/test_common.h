@@ -21,8 +21,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#ifndef POTASSCO_TEST_COMMON_H_INCLUDED
-#define POTASSCO_TEST_COMMON_H_INCLUDED
 #include <potassco/basic_types.h>
 
 #include <vector>
@@ -74,4 +72,3 @@ public:
     bool           incremental = false;
 };
 } // namespace Potassco::Test
-#endif

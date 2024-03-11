@@ -21,8 +21,8 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#ifndef POTASSCO_BASIC_TYPES_H_INCLUDED
-#define POTASSCO_BASIC_TYPES_H_INCLUDED
+#pragma once
+
 /*!
  * \mainpage notitle
  * A small library for parsing and converting logic programs in aspif and smodels format.
@@ -267,4 +267,3 @@ inline void swap(MemoryRegion& lhs, MemoryRegion& rhs) { lhs.swap(rhs); }
 class RuleBuilder;
 
 } // namespace Potassco
-#endif

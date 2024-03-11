@@ -21,8 +21,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#ifndef POTASSCO_MATCH_BASIC_TYPES_H
-#define POTASSCO_MATCH_BASIC_TYPES_H
+#pragma once
 
 #include <potassco/basic_types.h>
 
@@ -254,5 +253,3 @@ private:
 int readProgram(std::istream& str, ProgramReader& r, ErrorHandler err);
 } // namespace Potassco
 ///@}
-
-#endif

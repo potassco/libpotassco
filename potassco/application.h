@@ -19,8 +19,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#ifndef POTASSCO_APPLICATION_H_INCLUDED
-#define POTASSCO_APPLICATION_H_INCLUDED
+#pragma once
 
 #include <potassco/program_opts/program_options.h>
 
@@ -130,4 +129,3 @@ private:
 };
 
 } // namespace Potassco
-#endif

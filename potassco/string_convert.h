@@ -19,8 +19,8 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#ifndef POTASSCO_STRING_CONVERT_H_INCLUDED
-#define POTASSCO_STRING_CONVERT_H_INCLUDED
+#pragma once
+
 #include <potassco/platform.h>
 
 #include <potassco/basic_types.h>
@@ -348,5 +348,3 @@ std::string toString(const T& x, const U& y, const V& z) {
 }
 
 } // namespace Potassco
-
-#endif
