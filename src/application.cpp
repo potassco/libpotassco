@@ -24,10 +24,13 @@
 //       see: www.boost.org/libs/program_options
 //
 #include <potassco/application.h>
+
+#include <potassco/error.h>
 #include <potassco/program_opts/typed_value.h>
 
 #include <cctype>
 #include <climits>
+#include <cstdarg>
 #include <cstring>
 #ifdef _MSC_VER
 #pragma warning(disable : 4996)
@@ -35,16 +38,16 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
-#if !defined(SIGALRM)
+#if not defined(SIGALRM)
 #define SIGALRM 14
 #endif
-#if !defined(_WIN32)
+#if not defined(_WIN32)
 #include <unistd.h> // for _exit
 static long fetch_and_inc(volatile long& x) { return __sync_fetch_and_add(&x, 1); }
 static long fetch_and_dec(volatile long& x) { return __sync_fetch_and_sub(&x, 1); }
 #else
 #define WIN32_LEAN_AND_MEAN // exclude APIs such as Cryptography, DDE, RPC, Shell, and Windows Sockets.
-#if !defined(NOMINMAX)
+#if not defined(NOMINMAX)
 #define NOMINMAX // do not let windows.h define macros min and max
 #endif
 #include <process.h>
@@ -73,7 +76,7 @@ void Application::resetInstance(Application& app) {
         instance_s = nullptr;
     }
 }
-#if !defined(_WIN32)
+#if not defined(_WIN32)
 int Application::setAlarm(unsigned sec) {
     if (sec) {
         signal(SIGALRM, &Application::sigHandler);
@@ -154,6 +157,17 @@ void Application::onUnhandledException() {
     try {
         throw;
     }
+    catch (const RuntimeError& e) {
+        error(e.what());
+        std::string extra("in ");
+        extra.append(e.location().function_name())
+            .append(":")
+            .append(std::to_string(e.location().line()))
+            .append(": check '")
+            .append(e.expression())
+            .append("' failed.");
+        error(extra.c_str());
+    }
     catch (const std::exception& e) {
         error(e.what());
     }
@@ -212,7 +226,7 @@ void Application::sigHandler(int sig) {
 // Called on timeout or signal.
 void Application::processSignal(int sig) {
     if (fetch_and_inc(blocked_) == 0) {
-        if (!onSignal(sig)) {
+        if (not onSignal(sig)) {
             return;
         } // block further signals
     }
@@ -240,7 +254,7 @@ namespace {
 struct HelpParser {
     static unsigned maxValue_s;
     static bool     parse(const std::string& v, unsigned& out) {
-        return string_cast(v, out) && out > 0 && out <= maxValue_s;
+        return stringTo(v, out) == std::errc{} && out > 0 && out <= maxValue_s;
     }
 };
 unsigned HelpParser::maxValue_s = 0;

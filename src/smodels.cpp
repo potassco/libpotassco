@@ -23,9 +23,9 @@
 //
 #include <potassco/smodels.h>
 
+#include <potassco/error.h>
 #include <potassco/rule_utils.h>
 
-#include <cstring>
 #include <ostream>
 #include <string>
 #include <unordered_map>
@@ -47,13 +47,13 @@ enum SmodelsRule {
     ClaspReleaseExt = 92
 };
 int isSmodelsHead(Head_t t, const AtomSpan& head) {
-    if (empty(head)) {
+    if (head.empty()) {
         return End;
     }
     if (t == Head_t::Choice) {
         return Choice;
     }
-    return size(head) == 1 ? Basic : Disjunctive;
+    return head.size() == 1 ? Basic : Disjunctive;
 }
 
 int isSmodelsRule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
@@ -98,7 +98,7 @@ struct SmodelsInput::SymTab : public AtomTable {
 };
 struct SmodelsInput::NodeTab {
     Id_t add(const std::string_view& n) {
-        return nodes.insert(StrMap::value_type(std::string(begin(n), end(n)), (Id_t) nodes.size())).first->second;
+        return nodes.insert(StrMap::value_type(n, (Id_t) nodes.size())).first->second;
     }
     StrMap nodes;
 };
@@ -149,7 +149,7 @@ void SmodelsInput::matchSum(RuleBuilder& rule, bool weights) {
     uint32_t bnd = matchPos();
     uint32_t len = matchPos();
     uint32_t neg = matchPos();
-    if (!weights) {
+    if (not weights) {
         std::swap(len, bnd);
         std::swap(bnd, neg);
     }
@@ -174,7 +174,7 @@ bool SmodelsInput::readRules() {
     for (unsigned rt; (rt = matchPos("rule type expected")) != 0;) {
         rule.clear();
         switch (rt) {
-            default: return require(false, "unrecognized rule type");
+            default: error("unrecognized rule type"); return false;
             case Choice:
             case Disjunctive: // n a1..an
                 rule.start(rt == Choice ? Head_t::Choice : Head_t::Disjunctive);
@@ -217,10 +217,10 @@ bool SmodelsInput::readRules() {
 
 bool SmodelsInput::readSymbols() {
     std::string name;
-    if (opts_.cEdge && !nodes_) {
+    if (opts_.cEdge && nodes_ == nullptr) {
         nodes_ = new NodeTab;
     }
-    if (opts_.cHeuristic && !atoms_) {
+    if (opts_.cHeuristic && atoms_ == nullptr) {
         atoms_   = new SymTab(out_);
         delSyms_ = true;
     }
@@ -249,9 +249,9 @@ bool SmodelsInput::readSymbols() {
             filter = opts_.filter;
         }
         if (atoms_) {
-            atoms_->add(Potassco::atom(atom), name, !filter);
+            atoms_->add(Potassco::atom(atom), name, not filter);
         }
-        else if (!filter) {
+        else if (not filter) {
             out_.output(name, {&atom, 1});
         }
     }
@@ -260,7 +260,7 @@ bool SmodelsInput::readSymbols() {
             out_.heuristic(x, dom.type, dom.bias, dom.prio, {&dom.cond, 1});
         }
     }
-    if (!incremental()) {
+    if (not incremental()) {
         delete nodes_;
         if (delSyms_)
             delete atoms_;
@@ -289,9 +289,9 @@ bool SmodelsInput::readExtra() {
     return true;
 }
 
-int readSmodels(std::istream& in, AbstractProgram& out, ErrorHandler err, const SmodelsInput::Options& opts) {
+int readSmodels(std::istream& in, AbstractProgram& out, const SmodelsInput::Options& opts) {
     SmodelsInput reader(out, opts);
-    return readProgram(in, reader, err);
+    return readProgram(in, reader);
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsOutput
@@ -311,20 +311,20 @@ struct SmWeight {
 inline Lit_t smLit(const WeightLit_t& x) { return x.weight >= 0 ? x.lit : -x.lit; }
 inline Lit_t smLit(Lit_t x) { return x; }
 template <class T>
-static unsigned negSize(const std::span<T>& lits) {
+unsigned negSize(const std::span<T>& lits) {
     unsigned r = 0;
     for (const auto& x : lits) { r += smLit(x) < 0; }
     return r;
 }
 template <class T, class Op>
-static void print(std::ostream& os, const std::span<T>& span, unsigned neg, unsigned pos, Op op) {
-    for (auto it = begin(span); neg; ++it) {
+void print(std::ostream& os, const std::span<T>& span, unsigned neg, unsigned pos, Op op) {
+    for (auto it = span.begin(); neg; ++it) {
         if (smLit(*it) < 0) {
             os << " " << op(*it);
             --neg;
         }
     }
-    for (auto it = begin(span); pos; ++it) {
+    for (auto it = span.begin(); pos; ++it) {
         if (smLit(*it) >= 0) {
             os << " " << op(*it);
             --pos;
@@ -348,22 +348,22 @@ SmodelsOutput& SmodelsOutput::add(unsigned i) {
     return *this;
 }
 SmodelsOutput& SmodelsOutput::add(Head_t ht, const AtomSpan& head) {
-    if (ht == Head_t::Choice || size(head) > 1) {
-        add((unsigned) size(head));
+    if (ht == Head_t::Choice || head.size() > 1) {
+        add((unsigned) head.size());
     }
     for (auto atom : head) { add(atom); }
     return *this;
 }
 
 SmodelsOutput& SmodelsOutput::add(const LitSpan& lits) {
-    unsigned neg = negSize(lits), size = static_cast<unsigned>(std::size(lits));
+    unsigned neg = negSize(lits), size = static_cast<unsigned>(lits.size());
     add(size).add(neg);
     print(os_, lits, neg, size - neg, Atom());
     return *this;
 }
 SmodelsOutput& SmodelsOutput::add(Weight_t bnd, const WeightLitSpan& lits, bool card) {
-    unsigned neg = negSize(lits), size = static_cast<unsigned>(std::size(lits));
-    if (!card) {
+    unsigned neg = negSize(lits), size = static_cast<unsigned>(lits.size());
+    if (not card) {
         add(static_cast<unsigned>(bnd));
     }
     add(size).add(neg);
@@ -371,7 +371,7 @@ SmodelsOutput& SmodelsOutput::add(Weight_t bnd, const WeightLitSpan& lits, bool 
         add(static_cast<unsigned>(bnd));
     }
     print(os_, lits, neg, size - neg, Atom());
-    if (!card) {
+    if (not card) {
         print(os_, lits, neg, size - neg, SmWeight());
     }
     return *this;
@@ -381,8 +381,8 @@ SmodelsOutput& SmodelsOutput::endRule() {
     return *this;
 }
 void SmodelsOutput::initProgram(bool b) {
+    POTASSCO_CHECK_PRE(not b || ext_, "incremental programs not supported in smodels format");
     inc_ = b;
-    POTASSCO_REQUIRE(!inc_ || ext_, "incremental programs not supported in smodels format");
 }
 void SmodelsOutput::beginStep() {
     if (ext_ && inc_) {
@@ -392,47 +392,47 @@ void SmodelsOutput::beginStep() {
     fHead_ = false;
 }
 void SmodelsOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
-    POTASSCO_REQUIRE(sec_ == 0, "adding rules after symbols not supported");
-    if (empty(head)) {
+    POTASSCO_CHECK_PRE(sec_ == 0, "adding rules after symbols not supported");
+    if (head.empty()) {
         if (ht == Head_t::Choice) {
             return;
         }
         else {
-            POTASSCO_REQUIRE(false_ != 0, "empty head requires false atom");
+            POTASSCO_CHECK_PRE(false_ != 0, "empty head requires false atom");
             fHead_ = true;
             return SmodelsOutput::rule(ht, {&false_, 1}, body);
         }
     }
     auto rt = (SmodelsRule) isSmodelsHead(ht, head);
-    POTASSCO_REQUIRE(rt != End, "unsupported rule type");
+    POTASSCO_CHECK_PRE(rt != End, "unsupported rule type");
     startRule(rt).add(ht, head).add(body).endRule();
 }
 void SmodelsOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
-    POTASSCO_REQUIRE(sec_ == 0, "adding rules after symbols not supported");
-    if (empty(head)) {
-        POTASSCO_REQUIRE(false_ != 0, "empty head requires false atom");
+    POTASSCO_CHECK_PRE(sec_ == 0, "adding rules after symbols not supported");
+    if (head.empty()) {
+        POTASSCO_CHECK_PRE(false_ != 0, "empty head requires false atom");
         fHead_ = true;
         return SmodelsOutput::rule(ht, {&false_, 1}, bound, body);
     }
     auto rt = (SmodelsRule) isSmodelsRule(ht, head, bound, body);
-    POTASSCO_REQUIRE(rt != End, "unsupported rule type");
+    POTASSCO_CHECK_PRE(rt != End, "unsupported rule type");
     startRule(rt).add(ht, head).add(bound, body, rt == Cardinality).endRule();
 }
 void SmodelsOutput::minimize(Weight_t, const WeightLitSpan& lits) { startRule(Optimize).add(0, lits, false).endRule(); }
 void SmodelsOutput::output(const std::string_view& str, const LitSpan& cond) {
-    POTASSCO_REQUIRE(sec_ <= 1, "adding symbols after compute not supported");
-    POTASSCO_REQUIRE(size(cond) == 1 && lit(*begin(cond)) > 0,
-                     "general output directive not supported in smodels format");
+    POTASSCO_CHECK_PRE(sec_ <= 1, "adding symbols after compute not supported");
+    POTASSCO_CHECK_PRE(cond.size() == 1 && lit(cond.front()) > 0,
+                       "general output directive not supported in smodels format");
     if (sec_ == 0) {
         startRule(End).endRule();
         sec_ = 1;
     }
     os_ << unsigned(cond[0]) << " ";
-    os_.write(begin(str), std::ssize(str));
+    os_.write(str.data(), std::ssize(str));
     os_ << "\n";
 }
 void SmodelsOutput::external(Atom_t a, Value_t t) {
-    POTASSCO_REQUIRE(ext_, "external directive not supported in smodels format");
+    POTASSCO_CHECK_PRE(ext_, "external directive not supported in smodels format");
     if (t != Value_t::Release) {
         startRule(ClaspAssignExt).add(a).add((unsigned(t) ^ 3) - 1).endRule();
     }
@@ -441,7 +441,7 @@ void SmodelsOutput::external(Atom_t a, Value_t t) {
     }
 }
 void SmodelsOutput::assume(const LitSpan& lits) {
-    POTASSCO_REQUIRE(sec_ < 2, "at most one compute statement supported in smodels format");
+    POTASSCO_CHECK_PRE(sec_ < 2, "at most one compute statement supported in smodels format");
     while (sec_ != 2) {
         startRule(End).endRule();
         ++sec_;

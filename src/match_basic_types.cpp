@@ -27,33 +27,37 @@
 
 #include <potassco/match_basic_types.h>
 
+#include <potassco/error.h>
+
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <istream>
 namespace Potassco {
+#define POTASSCO_UNSUPPORTED(msg) POTASSCO_FAIL(Errc::domain_error, msg)
+
 AbstractProgram::~AbstractProgram() = default;
 void AbstractProgram::initProgram(bool) {}
 void AbstractProgram::beginStep() {}
-void AbstractProgram::project(const AtomSpan&) { throw std::logic_error("projection directive not supported"); }
+void AbstractProgram::project(const AtomSpan&) { POTASSCO_UNSUPPORTED("projection directive not supported"); }
 void AbstractProgram::output(const std::string_view&, const LitSpan&) {
-    throw std::logic_error("output directive not supported");
+    POTASSCO_UNSUPPORTED("output directive not supported");
 }
-void AbstractProgram::external(Atom_t, Value_t) { throw std::logic_error("external directive not supported"); }
-void AbstractProgram::assume(const LitSpan&) { throw std::logic_error("assumption directive not supported"); }
+void AbstractProgram::external(Atom_t, Value_t) { POTASSCO_UNSUPPORTED("external directive not supported"); }
+void AbstractProgram::assume(const LitSpan&) { POTASSCO_UNSUPPORTED("assumption directive not supported"); }
 void AbstractProgram::heuristic(Atom_t, Heuristic_t, int, unsigned, const LitSpan&) {
-    throw std::logic_error("heuristic directive not supported");
+    POTASSCO_UNSUPPORTED("heuristic directive not supported");
 }
-void AbstractProgram::acycEdge(int, int, const LitSpan&) { throw std::logic_error("edge directive not supported"); }
-void AbstractProgram::theoryTerm(Id_t, int) { throw std::logic_error("theory data not supported"); }
-void AbstractProgram::theoryTerm(Id_t, const std::string_view&) { throw std::logic_error("theory data not supported"); }
-void AbstractProgram::theoryTerm(Id_t, int, const IdSpan&) { throw std::logic_error("theory data not supported"); }
+void AbstractProgram::acycEdge(int, int, const LitSpan&) { POTASSCO_UNSUPPORTED("edge directive not supported"); }
+void AbstractProgram::theoryTerm(Id_t, int) { POTASSCO_UNSUPPORTED("theory data not supported"); }
+void AbstractProgram::theoryTerm(Id_t, const std::string_view&) { POTASSCO_UNSUPPORTED("theory data not supported"); }
+void AbstractProgram::theoryTerm(Id_t, int, const IdSpan&) { POTASSCO_UNSUPPORTED("theory data not supported"); }
 void AbstractProgram::theoryElement(Id_t, const IdSpan&, const LitSpan&) {
-    throw std::logic_error("theory data not supported");
+    POTASSCO_UNSUPPORTED("theory data not supported");
 }
-void AbstractProgram::theoryAtom(Id_t, Id_t, const IdSpan&) { throw std::logic_error("theory data not supported"); }
+void AbstractProgram::theoryAtom(Id_t, Id_t, const IdSpan&) { POTASSCO_UNSUPPORTED("theory data not supported"); }
 void AbstractProgram::theoryAtom(Id_t, Id_t, const IdSpan&, Id_t, Id_t) {
-    throw std::logic_error("theory data not supported");
+    POTASSCO_UNSUPPORTED("theory data not supported");
 }
 void AbstractProgram::endStep() {}
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -66,7 +70,7 @@ BufferedStream::BufferedStream(std::istream& str) : str_(str), rpos_(0), line_(1
 BufferedStream::~BufferedStream() { delete[] buf_; }
 char BufferedStream::pop() {
     char c = peek();
-    if (!buf_[++rpos_]) {
+    if (not buf_[++rpos_]) {
         underflow();
     }
     return c;
@@ -91,7 +95,7 @@ void BufferedStream::skipWs() {
 }
 
 void BufferedStream::underflow(bool upPos) {
-    if (!str_)
+    if (not str_)
         return;
     if (upPos && rpos_) {
         // keep last char for unget
@@ -104,7 +108,7 @@ void BufferedStream::underflow(bool upPos) {
     buf_[r + rpos_] = 0;
 }
 bool BufferedStream::unget(char c) {
-    if (!rpos_)
+    if (not rpos_)
         return false;
     if ((buf_[--rpos_] = c) == '\n') {
         --line_;
@@ -122,7 +126,7 @@ bool BufferedStream::match(const char* w) {
         rpos_ = 0;
     }
     if (std::strncmp(w, buf_ + rpos_, wLen) == 0) {
-        if (!buf_[rpos_ += wLen]) {
+        if (not buf_[rpos_ += wLen]) {
             underflow();
         }
         return true;
@@ -130,14 +134,14 @@ bool BufferedStream::match(const char* w) {
     return false;
 }
 bool BufferedStream::match(int64_t& res, bool noSkipWs) {
-    if (!noSkipWs) {
+    if (not noSkipWs) {
         skipWs();
     }
     char s = peek();
     if (s == '+' || s == '-') {
         pop();
     }
-    if (!isDigit(peek())) {
+    if (not isDigit(peek())) {
         return false;
     }
     for (res = toDigit(pop()); isDigit(peek());) {
@@ -159,7 +163,7 @@ std::size_t BufferedStream::copy(std::span<char> outBuf) {
         n     -= m;
         os    += m;
         rpos_ += m;
-        if (!peek()) {
+        if (not peek()) {
             underflow();
         }
     }
@@ -167,7 +171,7 @@ std::size_t BufferedStream::copy(std::span<char> outBuf) {
 }
 unsigned BufferedStream::line() const { return line_; }
 void     BufferedStream::fail(unsigned line, const char* err) {
-    Potassco::fail(Potassco::error_logic, nullptr, 0, nullptr, "parse error in line %u: %s", line, err);
+    POTASSCO_FAIL(std::errc::operation_not_supported, "parse error in line %u: %s", line, err);
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // ProgramReader
@@ -181,17 +185,17 @@ bool ProgramReader::accept(std::istream& str) {
 }
 bool ProgramReader::incremental() const { return inc_; }
 bool ProgramReader::parse(ReadMode m) {
-    POTASSCO_REQUIRE(str_ != nullptr, "no input stream");
+    POTASSCO_CHECK_PRE(str_ != nullptr, "no input stream");
     do {
-        if (!doParse()) {
+        if (not doParse()) {
             return false;
         }
         stream()->skipWs();
-        require(!more() || incremental(), "invalid extra input");
+        require(not more() || incremental(), "invalid extra input");
     } while (m == Complete && more());
     return true;
 }
-bool ProgramReader::more() { return str_ && (str_->skipWs(), !str_->end()); }
+bool ProgramReader::more() { return str_ && (str_->skipWs(), not str_->end()); }
 void ProgramReader::reset() {
     delete str_;
     str_ = nullptr;
@@ -204,6 +208,7 @@ bool            ProgramReader::require(bool cnd, const char* msg) const {
     str_->require(cnd, msg);
     return true;
 }
+void ProgramReader::error(const char* msg) const { BufferedStream::fail(str_->line(), msg); }
 char ProgramReader::peek(bool skipws) const {
     if (skipws)
         str_->skipWs();
@@ -212,17 +217,9 @@ char ProgramReader::peek(bool skipws) const {
 void ProgramReader::skipLine() {
     while (str_->peek() && str_->get() != '\n') {}
 }
-int readProgram(std::istream& str, ProgramReader& reader, ErrorHandler err) {
-    try {
-        if (!reader.accept(str) || !reader.parse(ProgramReader::Complete)) {
-            BufferedStream::fail(reader.line(), "invalid input format");
-        }
-    }
-    catch (const std::exception& e) {
-        if (!err) {
-            throw;
-        }
-        return err((int) reader.line(), e.what());
+int readProgram(std::istream& str, ProgramReader& reader) {
+    if (not reader.accept(str) || not reader.parse(ProgramReader::Complete)) {
+        BufferedStream::fail(reader.line(), "invalid input format");
     }
     return 0;
 }
@@ -257,7 +254,7 @@ bool matchAtomArg(const char*& input, std::string_view& arg) {
         }
         else if (*scan == '"') {
             bool quoted = false;
-            for (++scan; *scan && (*scan != '\"' || quoted); ++scan) { quoted = !quoted && *scan == '\\'; }
+            for (++scan; *scan && (*scan != '\"' || quoted); ++scan) { quoted = not quoted && *scan == '\\'; }
             if (!*scan) {
                 return false;
             }
@@ -291,23 +288,23 @@ bool match(const char*& input, int& out) {
 
 int matchDomHeuPred(const char*& in, std::string_view& atom, Heuristic_t& type, int& bias, unsigned& prio) {
     int p;
-    if (!match(in, heuristicPred)) {
+    if (not match(in, heuristicPred)) {
         return 0;
     }
-    if (!matchAtomArg(in, atom) || !match(in, ","sv)) {
+    if (not matchAtomArg(in, atom) || not match(in, ","sv)) {
         return -1;
     }
-    if (!match(in, type) || !match(in, ","sv)) {
+    if (not match(in, type) || not match(in, ","sv)) {
         return -2;
     }
-    if (!match(in, bias)) {
+    if (not match(in, bias)) {
         return -3;
     }
     prio = static_cast<unsigned>(bias < 0 ? -bias : bias);
-    if (!match(in, ","sv)) {
+    if (not match(in, ","sv)) {
         return match(in, ")"sv) ? 1 : -3;
     }
-    if (!match(in, p) || p < 0) {
+    if (not match(in, p) || p < 0) {
         return -4;
     }
     prio = static_cast<unsigned>(p);
@@ -317,17 +314,17 @@ int matchDomHeuPred(const char*& in, std::string_view& atom, Heuristic_t& type, 
 int matchEdgePred(const char*& in, std::string_view& n0, std::string_view& n1) {
     int sPos, tPos, ePos = -1;
     if (sscanf(in, "_acyc_%*d_%n%*d_%n%*d%n", &sPos, &tPos, &ePos) == 0 && ePos > 0) {
-        POTASSCO_ASSERT(tPos >= sPos && ePos >= tPos);
+        POTASSCO_CHECK(tPos >= sPos && ePos >= tPos, Errc::invalid_argument);
         n0  = {in + sPos, std::size_t(tPos - sPos) - 1};
         n1  = {in + tPos, std::size_t(ePos - tPos)};
         in += ePos;
-        return size(n0) > 0 && size(n1) > 0 ? 1 : -1;
+        return not n0.empty() && not n1.empty() ? 1 : -1;
     }
     else if (match(in, "_edge("sv)) {
-        if (!matchAtomArg(in, n0) || !match(in, ","sv)) {
+        if (not matchAtomArg(in, n0) || not match(in, ","sv)) {
             return -1;
         }
-        if (!matchAtomArg(in, n1) || !match(in, ")"sv)) {
+        if (not matchAtomArg(in, n1) || not match(in, ")"sv)) {
             return -2;
         }
         return 1;
@@ -352,7 +349,7 @@ void MemoryRegion::grow(std::size_t n) {
     if (n > size()) {
         std::size_t nc = std::max(n, (size() * 3) >> 1);
         void*       t  = std::realloc(beg_, nc);
-        POTASSCO_CHECK(t, ENOMEM);
+        POTASSCO_CHECK(t, Errc::bad_alloc);
         beg_ = t;
         end_ = static_cast<unsigned char*>(t) + n;
     }

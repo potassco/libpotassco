@@ -27,6 +27,7 @@
 
 #include <climits>
 #include <cstdint>
+#include <ios>
 #include <iosfwd>
 #include <stdexcept>
 
@@ -36,7 +37,6 @@ namespace Potassco {
  * \addtogroup ParseType
  */
 ///@{
-using ErrorHandler = int (*)(int line, const char* what);
 
 //! A wrapper around an std::istream that provides buffering and a simple interface for extracting characters and
 //! integers.
@@ -81,7 +81,7 @@ public:
     static void          fail(unsigned line, const char* error);
 
     void require(bool cnd, const char* error) const {
-        if (!cnd) {
+        if (not cnd) {
             fail(line(), error);
         }
     }
@@ -148,9 +148,6 @@ inline WeightLit_t matchWLit(BufferedStream& str, unsigned aMax = atomMax, Weigh
 //! Returns whether input starts with word and if so sets input to input + word.length().
 bool match(const char*& input, std::string_view word);
 //! Returns whether input starts with a string representation of a heuristic modifier and if so extracts it.
-/*!
- * \see toString(Heuristic_t)
- */
 bool match(const char*& input, Heuristic_t& heuType);
 //! Attempts to extract the next argument of a predicate.
 bool matchAtomArg(const char*& input, std::string_view& arg);
@@ -217,6 +214,8 @@ protected:
     [[nodiscard]] char peek(bool skipws) const;
     //! Throws an std::exception with the current line and given message if cnd is false.
     bool require(bool cnd, const char* msg) const;
+    //! Unconditionally throws an std::exception with the current line and given message.
+    void error(const char* msg) const;
     //! Attempts to match the given string.
     bool match(const char* word, bool skipWs = true) { return Potassco::match(*stream(), word, skipWs); }
     //! Extracts an int in the given range or fails with an std::exception.
@@ -249,7 +248,9 @@ private:
     unsigned    varMax_ = atomMax;
     bool        inc_    = false;
 };
+
 //! Attaches the given stream to r and calls ProgramReader::parse() with the read mode set to ProgramReader::Complete.
-int readProgram(std::istream& str, ProgramReader& r, ErrorHandler err);
+int readProgram(std::istream& str, ProgramReader& r);
+
 } // namespace Potassco
 ///@}

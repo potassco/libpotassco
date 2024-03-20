@@ -23,9 +23,11 @@
 //
 #include <potassco/theory_data.h>
 
+#include <potassco/error.h>
+
 #include <algorithm>
 #include <cstring>
-#include <memory>
+
 #include <stdexcept>
 namespace Potassco {
 template <class T>
@@ -45,7 +47,7 @@ FuncData* FuncData::newFunc(int32_t base, const IdSpan& args) {
     std::size_t nb = nBytes<FuncData>(args);
     auto*       f  = new (::operator new(nb)) FuncData;
     f->base        = base;
-    f->size        = static_cast<uint32_t>(std::size(args));
+    f->size        = static_cast<uint32_t>(args.size());
     std::memcpy(f->args, args.data(), f->size * sizeof(Id_t));
     return f;
 }
@@ -55,49 +57,53 @@ void FuncData::destroy(FuncData* f) {
         ::operator delete(f);
     }
 }
-const uint64_t  nulTerm  = static_cast<uint64_t>(-1);
-const uint64_t  typeMask = static_cast<uint64_t>(3);
-static uint64_t assertPtr(const void* p) {
+constexpr uint64_t nulTerm  = static_cast<uint64_t>(-1);
+constexpr uint64_t typeMask = static_cast<uint64_t>(3);
+static uint64_t    assertPtr(const void* p) {
     auto data = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(p));
-    POTASSCO_REQUIRE((data & 3u) == 0u, "Invalid pointer alignment");
+    POTASSCO_ASSERT((data & 3u) == 0u, "Invalid pointer alignment");
     return data;
 }
 
 TheoryTerm::TheoryTerm() : data_(nulTerm) {}
 TheoryTerm::TheoryTerm(int num) { data_ = (static_cast<uint64_t>(num) << 2) | uint32_t(Theory_t::Number); }
 TheoryTerm::TheoryTerm(const char* sym) {
+    POTASSCO_CHECK_PRE(sym, "symbol must not be null");
     data_ = (assertPtr(sym) | uint32_t(Theory_t::Symbol));
-    assert(sym == symbol());
+    POTASSCO_ASSERT(sym == symbol());
 }
-TheoryTerm::TheoryTerm(const FuncData* c) { data_ = (assertPtr(c) | uint32_t(Theory_t::Compound)); }
-void     TheoryTerm::assertType(Theory_t t) const { POTASSCO_REQUIRE(type() == t, "Invalid term cast"); }
+TheoryTerm::TheoryTerm(const FuncData* c) {
+    POTASSCO_CHECK_PRE(c);
+    data_ = (assertPtr(c) | uint32_t(Theory_t::Compound));
+}
+
 bool     TheoryTerm::valid() const { return data_ != nulTerm; }
 Theory_t TheoryTerm::type() const {
-    POTASSCO_REQUIRE(valid(), "Invalid term");
+    POTASSCO_CHECK_PRE(valid(), "Invalid term");
     return static_cast<Theory_t>(data_ & typeMask);
 }
 int TheoryTerm::number() const {
-    assertType(Theory_t::Number);
+    POTASSCO_CHECK(type() == Theory_t::Number, Errc::invalid_argument, "Term is not a number");
     return static_cast<int>(data_ >> 2);
 }
 uintptr_t   TheoryTerm::getPtr() const { return static_cast<uintptr_t>(data_ & ~typeMask); }
 const char* TheoryTerm::symbol() const {
-    assertType(Theory_t::Symbol);
+    POTASSCO_CHECK(type() == Theory_t::Symbol, Errc::invalid_argument, "Term is not a symbol");
     return reinterpret_cast<const char*>(getPtr());
 }
 FuncData* TheoryTerm::func() const { return reinterpret_cast<FuncData*>(getPtr()); }
 int       TheoryTerm::compound() const {
-    assertType(Theory_t::Compound);
+    POTASSCO_CHECK(type() == Theory_t::Compound, Errc::invalid_argument, "Term is not a compound");
     return func()->base;
 }
 bool TheoryTerm::isFunction() const { return type() == Theory_t::Compound && func()->base >= 0; }
 bool TheoryTerm::isTuple() const { return type() == Theory_t::Compound && func()->base < 0; }
 Id_t TheoryTerm::function() const {
-    POTASSCO_REQUIRE(isFunction(), "Term is not a function");
+    POTASSCO_CHECK(isFunction(), Errc::invalid_argument, "Term is not a function");
     return static_cast<Id_t>(func()->base);
 }
 Tuple_t TheoryTerm::tuple() const {
-    POTASSCO_REQUIRE(isTuple(), "Term is not a tuple");
+    POTASSCO_CHECK(isTuple(), Errc::invalid_argument, "Term is not a tuple");
     return static_cast<Tuple_t>(func()->base);
 }
 uint32_t             TheoryTerm::size() const { return type() == Theory_t::Compound ? func()->size : 0; }
@@ -107,7 +113,7 @@ TheoryTerm::iterator TheoryTerm::end() const {
 }
 
 TheoryElement::TheoryElement(const IdSpan& terms, Id_t c)
-    : nTerms_(static_cast<uint32_t>(std::size(terms)))
+    : nTerms_(static_cast<uint32_t>(terms.size()))
     , nCond_(c != 0) {
     std::memcpy(term_, terms.data(), nTerms_ * sizeof(Id_t));
     if (nCond_ != 0) {
@@ -134,7 +140,7 @@ TheoryAtom::TheoryAtom(Id_t a, Id_t term, const IdSpan& args, const Id_t* op, co
     : atom_(a)
     , guard_(op != nullptr)
     , termId_(term)
-    , nTerms_(static_cast<uint32_t>(std::size(args))) {
+    , nTerms_(static_cast<uint32_t>(args.size())) {
     std::memcpy(term_, args.data(), nTerms_ * sizeof(Id_t));
     if (op) {
         term_[nTerms_]     = *op;
@@ -215,8 +221,8 @@ const TheoryTerm& TheoryData::addTerm(Id_t termId, const std::string_view& name)
     TheoryTerm& t = setTerm(termId);
     // Align to 4-bytes to disable false-positives from valgrind
     // in subsequent calls to strlen etc.
-    char* buf                                         = new char[((name.size() + 1 + 3) / 4) * 4];
-    *std::copy(std::begin(name), std::end(name), buf) = 0;
+    auto* buf                                 = new char[((name.size() + 1 + 3) / 4) * 4];
+    *std::copy(name.begin(), name.end(), buf) = 0;
     return (t = TheoryTerm(buf));
 }
 const TheoryTerm& TheoryData::addTerm(Id_t termId, const char* name) {
@@ -235,11 +241,11 @@ void TheoryData::removeTerm(Id_t termId) {
     }
 }
 const TheoryElement& TheoryData::addElement(Id_t id, const IdSpan& terms, Id_t cId) {
-    if (!hasElement(id)) {
+    if (not hasElement(id)) {
         for (uint32_t i = numElems(); i <= id; ++i) { data_->elems.push(); }
     }
     else {
-        POTASSCO_REQUIRE(!isNewElement(id), "Redefinition of theory element '%u'", id);
+        POTASSCO_CHECK_PRE(not isNewElement(id), "Redefinition of theory element '%u'", id);
         DestroyT()(elems()[id]);
     }
     return *(elems()[id] = TheoryElement::newElement(terms, cId));
@@ -255,17 +261,17 @@ const TheoryAtom& TheoryData::addAtom(Id_t atomOrZero, Id_t termId, const IdSpan
 }
 
 TheoryTerm& TheoryData::setTerm(Id_t id) {
-    if (!hasTerm(id)) {
+    if (not hasTerm(id)) {
         for (uint32_t i = numTerms(); i <= id; ++i) { data_->terms.push(); }
     }
     else {
-        POTASSCO_REQUIRE(!isNewTerm(id), "Redefinition of theory term '%u'", id);
+        POTASSCO_CHECK_PRE(not isNewTerm(id), "Redefinition of theory term '%u'", id);
         removeTerm(id);
     }
     return terms()[id];
 }
 void TheoryData::setCondition(Id_t elementId, Id_t newCond) {
-    POTASSCO_ASSERT(getElement(elementId).condition() == COND_DEFERRED);
+    POTASSCO_CHECK_PRE(getElement(elementId).condition() == COND_DEFERRED);
     elems()[elementId]->setCondition(newCond);
 }
 
@@ -308,11 +314,11 @@ bool                      TheoryData::isNewTerm(Id_t id) const { return hasTerm(
 bool                      TheoryData::hasElement(Id_t id) const { return id < numElems() && elems()[id] != nullptr; }
 bool                      TheoryData::isNewElement(Id_t id) const { return hasElement(id) && id >= data_->frame.elem; }
 const TheoryTerm&         TheoryData::getTerm(Id_t id) const {
-    POTASSCO_REQUIRE(hasTerm(id), "Unknown term '%u'", unsigned(id));
+    POTASSCO_CHECK(hasTerm(id), Errc::out_of_range, "Unknown term '%u'", unsigned(id));
     return terms()[id];
 }
 const TheoryElement& TheoryData::getElement(Id_t id) const {
-    POTASSCO_REQUIRE(hasElement(id), "Unknown element '%u'", unsigned(id));
+    POTASSCO_CHECK(hasElement(id), Errc::out_of_range, "Unknown element '%u'", unsigned(id));
     return *elems()[id];
 }
 void TheoryData::accept(Visitor& out, VisitMode m) const {

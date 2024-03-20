@@ -36,7 +36,7 @@ struct EnumHelper {
     constexpr EnumHelper(UT u) : v(u) {}
 
     template <typename T>
-    constexpr EnumHelper operator=(T t) const noexcept { // NOLINT
+    constexpr EnumHelper operator=(T t) const noexcept { // NOLINT(misc-unconventional-assign-operator)
         return EnumHelper(static_cast<UT>(t));
     }
 

@@ -22,15 +22,17 @@
 // IN THE SOFTWARE.
 //
 
-#include <cctype>
-#include <cstdlib>
-#include <fstream>
-#include <iostream>
 #include <potassco/application.h>
 #include <potassco/aspif.h>
 #include <potassco/aspif_text.h>
 #include <potassco/convert.h>
+#include <potassco/error.h>
 #include <potassco/program_opts/typed_value.h>
+
+#include <cctype>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
 
 using namespace Potassco::ProgramOptions;
 
@@ -56,15 +58,6 @@ public:
     }
 
 private:
-    static bool positional(const std::string&, std::string& optOut) {
-        optOut = "input";
-        return true;
-    }
-    static int error(int line, const char* what) {
-        fprintf(stderr, "*** ERROR: In line %d: %s\n", line, what);
-        static_cast<LpConvert*>(Application::getInstance())->exit(EXIT_FAILURE);
-        return EXIT_FAILURE;
-    }
     std::string input_;
     std::string output_;
     bool        potassco_ = false;
@@ -88,21 +81,22 @@ void LpConvert::run() {
     std::ofstream oFile;
     if (not input_.empty() && input_ != "-") {
         iFile.open(input_.c_str());
-        POTASSCO_EXPECT(iFile.is_open(), "Could not open input file!");
+        POTASSCO_CHECK(iFile.is_open(), std::errc::no_such_file_or_directory, "Could not open input file");
     }
     if (not output_.empty() && output_ != "-") {
-        POTASSCO_EXPECT(input_ != output_, "Input and output must be different!");
+        POTASSCO_CHECK(input_ != output_, std::errc::invalid_argument, "Input and output must be different");
         oFile.open(output_.c_str());
-        POTASSCO_EXPECT(oFile.is_open(), "Could not open output file!");
+        POTASSCO_CHECK(oFile.is_open(), std::errc::no_such_file_or_directory, "Could not open output file");
     }
     std::istream&             in = iFile.is_open() ? iFile : std::cin;
     std::ostream&             os = oFile.is_open() ? oFile : std::cout;
     Potassco::AspifTextOutput text(os);
-    POTASSCO_EXPECT(in.peek() == 'a' || std::isdigit(in.peek()), "Unrecognized input format!");
+    POTASSCO_CHECK(in.peek() == 'a' || std::isdigit(in.peek()), std::errc::not_supported,
+                   "Unrecognized input format '%c' - expected 'aspif' or <digit>", in.peek());
     if (in.peek() == 'a') {
         Potassco::SmodelsOutput  writer(os, potassco_, 0);
         Potassco::SmodelsConvert smodels(writer, potassco_);
-        Potassco::readAspif(in, !text_ ? static_cast<Potassco::AbstractProgram&>(smodels) : text, &error);
+        Potassco::readAspif(in, not text_ ? static_cast<Potassco::AbstractProgram&>(smodels) : text);
     }
     else {
         Potassco::AspifOutput           aspif(os);
@@ -113,7 +107,7 @@ void LpConvert::run() {
                 opts.dropConverted();
             }
         }
-        Potassco::readSmodels(in, !text_ ? static_cast<Potassco::AbstractProgram&>(aspif) : text, &error, opts);
+        Potassco::readSmodels(in, not text_ ? static_cast<Potassco::AbstractProgram&>(aspif) : text, opts);
     }
 }
 

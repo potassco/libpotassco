@@ -104,9 +104,9 @@ protected:
     Application();
     virtual ~Application();
     [[nodiscard]] unsigned verbose() const;
+    [[noreturn]] void      exit(int exitCode) const;
 
     void shutdown(bool hasError);
-    void exit(int exitCode) const;
     void setVerbose(unsigned v);
     int  setAlarm(unsigned sec);
     void killAlarm();

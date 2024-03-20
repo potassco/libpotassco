@@ -32,6 +32,7 @@
 #include <iosfwd>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <set>
 #include <stdexcept>
 #include <string_view>
@@ -417,7 +418,7 @@ public:
               form) {}
     //! Writes formatted option descriptions to given std::string.
     explicit OptionOutputImpl(std::string& str, const Formatter& form = Formatter())
-        : OptionOutputImpl([&str](std::string_view view) { str.append(view.data(), std::ssize(view)); }, form) {}
+        : OptionOutputImpl([&str](std::string_view view) { str.append(view.data(), std::size(view)); }, form) {}
     //! Writes formatted option descriptions to given std::ostream.
     explicit OptionOutputImpl(std::ostream& os, const Formatter& form = Formatter())
         : OptionOutputImpl([&os](std::string_view view) { os.write(view.data(), std::ssize(view)); }, form) {}

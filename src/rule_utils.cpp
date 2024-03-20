@@ -23,6 +23,8 @@
 //
 #include <potassco/rule_utils.h>
 
+#include <potassco/error.h>
+
 #include <algorithm>
 #include <cstring>
 
@@ -84,7 +86,7 @@ inline std::span<const T> span_cast(const MemoryRegion& m, const RuleBuilder::Ru
 }
 template <typename T>
 inline RuleBuilder::Rule* push(MemoryRegion& m, RuleBuilder::Rule* r, const T& what) {
-    assert(r == m.begin());
+    POTASSCO_ASSERT(r == m.begin());
     uint32_t t = r->top, nt = t + sizeof(T);
     if (nt > m.size()) {
         m.grow(nt);
@@ -114,7 +116,7 @@ RuleBuilder& RuleBuilder::clear() {
 RuleBuilder::Rule* RuleBuilder::unfreeze(bool discard) {
     auto* r = rule_();
     if (r->fix) {
-        if (!discard) {
+        if (not discard) {
             r->fix = 0;
         }
         else {
@@ -129,17 +131,17 @@ RuleBuilder::Rule* RuleBuilder::unfreeze(bool discard) {
 RuleBuilder& RuleBuilder::start(Head_t ht) {
     auto* r = unfreeze(true);
     auto& h = r->head;
-    POTASSCO_ASSERT(!h.mbeg || h.len() == 0u, "Invalid second call to start()");
+    POTASSCO_CHECK_PRE(not h.mbeg || h.len() == 0u, "Invalid second call to start()");
     h.init(r->top, ht);
     return *this;
 }
 RuleBuilder& RuleBuilder::addHead(Atom_t a) {
     auto* r = rule_();
-    POTASSCO_ASSERT(!r->fix, "Invalid call to addHead() on frozen rule");
-    if (!r->head.mend) {
+    POTASSCO_CHECK_PRE(not r->fix, "Invalid call to addHead() on frozen rule");
+    if (not r->head.mend) {
         r->head.init(r->top, 0);
     }
-    POTASSCO_ASSERT(r->head.mbeg >= r->body.mend, "Invalid call to addHead() after startBody()");
+    POTASSCO_CHECK_PRE(r->head.mbeg >= r->body.mend, "Invalid call to addHead() after startBody()");
     r            = push(mem_, r, a);
     r->head.mend = r->top;
     return *this;
@@ -158,14 +160,14 @@ Atom_t*  RuleBuilder::head_end() const { return static_cast<Atom_t*>(mem_[rule_(
 /////////////////////////////////////////////////////////////////////////////////////////
 void RuleBuilder::startBody(Body_t bt, Weight_t bnd) {
     auto* r = unfreeze(true);
-    if (!r->body.mend) {
+    if (not r->body.mend) {
         if (bt != Body_t::Normal) {
             r = push(mem_, r, bnd);
         }
         r->body.init(r->top, bt);
     }
     else {
-        POTASSCO_ASSERT(r->body.len() == 0, "Invalid second call to startBody()");
+        POTASSCO_CHECK_PRE(r->body.len() == 0, "Invalid second call to startBody()");
     }
 }
 RuleBuilder& RuleBuilder::startBody() {
@@ -178,7 +180,7 @@ RuleBuilder& RuleBuilder::startSum(Weight_t bound) {
 }
 RuleBuilder& RuleBuilder::startMinimize(Weight_t prio) {
     auto* r = unfreeze(true);
-    POTASSCO_ASSERT(!r->head.mbeg && !r->body.mbeg, "Invalid call to startMinimize()");
+    POTASSCO_CHECK_PRE(not r->head.mbeg && not r->body.mbeg, "Invalid call to startMinimize()");
     r->head.init(r->top, Directive_t::Minimize);
     r = push(mem_, r, prio);
     r->body.init(r->top, Body_t::Sum);
@@ -186,11 +188,11 @@ RuleBuilder& RuleBuilder::startMinimize(Weight_t prio) {
 }
 RuleBuilder& RuleBuilder::addGoal(WeightLit_t lit) {
     auto* r = rule_();
-    POTASSCO_ASSERT(!r->fix, "Invalid call to addGoal() on frozen rule");
-    if (!r->body.mbeg) {
+    POTASSCO_CHECK_PRE(not r->fix, "Invalid call to addGoal() on frozen rule");
+    if (not r->body.mbeg) {
         r->body.init(r->top, 0);
     }
-    POTASSCO_ASSERT(r->body.mbeg >= r->head.mend, "Invalid call to addGoal() after start()");
+    POTASSCO_CHECK_PRE(r->body.mbeg >= r->head.mend, "Invalid call to addGoal() after start()");
     if (lit.weight == 0) {
         return *this;
     }
@@ -199,7 +201,7 @@ RuleBuilder& RuleBuilder::addGoal(WeightLit_t lit) {
     return *this;
 }
 RuleBuilder& RuleBuilder::setBound(Weight_t bound) {
-    POTASSCO_ASSERT(!rule_()->fix && bodyType() != Body_t::Normal, "Invalid call to setBound()");
+    POTASSCO_CHECK_PRE(not rule_()->fix && bodyType() != Body_t::Normal, "Invalid call to setBound()");
     std::memcpy(bound_(), &bound, sizeof(Weight_t));
     return *this;
 }
@@ -250,7 +252,7 @@ Weight_t*    RuleBuilder::bound_() const { return static_cast<Weight_t*>(mem_[ru
 RuleBuilder& RuleBuilder::end(AbstractProgram* out) {
     auto* r = rule_();
     r->fix  = 1;
-    if (!out) {
+    if (not out) {
         return *this;
     }
     if (auto isMinimize = static_cast<Directive_t>(r->head.mtype) == Directive_t::Minimize; isMinimize) {

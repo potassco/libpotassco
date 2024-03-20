@@ -26,7 +26,6 @@
 #include <potassco/rule_utils.h>
 #include <potassco/theory_data.h>
 
-#include <cstring>
 #include <functional>
 #include <ostream>
 #include <string>
@@ -45,7 +44,7 @@ struct AspifInput::Extra {
 AspifInput::AspifInput(AbstractProgram& out) : out_(out), rule_(nullptr), data_(nullptr) {}
 
 bool AspifInput::doAttach(bool& inc) {
-    if (!match("asp ")) {
+    if (not match("asp ")) {
         return false;
     }
     require(matchPos() == 1, "unsupported major version");
@@ -63,8 +62,11 @@ bool AspifInput::doParse() {
     data_ = &data;
     out_.beginStep();
     for (Directive_t rt; (rt = matchType<Directive_t>("rule type or 0 expected")) != Directive_t::End; rule.clear()) {
-        switch (static_cast<Directive_t>(rt)) {
-            default               : return require(false, "unrecognized rule type");
+        switch (rt) {
+            default:
+                require(rt == Directive_t::Comment, "unrecognized rule type");
+                skipLine();
+                break;
             case Directive_t::Rule: {
                 rule.start(matchType<Head_t>("invalid head type"));
                 matchAtoms();
@@ -120,8 +122,7 @@ bool AspifInput::doParse() {
                 out_.acycEdge((int) start, (int) end, rule.body());
                 break;
             }
-            case Directive_t::Theory : matchTheory(static_cast<Theory_t>(matchPos())); break;
-            case Directive_t::Comment: skipLine(); break;
+            case Directive_t::Theory: matchTheory(static_cast<Theory_t>(matchPos())); break;
         }
     }
     out_.endStep();
@@ -131,30 +132,30 @@ bool AspifInput::doParse() {
 }
 
 void AspifInput::matchAtoms() {
-    for (uint32_t len = matchPos("number of atoms expected"); len--;) { rule_->addHead(matchAtom()); }
+    for (auto len = matchPos("number of atoms expected"); len--;) { rule_->addHead(matchAtom()); }
 }
 void AspifInput::matchLits() {
     rule_->startBody();
-    for (uint32_t len = matchPos("number of literals expected"); len--;) { rule_->addGoal(matchLit()); }
+    for (auto len = matchPos("number of literals expected"); len--;) { rule_->addGoal(matchLit()); }
 }
 void AspifInput::matchWLits(int32_t minW) {
-    for (uint32_t len = matchPos("number of literals expected"); len--;) { rule_->addGoal(matchWLit(minW)); }
+    for (auto len = matchPos("number of literals expected"); len--;) { rule_->addGoal(matchWLit(minW)); }
 }
 void AspifInput::matchString() {
-    uint32_t len = matchPos("non-negative string length expected");
+    auto len = matchPos("non-negative string length expected");
     stream()->get();
     data_->sym.resize(len);
     require(not len || stream()->copy(data_->sym) == len, "invalid string");
 }
 void AspifInput::matchIds() {
-    uint32_t len = matchPos("number of terms expected");
+    auto len = matchPos("number of terms expected");
     data_->ids.resize(len);
     for (uint32_t i = 0; i != len; ++i) { data_->ids[i] = matchPos(); }
 }
 void AspifInput::matchTheory(Theory_t rt) {
-    Id_t tId = matchPos();
+    auto tId = matchPos();
     switch (rt) {
-        default              : require(false, "unrecognized theory directive type"); return;
+        default              : error("unrecognized theory directive type"); return;
         case Theory_t::Number: out_.theoryTerm(tId, matchInt()); break;
         case Theory_t::Symbol:
             matchString();
@@ -174,13 +175,13 @@ void AspifInput::matchTheory(Theory_t rt) {
         }
         case Theory_t::Atom: // fall through
         case Theory_t::AtomWithGuard: {
-            Id_t termId = matchPos();
+            auto termId = matchPos();
             matchIds();
             if (static_cast<Theory_t>(rt) == Theory_t::Atom) {
                 out_.theoryAtom(tId, termId, data_->ids);
             }
             else {
-                Id_t opId = matchPos();
+                auto opId = matchPos();
                 out_.theoryAtom(tId, termId, data_->ids, opId, matchPos());
             }
             break;
@@ -188,9 +189,9 @@ void AspifInput::matchTheory(Theory_t rt) {
     }
 }
 
-int readAspif(std::istream& in, AbstractProgram& out, ErrorHandler err) {
+int readAspif(std::istream& in, AbstractProgram& out) {
     AspifInput reader(out);
-    return readProgram(in, reader, err);
+    return readProgram(in, reader);
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // AspifOutput
@@ -210,23 +211,23 @@ AspifOutput& AspifOutput::add(unsigned x) {
     return *this;
 }
 AspifOutput& AspifOutput::add(const WeightLitSpan& lits) {
-    os_ << " " << size(lits);
+    os_ << " " << lits.size();
     for (const auto& wl : lits) { os_ << " " << lit(wl) << " " << weight(wl); }
     return *this;
 }
 AspifOutput& AspifOutput::add(const LitSpan& lits) {
-    os_ << " " << size(lits);
+    os_ << " " << lits.size();
     for (const auto& x : lits) { os_ << " " << lit(x); }
     return *this;
 }
 AspifOutput& AspifOutput::add(const AtomSpan& atoms) {
-    os_ << " " << size(atoms);
+    os_ << " " << atoms.size();
     for (const auto& a : atoms) { os_ << " " << a; }
     return *this;
 }
 AspifOutput& AspifOutput::add(const std::string_view& str) {
-    os_ << " " << size(str) << " ";
-    os_.write(begin(str), std::ssize(str));
+    os_ << " " << str.size() << " ";
+    os_.write(str.data(), std::ssize(str));
     return *this;
 }
 AspifOutput& AspifOutput::endDir() {

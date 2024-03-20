@@ -70,8 +70,8 @@ std::size_t DefaultFormat::format(std::string& buf, const Option& o, std::size_t
     if (auto c = o.alias(); c) {
         buf.append(",-"sv).append(1, c);
     }
-    if (!o.value()->isImplicit()) {
-        buf.append(1, !o.alias() ? '=' : ' ').append(arg).append(ap);
+    if (not o.value()->isImplicit()) {
+        buf.append(1, not o.alias() ? '=' : ' ').append(arg).append(ap);
     }
     if (auto sz = buf.size() - startSize; sz < maxW) {
         buf.append(maxW - sz, ' ');
@@ -81,7 +81,7 @@ std::size_t DefaultFormat::format(std::string& buf, const Option& o, std::size_t
 std::size_t DefaultFormat::format(std::string& buf, const char* desc, const Value& val, std::size_t) {
     std::size_t minS = strlen(desc);
     const char* temp = nullptr;
-    if (!desc)
+    if (not desc)
         desc = "";
 
     const auto startSize = buf.size();
@@ -193,7 +193,7 @@ const char* Value::implicit() const {
 }
 
 bool Value::parse(const std::string& name, const std::string& value, State st) {
-    if (!value.empty() || !isImplicit())
+    if (not value.empty() || not isImplicit())
         return state(doParse(name, value), st);
     const char* x = implicit();
     assert(x);
@@ -207,7 +207,7 @@ Option::Option(std::string_view longName, char alias, const char* desc, Value* v
     , description_(desc ? desc : "")
     , value_(v) {
     assert(v);
-    assert(!longName.empty());
+    assert(not longName.empty());
     value_->alias(alias);
 }
 
@@ -271,20 +271,20 @@ OptionInitHelper::OptionInitHelper(OptionGroup& owner) : owner_(&owner) {}
 
 OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, const char* desc) {
     std::unique_ptr<Value> cleanup(val);
-    if (!name || !*name || *name == ',' || *name == '!') {
+    if (not name || not *name || *name == ',' || *name == '!') {
         throw Error("Invalid empty option name");
     }
     const char* n = strchr(name, ',');
     string      longName;
     char        shortName = 0;
-    if (!n) {
+    if (not n) {
         longName = name;
     }
     else {
         longName.assign(name, n);
         unsigned    level = owner_->descLevel();
         const char* x     = ++n;
-        if (*x && (!x[1] || x[1] == ',')) {
+        if (*x && (not x[1] || x[1] == ',')) {
             shortName  = *x++;
             x         += *x == ',';
         }
@@ -304,7 +304,7 @@ OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, con
     }
     if (*(longName.end() - 1) == '!') {
         bool neg = *(longName.end() - 2) != '\\';
-        longName.erase(longName.end() - (1 + !neg), longName.end());
+        longName.erase(longName.end() - (1 + not neg), longName.end());
         if (neg)
             val->negatable();
         else
@@ -343,9 +343,9 @@ OptionContext& OptionContext::add(const OptionGroup& options) {
 }
 
 OptionContext& OptionContext::addAlias(const std::string& aliasName, option_iterator option) {
-    if (option != end() && !aliasName.empty()) {
+    if (option != end() && not aliasName.empty()) {
         auto k = static_cast<key_type>(option - begin());
-        if (!index_.insert(Name2Key::value_type(aliasName, k)).second) {
+        if (not index_.insert(Name2Key::value_type(aliasName, k)).second) {
             throw DuplicateOption(caption(), aliasName);
         }
     }
@@ -377,12 +377,12 @@ void OptionContext::insertOption(size_t groupId, const SharedOptPtr& opt) {
     if (opt->alias()) {
         char        sName[2] = {'-', opt->alias()};
         std::string shortName(sName, 2);
-        if (!index_.insert(Name2Key::value_type(shortName, k)).second) {
+        if (not index_.insert(Name2Key::value_type(shortName, k)).second) {
             throw DuplicateOption(caption(), l);
         }
     }
-    if (!l.empty()) {
-        if (!index_.insert(Name2Key::value_type(l, k)).second) {
+    if (not l.empty()) {
+        if (not index_.insert(Name2Key::value_type(l, k)).second) {
             throw DuplicateOption(caption(), l);
         }
     }
@@ -403,7 +403,7 @@ OptionContext::option_iterator OptionContext::tryFind(const char* key, FindType 
 OptionContext::PrefixRange OptionContext::findImpl(const char* key, FindType t, unsigned eMask,
                                                    const std::string& eCtx) const {
     std::string k(key ? key : "");
-    if (t == find_alias && !k.empty() && k[0] != '-') {
+    if (t == find_alias && not k.empty() && k[0] != '-') {
         k    += k[0];
         k[0]  = '-';
     }
@@ -447,7 +447,7 @@ OptionOutput& OptionContext::description(OptionOutput& out) const {
                 groups_[i].format(out, maxW, dl);
             }
         }
-        if (!groups_.empty() && groups_[0].descLevel() <= dl && out.printGroup(groups_[0])) {
+        if (not groups_.empty() && groups_[0].descLevel() <= dl && out.printGroup(groups_[0])) {
             groups_[0].format(out, maxW, dl);
         }
     }
@@ -494,7 +494,7 @@ std::ostream& operator<<(std::ostream& os, const OptionContext& grp) {
 void OptionContext::assignDefaults(const ParsedOptions& opts) const {
     for (const auto& optPtr : *this) {
         const Option& o = *optPtr;
-        if (opts.count(o.name()) == 0 && !o.assignDefault()) {
+        if (opts.count(o.name()) == 0 && not o.assignDefault()) {
             throw ValueError(caption(), ValueError::invalid_default, o.name(), o.value()->defaultsTo());
         }
     }
@@ -505,7 +505,7 @@ void OptionContext::assignDefaults(const ParsedOptions& opts) const {
 ParsedOptions::ParsedOptions() = default;
 ParsedOptions::~ParsedOptions() { parsed_.clear(); }
 bool ParsedOptions::assign(const ParsedValues& p, const ParsedOptions* exclude) {
-    if (!p.ctx)
+    if (not p.ctx)
         return false;
     struct Assign {
         Assign(ParsedOptions* x, const ParsedOptions* exclude) : self(x), ignore(exclude) {}
@@ -514,7 +514,7 @@ bool ParsedOptions::assign(const ParsedValues& p, const ParsedOptions* exclude) 
             // assign parsed values
             for (auto end = p.end(); it != end; ++it) {
                 const Option& o = *it->first;
-                if (ignore && ignore->count(o.name()) != 0 && !o.value()->isComposing()) {
+                if (ignore && ignore->count(o.name()) != 0 && not o.value()->isComposing()) {
                     continue;
                 }
                 if (int ret = self->assign(o, it->second)) {
@@ -544,13 +544,13 @@ bool ParsedOptions::assign(const ParsedValues& p, const ParsedOptions* exclude) 
 }
 int ParsedOptions::assign(const Option& o, const std::string& value) {
     unsigned badState = 0;
-    if (!o.value()->isComposing()) {
+    if (not o.value()->isComposing()) {
         if (parsed_.count(o.name())) {
             return 0;
         }
         badState = (Value::value_fixed & o.value()->state());
     }
-    if (badState || !o.value()->parse(o.name(), value, Value::value_fixed)) {
+    if (badState || not o.value()->parse(o.name(), value, Value::value_fixed)) {
         return badState ? 1 + ValueError::multiple_occurrences : 1 + ValueError::invalid_value;
     }
     return 0;
@@ -592,7 +592,7 @@ private:
         bool        breakEarly = false;
         int         posKey     = 0;
         const char* curr;
-        while ((curr = next()) != nullptr && !breakEarly) {
+        while ((curr = next()) != nullptr && not breakEarly) {
             switch (getOptionType(curr)) {
                 case short_opt:
                     if (handleShortOpt(curr + 1))
@@ -642,7 +642,7 @@ private:
             if ((o = getOption(optn, OptionContext::find_alias)).get()) {
                 if (o->value()->isImplicit()) {
                     // -ovalue or -oopts
-                    if (!o->value()->isFlag()) {
+                    if (not o->value()->isFlag()) {
                         // consume (possibly empty) value
                         addOptionValue(o, val);
                         return true;
@@ -684,7 +684,7 @@ private:
             }
             catch (...) {
             }
-            if (on.get() && !on->value()->isNegatable()) {
+            if (on.get() && not on->value()->isNegatable()) {
                 on.reset();
             }
         }
@@ -692,17 +692,17 @@ private:
             o = getOption(name.c_str(), OptionContext::find_name_or_prefix);
         }
         catch (const UnknownOption&) {
-            if (!on.get()) {
+            if (not on.get()) {
                 throw;
             }
         }
-        if (!o.get() && on.get()) {
+        if (not o.get() && on.get()) {
             o.swap(on);
             value = "no";
             neg   = true;
         }
         if (o.get()) {
-            if (!o->value()->isImplicit() && value.empty()) {
+            if (not o->value()->isImplicit() && value.empty()) {
                 if (const char* v = next()) {
                     value = v;
                 }
@@ -710,7 +710,7 @@ private:
                     throw SyntaxError(SyntaxError::missing_value, name);
                 }
             }
-            else if (o->value()->isFlag() && !value.empty() && !neg &&
+            else if (o->value()->isFlag() && not value.empty() && not neg &&
                      (flags & unsigned(command_line_allow_flag_value)) == 0u) {
                 // flags don't have values
                 throw SyntaxError(SyntaxError::extra_value, name);
@@ -814,7 +814,8 @@ private:
         return false;
     }
     void doParse() override {
-        int          lineNr = 0;
+        [[maybe_unused]] auto lineNr = 0;
+
         std::string  sectionName;       // current section name
         std::string  sectionValue;      // current section value
         bool         inSection = false; // true if multi line section value
@@ -839,8 +840,8 @@ private:
                 }
                 continue;
             }
-            std::string::size_type pos;
-            if ((pos = line.find('=')) != std::string::npos) {
+
+            if (auto pos = line.find('='); pos != std::string::npos) {
                 // A new section terminates a multi line section value.
                 // First process the current section value...
                 if (inSection && (opt = getOption(sectionName.c_str(), ft)).get()) {
@@ -872,7 +873,7 @@ public:
     DefaultContext(const OptionContext& o, bool allowUnreg, PosOption po)
         : posOpt(po)
         , parsed(o)
-        , eMask(2u + unsigned(!allowUnreg)) {}
+        , eMask(2u + unsigned(not allowUnreg)) {}
     SharedOptPtr getOption(const char* name, FindType ft) override {
         OptionContext::OptionRange r = parsed.ctx->findImpl(name, ft, eMask);
         if (r.first != r.second) {
@@ -882,7 +883,7 @@ public:
     }
     SharedOptPtr getOption(int, const char* tok) override {
         std::string optName;
-        if (!posOpt || !posOpt(tok, optName)) {
+        if (not posOpt || not posOpt(tok, optName)) {
             return getOption("Positional Option", OptionContext::find_name_or_prefix);
         }
         return getOption(optName.c_str(), OptionContext::find_name_or_prefix);
@@ -950,7 +951,7 @@ static std::string format(SyntaxError::Type t, const std::string& key) {
 static std::string format(ContextError::Type t, const std::string& ctx, const std::string& key,
                           const std::string& alt) {
     std::string ret;
-    if (!ctx.empty()) {
+    if (not ctx.empty()) {
         ret += "In context ";
         ret += quote(ctx);
         ret += ": ";
@@ -963,7 +964,7 @@ static std::string format(ContextError::Type t, const std::string& ctx, const st
         default                            : ret += "unknown error in: ";
     };
     ret += quote(key);
-    if (t == ContextError::ambiguous_option && !alt.empty()) {
+    if (t == ContextError::ambiguous_option && not alt.empty()) {
         ret += " could be:\n";
         ret += alt;
     }
@@ -973,14 +974,14 @@ static std::string format(ValueError::Type t, const std::string& ctx, const std:
                           const std::string& value) {
     std::string ret;
     const char* x = "";
-    if (!ctx.empty()) {
+    if (not ctx.empty()) {
         ret += "In context ";
         ret += quote(ctx);
         ret += ": ";
     }
     switch (t) {
         case ValueError::multiple_occurrences: ret += "multiple occurrences: "; break;
-        case ValueError::invalid_default     : x = "default "; // FALLTHRU
+        case ValueError::invalid_default     : x = "default "; [[fallthrough]];
         case ValueError::invalid_value:
             ret += quote(value);
             ret += " invalid ";

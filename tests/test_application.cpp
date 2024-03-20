@@ -70,9 +70,9 @@ TEST_CASE("Test application", "[app]") {
     int   argc   = 5;
     MyApp app;
     REQUIRE(app.main(argc, argv) == EXIT_SUCCESS);
-    REQUIRE(!app.desc.empty());
+    REQUIRE(not app.desc.empty());
     REQUIRE(app.verbose() == 3);
-    REQUIRE((!app.input.empty() && app.input[0] == "hallo"));
+    REQUIRE((not app.input.empty() && app.input[0] == "hallo"));
     REQUIRE(app.desc.find("verbose") != std::string::npos);
     REQUIRE(app.desc.find("file") == std::string::npos);
     REQUIRE(app.desc.find("foo") == std::string::npos);
@@ -87,7 +87,7 @@ TEST_CASE("Test alarm", "[app]") {
         TimedApp() : stop(0) {}
         void run() override {
             int i = 0;
-            while (!stop) { ++i; }
+            while (not stop) { ++i; }
             setExitCode(i);
         }
         bool onSignal(int) override {

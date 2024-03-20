@@ -73,11 +73,13 @@ public:
         shows.push_back({{begin(str), end(str)}, {begin(cond), end(cond)}});
     }
 
-    void external(Atom_t a, Value_t v) override { externals.push_back({a, v}); }
+    void external(Atom_t a, Value_t v) override { externals.emplace_back(a, v); }
     void assume(const LitSpan& lits) override { assumes.insert(assumes.end(), begin(lits), end(lits)); }
     void theoryTerm(Id_t termId, int number) override { theory.addTerm(termId, number); }
     void theoryTerm(Id_t termId, const std::string_view& name) override { theory.addTerm(termId, name); }
-    void theoryTerm(Id_t termId, int cId, const IdSpan& args) override { theory.addTerm(termId, cId, args); }
+    void theoryTerm(Id_t termId, int cId, const IdSpan& args) override {
+        theory.addTerm(termId, static_cast<Id_t>(cId), args);
+    }
     void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan&) override {
         theory.addElement(elementId, terms, 0u);
     }
@@ -87,6 +89,7 @@ public:
     void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) override {
         theory.addAtom(atomOrZero, termId, elements, op, rhs);
     }
+
     Vec<Rule>                               rules;
     Vec<std::pair<int, Vec<WeightLit_t>>>   min;
     Vec<std::pair<std::string, Vec<Lit_t>>> shows;
@@ -102,7 +105,7 @@ static unsigned compareRead(std::stringstream& input, ReadObserver& observer, co
     finalize(input);
     readAspif(input, observer);
     if (observer.rules.size() != subset.second) {
-        return (int) observer.rules.size();
+        return static_cast<unsigned>(observer.rules.size());
     }
     for (unsigned i = 0; i != subset.second; ++i) {
         if (!(rules[subset.first + i] == observer.rules[i])) {
@@ -284,7 +287,7 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         }
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
-        REQUIRE(std::distance(begin(exp), end(exp)) == observer.externals.size());
+        REQUIRE(std::distance(begin(exp), end(exp)) == std::ssize(observer.externals));
         REQUIRE(std::equal(begin(exp), end(exp), observer.externals.begin()) == true);
     }
     SECTION("read assumptions") {
@@ -340,11 +343,40 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
         REQUIRE(observer.theory.numAtoms() == 1);
-        struct ToString : public TheoryAtomStringBuilder {
-            [[nodiscard]] LitSpan     getCondition(Id_t) const override { return {}; }
-            [[nodiscard]] std::string getName(Atom_t) const override { return "?"; }
-        } builder;
-        REQUIRE(builder.toString(observer.theory, **observer.theory.begin()) == "&diff{end(1) - start(1)} <= 200");
+
+        class AtomVisitor : public TheoryData::Visitor {
+        public:
+            void visit(const TheoryData& data, Id_t, const TheoryTerm& t) override {
+                if (auto type = t.type(); type == Theory_t::Number)
+                    out << t.number();
+                else if (type == Theory_t::Symbol)
+                    out << t.symbol();
+                else if (t.isFunction())
+                    function(data, t);
+            }
+            void visit(const TheoryData& data, Id_t, const TheoryElement& e) override {
+                out << '{';
+                data.accept(e, *this, TheoryData::visit_all);
+                out << '}';
+            }
+            void visit(const TheoryData& data, const TheoryAtom& a) override {
+                out << '&';
+                data.accept(a, *this, TheoryData::visit_all);
+            }
+            void function(const TheoryData& data, const TheoryTerm& t) {
+                out << data.getTerm(t.function()).symbol() << '(';
+                auto arg = 0;
+                for (auto n : t.terms()) {
+                    out << (arg++ > 0 ? "," : "");
+                    AtomVisitor::visit(data, n, data.getTerm(n));
+                }
+                out << ')';
+            }
+            std::stringstream out;
+        };
+        AtomVisitor vis;
+        observer.theory.accept(vis);
+        REQUIRE(vis.out.str() == "&diff{-(end(1),start(1))}<=200");
     }
     SECTION("ignore comments") {
         input << (unsigned) Directive_t::Comment << "Hello World"
@@ -484,7 +516,7 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
         for (auto&& e : exp) { writer.acycEdge(e.s, e.t, e.cond); }
         writer.endStep();
         readAspif(out, observer);
-        REQUIRE(observer.edges.size() == std::distance(std::begin(exp), std::end(exp)));
+        REQUIRE(std::ssize(observer.edges) == std::distance(std::begin(exp), std::end(exp)));
         REQUIRE(std::equal(std::begin(exp), std::end(exp), observer.edges.begin()) == true);
     }
     SECTION("Writer writes heuristics") {
@@ -566,6 +598,7 @@ TEST_CASE("TheoryData", "[aspif]") {
                             out.addTerm(termId, t.tuple(), t.terms());
                         }
                         break;
+                    default: REQUIRE(false);
                 }
             }
             void visit(const TheoryData& data, Id_t elemId, const TheoryElement& e) override {
@@ -576,7 +609,7 @@ TEST_CASE("TheoryData", "[aspif]") {
             }
             void visit(const TheoryData& data, const TheoryAtom& a) override {
                 data.accept(a, *this);
-                if (!a.guard()) {
+                if (not a.guard()) {
                     out.addAtom(a.atom(), a.term(), a.elements());
                 }
                 else {

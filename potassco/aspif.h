@@ -33,7 +33,7 @@ namespace Potassco {
  * Parses the given program in asp intermediate format and calls out on each parsed element.
  * The error handler h is called on error. If h is 0, std::exceptions are used to signal errors.
  */
-int readAspif(std::istream& prg, AbstractProgram& out, ErrorHandler h = nullptr);
+int readAspif(std::istream& prg, AbstractProgram& out);
 
 enum class Theory_t;
 

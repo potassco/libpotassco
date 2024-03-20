@@ -111,8 +111,10 @@ public:
 private:
     std::ostream&    printName(std::ostream& os, Lit_t lit) const;
     std::ostream&    printName(std::ostream& os, Atom_t at) const { return printName(os, lit(at)); }
+    std::ostream&    printTheoryAtom(std::ostream&, const TheoryAtom&) const;
+    std::ostream&    appendTerm(std::ostream&, Id_t term) const;
     void             writeDirectives();
-    void             visitTheories();
+    void             visitTheoryAtoms();
     AspifTextOutput& push(uint32_t x);
     AspifTextOutput& push(const AtomSpan& atoms);
     AspifTextOutput& push(const LitSpan& lits);
@@ -122,42 +124,11 @@ private:
         return push(static_cast<uint32_t>(t));
     }
 
-    template <class T>
-    T get();
-
     std::ostream& os_;
     struct Data;
     TheoryData theory_;
     Data*      data_;
     int        step_;
-};
-
-//! Converts a given theory atom to a string.
-class TheoryAtomStringBuilder {
-public:
-    std::string toString(const TheoryData& td, const TheoryAtom& a);
-
-private:
-    TheoryAtomStringBuilder& add(char c) {
-        res_.append(1, c);
-        return *this;
-    }
-    TheoryAtomStringBuilder& add(const char* s) {
-        res_.append(s);
-        return *this;
-    }
-    TheoryAtomStringBuilder& add(const std::string& s) {
-        res_.append(s);
-        return *this;
-    }
-    TheoryAtomStringBuilder& term(const TheoryData& td, const TheoryTerm& a);
-    TheoryAtomStringBuilder& element(const TheoryData& td, const TheoryElement& a);
-    bool                     function(const TheoryData& td, const TheoryTerm& f);
-
-    [[nodiscard]] virtual LitSpan     getCondition(Id_t condId) const = 0;
-    [[nodiscard]] virtual std::string getName(Atom_t atomId) const    = 0;
-
-    std::string res_;
 };
 
 } // namespace Potassco

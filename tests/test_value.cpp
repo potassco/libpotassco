@@ -64,7 +64,7 @@ TEST_CASE("Test storeTo", "[value]") {
     }
     SECTION("fail on invalid type") {
         x = 99;
-        REQUIRE(!v1->parse("", "ab"));
+        REQUIRE(not v1->parse("", "ab"));
         REQUIRE(x == 99);
     }
     SECTION("init with state") {
@@ -118,7 +118,7 @@ TEST_CASE("Test action value", "[value]") {
 TEST_CASE("Test custom value", "[value]") {
     std::map<std::string, int> m;
     auto                       parser = [&](const std::string& name, const std::string& v) {
-        if (int temp; Potassco::string_cast<int>(v, temp)) {
+        if (int temp; Potassco::stringTo(v, temp) == std::errc{}) {
             m[name] = temp;
             return true;
         }
@@ -157,7 +157,7 @@ TEST_CASE("Test enum value", "[value]") {
 
     REQUIRE((v1->parse("", "Red") && x == 2));
     REQUIRE((v1->parse("", "GREEN") && x == (int) Color::GREEN));
-    REQUIRE(!v1->parse("", "Blu"));
+    REQUIRE(not v1->parse("", "Blu"));
 
     REQUIRE((v2->parse("", "Implicit") && y == Mode::IMP));
 }

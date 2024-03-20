@@ -35,13 +35,11 @@ class SmodelsConvert : public AbstractProgram {
 public:
     //! Creates a new object that passes converted programs to out.
     /*!
-     * The parameter enableClaspExt determines how heuristic, edge, and external
-     * directives are handled.
-     * If true, heuristic and edge directives are converted to _heuristic and
-     * _edge predicates, while external directives passed to out.
-     * Otherwise, heuristic and edge directives are not converted but
-     * directly passed to out, while external directives are mapped to
-     * choice rules or integrity constraints.
+     * The parameter enableClaspExt determines how heuristic, edge, and external directives are handled.
+     * If true, heuristic and edge directives are converted to _heuristic and _edge predicates, while external
+     * directives are passed to out.
+     * Otherwise, heuristic and edge directives are not converted but directly passed to out, while external directives
+     * are mapped to choice rules or integrity constraints.
      */
     SmodelsConvert(AbstractProgram& out, bool enableClaspExt);
     ~SmodelsConvert() override;

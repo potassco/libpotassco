@@ -48,7 +48,8 @@ public:
     IntrusiveSharedPtr(const IntrusiveSharedPtr& o) noexcept : ptr_(o.ptr_) { addRef(); }
     IntrusiveSharedPtr(IntrusiveSharedPtr&& o) noexcept : ptr_(std::exchange(o.ptr_, nullptr)) {}
     ~IntrusiveSharedPtr() noexcept { release(); }
-    IntrusiveSharedPtr& operator=(const IntrusiveSharedPtr& other) noexcept { // NOLINT: unhandled-self-assignment
+    // NOLINTNEXTLINE(bugprone-unhandled-self-assignment)
+    IntrusiveSharedPtr& operator=(const IntrusiveSharedPtr& other) noexcept {
         other.addRef();
         this->release();
         this->ptr_ = other.ptr_;
@@ -61,7 +62,7 @@ public:
     T&                 operator*() const noexcept { return *ptr_; }
     T*                 operator->() const noexcept { return ptr_; }
     [[nodiscard]] T*   get() const noexcept { return ptr_; }
-    [[nodiscard]] bool unique() const noexcept { return !ptr_ || ptr_->refCount() == 1; }
+    [[nodiscard]] bool unique() const noexcept { return ptr_ == nullptr || ptr_->refCount() == 1; }
     [[nodiscard]] int  count() const noexcept { return ptr_ ? ptr_->refCount() : 0; }
 
     void reset() noexcept {

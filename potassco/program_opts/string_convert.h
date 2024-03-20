@@ -26,15 +26,17 @@
 #include <potassco/basic_types.h>
 #include <potassco/enum.h>
 
+#include <cassert>
 #include <charconv>
 #include <cinttypes>
 #include <limits>
 #include <string>
 #include <string_view>
+#include <typeinfo>
 #include <utility>
 #include <vector>
 
-#if !defined(_MSC_VER)
+#if not defined(_MSC_VER)
 #include <strings.h>
 #else
 inline int strcasecmp(const char* lhs, const char* rhs) { return _stricmp(lhs, rhs); }
@@ -46,12 +48,22 @@ std::from_chars_result parseChar(std::string_view in, unsigned char& out);
 std::from_chars_result parseUnsigned(std::string_view in, std::uintmax_t& out, std::uintmax_t max);
 std::from_chars_result parseSigned(std::string_view in, std::intmax_t& out, std::intmax_t min, std::intmax_t max);
 std::from_chars_result parseFloat(std::string_view in, double& out, double min, double max);
-std::from_chars_result error(std::string_view x, std::errc ec = std::errc::invalid_argument);
-std::from_chars_result success(std::string_view x, std::size_t pop);
+std::from_chars_result error(std::string_view& x, std::errc ec = std::errc::invalid_argument);
+std::from_chars_result success(std::string_view& x, std::size_t pop);
 char*                  writeSigned(char* first, char* last, std::intmax_t);
 char*                  writeUnsigned(char* first, char* last, std::uintmax_t);
 char*                  writeFloat(char* first, char* last, double);
 bool                   matchOpt(std::string_view& in, char v);
+bool                   eqIgnoreCase(const char* lhs, const char* rhs, std::size_t n);
+
+constexpr std::from_chars_result popSuccess(std::string_view& in, std::from_chars_result r) {
+    if (r.ec == std::errc{}) {
+        auto dist = r.ptr - in.data();
+        assert(dist >= 0 && static_cast<std::size_t>(dist) <= in.size());
+        in.remove_prefix(static_cast<std::size_t>(dist));
+    }
+    return r;
+}
 } // namespace detail
 ///////////////////////////////////////////////////////////////////////////////
 // chars -> T
@@ -72,10 +84,12 @@ std::from_chars_result fromChars(std::string_view in, T& out) {
             res.ec == std::errc{})
             out = static_cast<T>(temp);
     }
-    if (sizeof(T) == 1 && res.ec != std::errc{}) {
-        unsigned char temp;
-        if (res = detail::parseChar(in, temp); res.ec == std::errc{})
-            out = static_cast<T>(temp);
+    if constexpr (sizeof(T) == 1) {
+        if (res.ec != std::errc{}) {
+            unsigned char temp;
+            if (res = detail::parseChar(in, temp); res.ec == std::errc{})
+                out = static_cast<T>(temp);
+        }
     }
     return res;
 }
@@ -102,15 +116,13 @@ template <typename T, typename U>
 std::from_chars_result fromChars(std::string_view in, std::pair<T, U>& out) {
     auto temp(out);
     bool m = detail::matchOpt(in, '(');
-    auto r = fromChars(in, temp.first);
+    auto r = detail::popSuccess(in, fromChars(in, temp.first));
     if (r.ec != std::errc{})
         return r;
-    in.remove_prefix(r.ptr - in.begin());
     if (not in.empty() && in[0] == ',') {
         in.remove_prefix(1);
-        if (r = fromChars(in, temp.second); r.ec != std::errc{})
+        if (r = detail::popSuccess(in, fromChars(in, temp.second)); r.ec != std::errc{})
             return r;
-        in.remove_prefix(r.ptr - in.begin());
     }
     if (m && not detail::matchOpt(in, ')'))
         return detail::error(in);
@@ -127,11 +139,10 @@ requires requires(C c, std::string_view in) {
 std::from_chars_result fromChars(std::string_view in, C& out) {
     auto m = detail::matchOpt(in, '[');
     for (typename C::value_type temp; not in.empty();) {
-        auto r = fromChars(in, temp);
+        auto r = detail::popSuccess(in, fromChars(in, temp));
         if (r.ec != std::errc{})
             return r;
         out.push_back(std::move(temp));
-        in.remove_prefix(r.ptr - in.begin());
         if (in.size() < 2 || not detail::matchOpt(in, ','))
             break;
     }
@@ -158,8 +169,9 @@ std::from_chars_result fromChars(std::string_view in, EnumT& out) {
     else {
         // try extraction "by name"
         for (const auto& [key, val] : Potassco::enum_entries<EnumT>()) {
-            if (auto n = val.size();
-                n >= in.size() && strncasecmp(in.data(), val.data(), n) == 0 && (!in[n] || in[n] == ',')) {
+            auto n   = val.size();
+            auto res = in.size() >= n && detail::eqIgnoreCase(in.data(), val.data(), n);
+            if (res && (n == in.size() || in[n] == ',')) {
                 out = static_cast<EnumT>(key);
                 ret = detail::success(in, n);
                 break;
@@ -237,7 +249,7 @@ requires requires(S& s, C c) {
     toChars(s, *c.begin());
 }
 S& toChars(S& out, const C& c, char sep = ',') {
-    int n = 0;
+    std::size_t n = 0;
     for (const auto& v : c) {
         out.append(std::string_view(&sep, std::exchange(n, 1)));
         toChars(out, v);
@@ -245,93 +257,31 @@ S& toChars(S& out, const C& c, char sep = ',') {
     return out;
 }
 
-template <std::size_t N>
-struct FormatString : std::string_view {
-    template <typename StrT>
-    consteval FormatString(const StrT& s) : std::string_view(s) {
-        auto fmt = std::string_view(s);
-        auto n   = std::size_t(0);
-        for (std::string_view::size_type p = 0;;) {
-            if (p = fmt.find("{}", p); p >= fmt.size())
-                break;
-            if (++n > N)
-                Potassco::fail(EINVAL, nullptr, 0, nullptr, "too many arguments in format string");
-            p += 2;
-        }
-    }
-};
-
-template <CharBuffer S, typename... Args>
-constexpr S& formatTo(S& out, FormatString<sizeof...(Args)> fmt, const Args&... args) {
-    using ArgFmt              = void (*)(S& s, const void*);
-    using ArgPtr              = const void*;
-    constexpr ArgFmt argFmt[] = {+[](S& s, ArgPtr a) { toChars(s, *static_cast<const Args*>(a)); }...};
-    ArgPtr           argPtr[] = {&args...};
-
-    auto n = std::size_t(0);
-    for (std::string_view::size_type p = 0;; ++n) {
-        auto ep = std::min(fmt.find("{}", p), fmt.size());
-        out.append(fmt.substr(p, ep - p));
-        if (ep == fmt.size())
-            break;
-        POTASSCO_REQUIRE(n < sizeof...(Args), "too many arguments in format string");
-        argFmt[n](out, argPtr[n]);
-        p = ep + 2;
-    }
-    return out;
-}
-template <typename... Args>
-constexpr std::string formatToStr(FormatString<sizeof...(Args)> fmt, const Args&... args) {
-    std::string out;
-    formatTo(out, fmt, args...);
-    return out;
-}
 ///////////////////////////////////////////////////////////////////////////////
 // string -> T
 ///////////////////////////////////////////////////////////////////////////////
-class bad_string_cast : public std::bad_cast {
-public:
-    [[nodiscard]] const char* what() const noexcept override;
-};
 template <typename T>
-bool string_cast(const char* arg, T& to) {
+std::errc stringTo(const char* arg, T& to) {
     std::string_view view(arg);
-    auto             r = fromChars(view, to);
-    return r.ec == std::errc{} && !*r.ptr;
-}
-template <typename T>
-T string_cast(const char* s) {
-    T to;
-    if (string_cast<T>(s, to)) {
-        return to;
-    }
-    throw bad_string_cast();
-}
-template <typename T>
-T string_cast(const std::string& s) {
-    return string_cast<T>(s.c_str());
-}
-template <typename T>
-bool string_cast(const std::string& from, T& to) {
-    return string_cast<T>(from.c_str(), to);
+    if (auto r = fromChars(view, to); r.ec != std::errc{})
+        return r.ec;
+    else
+        return !*r.ptr ? std::errc{} : std::errc::invalid_argument;
 }
 
 template <typename T>
-bool stringTo(const char* str, T& x) {
-    return string_cast(str, x);
+std::errc stringTo(const std::string& str, T& x) {
+    return stringTo(str.c_str(), x);
 }
 ///////////////////////////////////////////////////////////////////////////////
 // T -> string
 ///////////////////////////////////////////////////////////////////////////////
-template <typename U>
-std::string string_cast(const U& num) {
-    std::string out;
-    toChars(out, num);
-    return out;
-}
 template <typename T>
-inline auto toString(const T& x) -> decltype(string_cast(x)) {
-    return string_cast(x);
+requires requires(std::string& out, T& in) { toChars(out, in); }
+inline constexpr std::string toString(const T& x) {
+    std::string out;
+    toChars(out, x);
+    return out;
 }
 template <typename T, typename U>
 inline std::string toString(const T& x, const U& y) {

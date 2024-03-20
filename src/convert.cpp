@@ -23,30 +23,42 @@
 //
 #include <potassco/convert.h>
 
-#include <potassco/string_convert.h>
+#include <potassco/error.h>
 
 #include <algorithm>
-#include <cstring>
+#include <cstdarg>
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
-using SymTab = std::unordered_map<Potassco::Atom_t, const char*>;
 #if defined(_MSC_VER)
 #pragma warning(disable : 4996)
 #endif
 namespace Potassco {
+
+POTASSCO_ATTRIBUTE_FORMAT(2, 0)
+static std::string_view formatf(std::span<char> buffer, const char* fmt, ...) {
+    POTASSCO_ASSERT(fmt, "invalid format string");
+    va_list args;
+    va_start(args, fmt);
+    auto res = std::vsnprintf(buffer.data(), buffer.size(), fmt, args);
+    va_end(args);
+    POTASSCO_CHECK(res >= 0, static_cast<std::errc>(errno), "invalid format");
+    POTASSCO_CHECK_PRE(res < std::ssize(buffer), "buffer too small");
+    return std::string_view{buffer.data(), static_cast<std::size_t>(res)};
+}
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsConvert::SmData
 /////////////////////////////////////////////////////////////////////////////////////////
 struct SmodelsConvert::SmData {
+    using SymTab = std::unordered_map<Potassco::Atom_t, const char*>;
     struct Atom {
         Atom() : smId(0), head(0), show(0), extn(0) {}
         operator Atom_t() const { return smId; }
-        unsigned smId : 28; // corresponding smodels atom
-        unsigned head : 1;  // atom occurs in a head of a rule
-        unsigned show : 1;  // atom has a name
-        unsigned extn : 2;  // value if atom is external
+        uint32_t smId : 28; // corresponding smodels atom
+        uint32_t head : 1;  // atom occurs in a head of a rule
+        uint32_t show : 1;  // atom has a name
+        uint32_t extn : 2;  // value if atom is external
     };
     struct Heuristic {
         Atom_t      atom;
@@ -56,8 +68,8 @@ struct SmodelsConvert::SmData {
         unsigned    cond{};
     };
     struct Symbol {
-        unsigned    atom : 31;
-        unsigned    hash : 1;
+        uint32_t    atom : 31;
+        uint32_t    hash : 1;
         const char* name{};
         bool        operator<(const Symbol& rhs) const { return atom < rhs.atom; }
     };
@@ -109,7 +121,7 @@ struct SmodelsConvert::SmData {
     const char* addOutput(Atom_t atom, const std::string_view&, bool addHash);
     void        addMinimize(Weight_t prio, const WeightLitSpan& lits) {
         WLitVec& body = minimize_[prio];
-        body.reserve(body.size() + size(lits));
+        body.reserve(body.size() + lits.size());
         for (auto x : lits) {
             if (weight(x) < 0) {
                 x.lit    = -x.lit;
@@ -119,8 +131,7 @@ struct SmodelsConvert::SmData {
         }
     }
     void addExternal(Atom_t a, Value_t v) {
-        Atom& ma = mapAtom(a);
-        if (!ma.head) {
+        if (auto& ma = mapAtom(a); not ma.head) {
             ma.extn = static_cast<unsigned>(v);
             extern_.push_back(a);
         }
@@ -133,23 +144,22 @@ struct SmodelsConvert::SmData {
         minimize_.clear();
         AtomVec().swap(extern_);
         HeuVec().swap(heuristic_);
-        for (; !output_.empty(); output_.pop_back()) {
-            if (!output_.back().hash) {
+        for (; not output_.empty(); output_.pop_back()) {
+            if (output_.back().hash == 0) {
                 delete[] output_.back().name;
             }
         }
     }
-    AtomMap     atoms_;     // maps input atoms to output atoms
-    MinMap      minimize_;  // maps priorities to minimize statements
-    AtomVec     head_;      // active rule head
-    LitVec      lits_;      // active body literals
-    WLitVec     wlits_;     // active weight body literals
-    AtomVec     extern_;    // external atoms
-    HeuVec      heuristic_; // list of heuristic modifications not yet processed
-    SymTab      symTab_;
-    OutVec      output_; // list of output atoms not yet processed
-    Atom_t      next_;   // next unused output atom
-    std::string strBuffer_;
+    AtomMap atoms_;     // maps input atoms to output atoms
+    MinMap  minimize_;  // maps priorities to minimize statements
+    AtomVec head_;      // active rule head
+    LitVec  lits_;      // active body literals
+    WLitVec wlits_;     // active weight body literals
+    AtomVec extern_;    // external atoms
+    HeuVec  heuristic_; // list of heuristic modifications not yet processed
+    SymTab  symTab_;
+    OutVec  output_; // list of output atoms not yet processed
+    Atom_t  next_;   // next unused output atom
 };
 AtomSpan SmodelsConvert::SmData::mapHead(const AtomSpan& h) {
     head_.clear();
@@ -160,8 +170,8 @@ AtomSpan SmodelsConvert::SmData::mapHead(const AtomSpan& h) {
     return head_;
 }
 const char* SmodelsConvert::SmData::addOutput(Atom_t atom, const std::string_view& str, bool addHash) {
-    char* n                             = new char[str.size() + 1];
-    *std::copy(begin(str), end(str), n) = 0;
+    char* n                               = new char[str.size() + 1];
+    *std::copy(str.begin(), str.end(), n) = 0;
     Symbol s{.atom = atom, .hash = 0, .name = n};
     if (addHash && symTab_.insert(SymTab::value_type(atom, s.name)).second) {
         s.hash = 1;
@@ -182,13 +192,13 @@ const char* SmodelsConvert::getName(Atom_t a) const {
 }
 Atom_t SmodelsConvert::makeAtom(const LitSpan& cond, bool named) {
     Atom_t id = 0;
-    if (size(cond) != 1 || cond[0] < 0 || (data_->mapAtom(atom(cond[0])).show && named)) {
+    if (cond.size() != 1 || cond[0] < 0 || (data_->mapAtom(atom(cond[0])).show && named)) {
         // aux :- cond.
         Atom_t aux = (id = data_->newAtom());
         out_.rule(Head_t::Disjunctive, {&aux, 1}, data_->mapLits(cond, data_->lits_));
     }
     else {
-        SmData::Atom& ma = data_->mapAtom(atom(*begin(cond)));
+        SmData::Atom& ma = data_->mapAtom(atom(cond.front()));
         ma.show          = static_cast<unsigned>(named);
         id               = ma.smId;
     }
@@ -197,13 +207,13 @@ Atom_t SmodelsConvert::makeAtom(const LitSpan& cond, bool named) {
 void SmodelsConvert::initProgram(bool inc) { out_.initProgram(inc); }
 void SmodelsConvert::beginStep() { out_.beginStep(); }
 void SmodelsConvert::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
-    if (!empty(head) || ht == Head_t::Disjunctive) {
+    if (not head.empty() || ht == Head_t::Disjunctive) {
         AtomSpan mHead = data_->mapHead(head);
         out_.rule(ht, mHead, data_->mapLits(body, data_->lits_));
     }
 }
 void SmodelsConvert::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
-    if (!empty(head) || ht == Head_t::Disjunctive) {
+    if (not head.empty() || ht == Head_t::Disjunctive) {
         AtomSpan      mHead = data_->mapHead(head);
         WeightLitSpan mBody = data_->mapLits(body, data_->wlits_);
         if (isSmodelsRule(ht, mHead, bound, mBody)) {
@@ -225,7 +235,7 @@ void SmodelsConvert::output(const std::string_view& str, const LitSpan& cond) {
 
 void SmodelsConvert::external(Atom_t a, Value_t v) { data_->addExternal(a, v); }
 void SmodelsConvert::heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& cond) {
-    if (!ext_) {
+    if (not ext_) {
         out_.heuristic(a, t, bias, prio, cond);
     }
     // create unique atom representing _heuristic(...)
@@ -233,11 +243,11 @@ void SmodelsConvert::heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio,
     data_->addHeuristic(a, t, bias, prio, heuPred);
 }
 void SmodelsConvert::acycEdge(int s, int t, const LitSpan& condition) {
-    if (!ext_) {
+    if (not ext_) {
         out_.acycEdge(s, t, condition);
     }
-    data_->strBuffer_.clear();
-    data_->addOutput(makeAtom(condition, true), formatTo(data_->strBuffer_, "_edge({},{})", s, t), false);
+    char scratch[64];
+    data_->addOutput(makeAtom(condition, true), formatf(scratch, "_edge(%d,%d)", s, t), false);
 }
 
 void SmodelsConvert::flush() {
@@ -264,7 +274,7 @@ void SmodelsConvert::flushExternal() {
     for (auto ext : data_->extern_) {
         SmData::Atom& a  = data_->mapAtom(ext);
         auto          vt = static_cast<Value_t>(a.extn);
-        if (!ext_) {
+        if (not ext_) {
             if (a.head) {
                 continue;
             }
@@ -280,26 +290,29 @@ void SmodelsConvert::flushExternal() {
             out_.external(a, vt);
         }
     }
-    if (!data_->head_.empty()) {
+    if (not data_->head_.empty()) {
         out_.rule(Head_t::Choice, data_->head_, T);
     }
 }
 void SmodelsConvert::flushHeuristic() {
+    std::string pred     = "_heuristic(";
+    auto        predSize = pred.size();
+    char        scratch[128];
     for (const auto& heu : data_->heuristic_) {
-        if (!data_->mapped(heu.atom)) {
+        if (not data_->mapped(heu.atom)) {
             continue;
         }
         SmData::Atom& ma   = data_->mapAtom(heu.atom);
         const char*   name = ma.show ? getName(ma.smId) : nullptr;
-        if (!name) {
+        if (not name) {
             ma.show = 1;
-            data_->strBuffer_.clear();
-            name = data_->addOutput(ma, formatTo(data_->strBuffer_, "_atom({})", ma.smId), true);
+            name    = data_->addOutput(ma, formatf(scratch, "_atom(%u)", ma.smId), true);
         }
-        data_->strBuffer_.clear();
-        formatTo(data_->strBuffer_, "_heuristic({},{},{},{})", name, toString(heu.type).c_str(), heu.bias, heu.prio);
+        pred.resize(predSize);
+        pred.append(name).append(1, ',').append(enum_name(heu.type)).append(1, ',');
+        pred.append(formatf(scratch, "%d,%u)", heu.bias, heu.prio));
         auto c = static_cast<Lit_t>(heu.cond);
-        out_.output(data_->strBuffer_, {&c, 1});
+        out_.output(pred, {&c, 1});
     }
 }
 void SmodelsConvert::flushSymbols() {

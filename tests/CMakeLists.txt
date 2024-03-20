@@ -1,15 +1,18 @@
+include(CTest)
+include(Catch)
 enable_testing()
 add_executable(test_potassco_lp)
 target_sources(test_potassco_lp PRIVATE
 	test_aspif.cpp
+	test_error.cpp
 	test_smodels.cpp
 	test_text.cpp
-	test_string_convert.cpp
 )
 add_executable(test_potassco_opts)
 target_sources(test_potassco_opts PRIVATE
 	test_application.cpp
 	test_options.cpp
+	test_string_convert.cpp
 	test_value.cpp
 )
 
@@ -19,5 +22,5 @@ foreach(target test_potassco_lp test_potassco_opts)
 	set_target_properties(${target} PROPERTIES FOLDER test)
 endforeach()
 
-add_test(NAME test_lp	COMMAND test_potassco_lp)
-add_test(NAME test_opts COMMAND test_potassco_opts)
+catch_discover_tests(test_potassco_lp PROPERTIES TIMEOUT 10)
+catch_discover_tests(test_potassco_opts PROPERTIES TIMEOUT 10)

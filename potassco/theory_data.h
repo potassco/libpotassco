@@ -59,12 +59,21 @@ public:
     //! Creates a number term.
     explicit TheoryTerm(int num);
     //! Creates a symbolic term.
+    /*!
+     * \pre sym != nullptr
+     */
     explicit TheoryTerm(const char* sym);
     //! Creates a compound term.
+    /*!
+     * \pre c != nullptr
+     */
     explicit TheoryTerm(const FuncData* c);
     //! Returns whether this object holds a valid number, symbol or compound.
     [[nodiscard]] bool valid() const;
     //! Returns the type of this term.
+    /*!
+     * \pre valid()
+     */
     [[nodiscard]] Theory_t type() const;
     //! Returns the number stored in this or throws if type() != Number.
     [[nodiscard]] int number() const;
@@ -74,11 +83,11 @@ public:
     [[nodiscard]] int compound() const;
     //! Returns whether this is a function.
     [[nodiscard]] bool isFunction() const;
-    //! Returns the function id stored in this or throws if !isFunction().
+    //! Returns the function id stored in this or throws if not isFunction().
     [[nodiscard]] Id_t function() const;
     //! Returns whether this is a tuple.
     [[nodiscard]] bool isTuple() const;
-    //! Returns the tuple id stored in this or throws if !isTuple().
+    //! Returns the tuple id stored in this or throws if not isTuple().
     [[nodiscard]] Tuple_t tuple() const;
     //! Returns the number of arguments in this term.
     [[nodiscard]] uint32_t size() const;
@@ -93,8 +102,6 @@ private:
     friend class TheoryData;
     [[nodiscard]] uintptr_t getPtr() const;
     [[nodiscard]] FuncData* func() const;
-
-    void assertType(Theory_t) const;
 
     uint64_t data_;
 };
@@ -268,7 +275,7 @@ public:
         uint32_t pop = 0;
         for (atom_iterator it = j, end = this->end(); it != end; ++it) {
             Id_t atom = (*it)->atom();
-            if (!atom || !f(**it)) {
+            if (not atom || not f(**it)) {
                 *j++ = const_cast<TheoryAtom*>(*it);
             }
             else {
@@ -301,7 +308,7 @@ public:
     void accept(const TheoryAtom& a, Visitor& out, VisitMode m = visit_all) const;
     //! Visits terms of e.
     void accept(const TheoryElement& e, Visitor& out, VisitMode m = visit_all) const;
-    //! If t is a compound term, visits subterms of t.
+    //! If t is a compound term, visits sub terms of t.
     void accept(const TheoryTerm& t, Visitor& out, VisitMode m = visit_all) const;
 
 private:
@@ -314,8 +321,10 @@ private:
 
     TheoryTerm& setTerm(Id_t);
     void        resizeAtoms(uint32_t n);
-    bool        doVisitTerm(VisitMode m, Id_t id) const { return m == visit_all || isNewTerm(id); }    // NOLINT
-    bool        doVisitElem(VisitMode m, Id_t id) const { return m == visit_all || isNewElement(id); } // NOLINT
+    // NOLINTBEGIN(modernize-use-nodiscard)
+    bool doVisitTerm(VisitMode m, Id_t id) const { return m == visit_all || isNewTerm(id); }
+    bool doVisitElem(VisitMode m, Id_t id) const { return m == visit_all || isNewElement(id); }
+    // NOLINTEND(modernize-use-nodiscard)
     struct Data;
     Data* data_;
 };
@@ -339,7 +348,8 @@ public:
         ++elem_;
         return *this;
     }
-    this_type operator++(int) { // NOLINT: cert-dcl21-cpp
+    // NOLINTNEXTLINE(cert-dcl21-cpp)
+    this_type operator++(int) {
         this_type t(*this);
         ++*this;
         return t;
@@ -348,7 +358,8 @@ public:
         --elem_;
         return *this;
     }
-    this_type operator--(int) { // NOLINT: cert-dcl21-cpp
+    // NOLINTNEXTLINE(cert-dcl21-cpp)
+    this_type operator--(int) {
         this_type t(*this);
         --*this;
         return t;

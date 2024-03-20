@@ -5,6 +5,7 @@ set(detail_header
 	${opts_header_path}/detail/refcountable.h)
 set(opts_header
 	${opts_header_path}/errors.h
+	${opts_header_path}/string_convert.h
 	${opts_header_path}/program_options.h
 	${opts_header_path}/typed_value.h
 	${opts_header_path}/value.h)
@@ -16,11 +17,11 @@ set(header
 	${header_path}/clingo.h
 	${header_path}/convert.h
 	${header_path}/enum.h
+	${header_path}/error.h
 	${header_path}/match_basic_types.h
 	${header_path}/platform.h
 	${header_path}/rule_utils.h
 	${header_path}/smodels.h
-	${header_path}/string_convert.h
 	${header_path}/theory_data.h)
 set(ide_header_group "Header Files")
 source_group("${ide_header_group}" FILES ${header})
@@ -32,6 +33,7 @@ set(src
 	aspif_text.cpp
 	clingo.cpp
 	convert.cpp
+	error.cpp
 	match_basic_types.cpp
 	program_options.cpp
 	rule_utils.cpp

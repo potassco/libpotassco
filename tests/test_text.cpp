@@ -179,7 +179,7 @@ TEST_CASE("Text reader ", "[text]") {
             read(prg, input);
             REQUIRE(false);
         }
-        catch (const std::logic_error& e) {
+        catch (const std::exception& e) {
             REQUIRE(std::strstr(e.what(), "parse error in line 2: ") != 0);
         }
     }

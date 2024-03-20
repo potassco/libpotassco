@@ -89,7 +89,7 @@ TEST_CASE("Test option default value", "[options]") {
     }
     SECTION("careful with invalid default values") {
         Po::Option o("other-int", 'i', "some other integer", Po::storeTo(x)->defaultsTo("123Hallo?")->arg("<n>"));
-        REQUIRE(!o.assignDefault());
+        REQUIRE(not o.assignDefault());
         REQUIRE(o.value()->state() == Po::Value::value_unassigned);
     }
     SECTION("parsing overwrites default value") {
@@ -111,7 +111,7 @@ static bool negatable_int(const std::string& s, int& out) {
         out = 0;
         return true;
     }
-    return Potassco::string_cast(s, out);
+    return Potassco::stringTo(s, out) == std::errc{};
 }
 
 TEST_CASE("Test negatable options", "[options]") {
@@ -328,7 +328,7 @@ TEST_CASE("Test parser", "[options]") {
             }
             Po::SharedOptPtr getOption(int, const char*) override { return Po::SharedOptPtr(nullptr); }
             void             addValue(const Po::SharedOptPtr& key, const std::string& value) override {
-                if (!key->value()->parse(key->name(), value, Po::Value::value_unassigned)) {
+                if (not key->value()->parse(key->name(), value, Po::Value::value_unassigned)) {
                     throw std::logic_error("Invalid value");
                 }
             }
@@ -347,7 +347,6 @@ TEST_CASE("Test parser", "[options]") {
     }
     SECTION("parser supports quoting") {
         std::vector<std::string> tok;
-        Po::OptionGroup          g;
         g.addOptions()("path", Po::storeTo(tok)->composing(), "An int");
         Po::OptionContext ctx;
         ctx.add(g);

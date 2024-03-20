@@ -31,18 +31,18 @@
 #pragma warning(disable : 4200)
 #endif
 #include <potassco/program_opts/errors.h>
+#include <potassco/program_opts/string_convert.h>
 #include <potassco/program_opts/value.h>
-#include <potassco/string_convert.h>
 
 namespace Potassco::ProgramOptions {
 template <typename T>
 struct Parser {
-    bool operator()(const std::string& v, T& out) const { return Potassco::string_cast<T>(v, out); }
+    bool operator()(const std::string& v, T& out) const { return Potassco::stringTo(v, out) == std::errc{}; }
 };
 template <typename T, typename P, typename A>
 inline bool runAction(const std::string& name, const std::string& value, const P& p, const A& act) {
     T out;
-    if (!p(value, out))
+    if (not p(value, out))
         return false;
     if constexpr (std::is_invocable_v<A, std::string, T>)
         act(name, out);
@@ -84,7 +84,7 @@ private:
 // value factories
 ///////////////////////////////////////////////////////////////////////////////
 inline bool store_true(const std::string& v, bool& b) {
-    if (bool temp = v.empty(); temp || string_cast<bool>(v, temp)) {
+    if (bool temp = v.empty(); temp || stringTo(v, temp) == std::errc{}) {
         b = temp;
         return true;
     }
@@ -93,7 +93,7 @@ inline bool store_true(const std::string& v, bool& b) {
 
 inline bool store_false(const std::string& v, bool& b) {
     if (bool temp; store_true(v, temp)) {
-        b = !temp;
+        b = not temp;
         return true;
     }
     return false;
@@ -182,12 +182,13 @@ inline Value* flag(C&& c, bool (*x)(const std::string&, bool&) = store_true) {
  */
 template <typename C>
 inline Value* parse(C&& parser) {
-    return new TypedValue{[parser = std::forward<C>(parser)](const std::string& name, const std::string& value) {
-        if constexpr (std::is_invocable_v<C, std::string, std::string>)
-            return parser(name, value);
-        else
-            return parser(value);
-    }};
+    return new TypedValue{
+        [parser = std::forward<C>(parser)]([[maybe_unused]] const std::string& name, const std::string& value) {
+            if constexpr (std::is_invocable_v<C, std::string, std::string>)
+                return parser(name, value);
+            else
+                return parser(value);
+        }};
 }
 
 } // namespace Potassco::ProgramOptions

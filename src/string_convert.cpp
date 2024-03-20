@@ -19,12 +19,13 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#include <potassco/string_convert.h>
+#include <potassco/program_opts/string_convert.h>
 
-#include <cstdarg>
-#include <cstdio>
-#include <cstring>
+#include <potassco/error.h>
+
+#include <sstream>
 #include <stdexcept>
+
 using namespace std;
 
 namespace Potassco {
@@ -43,8 +44,8 @@ static int detectBase(std::string_view& x) {
     }
 }
 
-std::from_chars_result error(std::string_view x, std::errc ec) { return {.ptr = x.data(), .ec = ec}; }
-std::from_chars_result success(std::string_view x, std::size_t pop) {
+std::from_chars_result error(std::string_view& x, std::errc ec) { return {.ptr = x.data(), .ec = ec}; }
+std::from_chars_result success(std::string_view& x, std::size_t pop) {
     x.remove_prefix(pop);
     return {.ptr = x.data(), .ec = {}};
 }
@@ -120,10 +121,45 @@ std::from_chars_result parseSigned(std::string_view in, std::intmax_t& out, std:
     return r;
 }
 
+template <typename T = double>
+std::from_chars_result parseFloatImpl(std::string_view in, T& out) {
+    if constexpr (requires { std::from_chars(in.data(), in.data() + in.size(), out); } && std::is_same_v<T, void>) {
+        return std::from_chars(in.data(), in.data() + in.size(), out);
+    }
+    else {
+        struct ViewStream
+            : private std::streambuf
+            , private std::istream {
+            explicit ViewStream() : std::streambuf(), std::istream(static_cast<std::streambuf*>(this)) {
+                if (const auto& classic = std::locale::classic(); std::istream::getloc() != classic) {
+                    std::istream::imbue(classic); // mimic from_chars, which is locale independent
+                }
+            }
+            std::from_chars_result extract(std::string_view& inView, double& d) {
+                for (auto cv = inView;;) {
+                    auto* buf = const_cast<char*>(cv.data());
+                    std::streambuf::setg(buf, buf, buf + std::ssize(cv));
+                    auto ok  = static_cast<bool>((*this) >> d);
+                    auto pos = static_cast<std::size_t>(gptr() - eback());
+                    if (ok || pos == 0 || pos > cv.size()) {
+                        return ok ? detail::success(inView, std::min(pos, inView.size())) : detail::error(inView);
+                    }
+                    // Some prefix was matched but not converted.
+                    // NOTE: libc++ for example will fail to extract a double from "123.23Foo" while both strtod and
+                    //       std::from_chars will extract "123.23" while leaving "Foo" in the input.
+                    cv = cv.substr(0, pos - 1);
+                    std::istream::clear();
+                }
+            }
+        };
+        return ViewStream{}.extract(in, out);
+    }
+}
+
 std::from_chars_result parseFloat(std::string_view in, double& out, double min, double max) {
     skipws(in);
     matchOpt(in, '+');
-    auto r = std::from_chars(in.data(), in.data() + in.size(), out);
+    auto r = parseFloatImpl(in, out);
     if (r.ec == std::errc{} && (out < min || out > max)) {
         r.ec = std::errc::result_out_of_range;
     }
@@ -132,19 +168,21 @@ std::from_chars_result parseFloat(std::string_view in, double& out, double min, 
 
 char* writeSigned(char* first, char* last, std::intmax_t in) {
     auto r = std::to_chars(first, last, in);
-    POTASSCO_EXPECT(r.ec == std::errc{}, "to chars failed with error %d", static_cast<int>(r.ec));
+    POTASSCO_CHECK(r.ec == std::errc{}, r.ec, "std::to_chars could not convert signed integer %zd",
+                   static_cast<size_t>(in));
     return r.ptr;
 }
 
 char* writeUnsigned(char* first, char* last, std::uintmax_t in) {
     auto r = std::to_chars(first, last, in);
-    POTASSCO_EXPECT(r.ec == std::errc{}, "to chars failed with error %d", static_cast<int>(r.ec));
+    POTASSCO_CHECK(r.ec == std::errc{}, r.ec, "std::to_chars could not convert unsigned integer %zu",
+                   static_cast<size_t>(in));
     return r.ptr;
 }
 
 char* writeFloat(char* first, char* last, double in) {
     auto r = std::to_chars(first, last, in, std::chars_format::general);
-    POTASSCO_EXPECT(r.ec == std::errc{}, "to chars failed with error %d", static_cast<int>(r.ec));
+    POTASSCO_CHECK(r.ec == std::errc{}, r.ec, "std::to_chars could not convert double %g", in);
     return r.ptr;
 }
 
@@ -155,6 +193,8 @@ bool matchOpt(std::string_view& in, char v) {
     }
     return false;
 }
+
+bool eqIgnoreCase(const char* lhs, const char* rhs, std::size_t n) { return strncasecmp(lhs, rhs, n) == 0; }
 
 } // namespace detail
 
@@ -176,74 +216,10 @@ std::from_chars_result fromChars(std::string_view in, bool& out) {
     }
     else if (in.starts_with("false") || in.starts_with("true")) {
         out = in[0] == 't';
-        return detail::success(in, 4 + int(!out));
+        return detail::success(in, 4u + unsigned(not out));
     }
     else {
         return detail::error(in);
-    }
-}
-
-const char* bad_string_cast::what() const noexcept { return "bad_string_cast"; }
-
-#define FAIL(MSG) (fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, MSG), std::abort())
-
-static int vsnprintf(char* s, size_t n, const char* format, va_list arg) { return std::vsnprintf(s, n, format, arg); }
-
-void fail(int ec, const char* file, unsigned line, const char* exp, const char* fmt, ...) {
-    char            msg[1024];
-    std::span<char> span(msg);
-
-    auto append = [](std::span<char>& s, std::string_view view) {
-        auto n = std::min(view.size(), s.size());
-        std::copy(view.begin(), view.begin() + n, s.begin());
-        s = s.subspan(n);
-    };
-    if (ec >= 0 || ec == error_assert) {
-        if (file && line) {
-            append(span, file);
-            append(span, "@");
-            auto r = std::to_chars(span.data(), span.data() + span.size(), line);
-            span   = span.subspan(static_cast<size_t>(r.ptr - span.data()));
-            append(span, ": ");
-        }
-        append(span, ec > 0 ? strerror(ec) : ec == error_assert ? "assertion failure" : "error code must not be 0");
-        append(span, ": ");
-    }
-    else if (!fmt) {
-        append(span, ec == error_logic ? "logic" : "runtime");
-        append(span, " error ");
-    }
-    if (fmt) {
-        va_list args;
-        va_start(args, fmt);
-        if (auto r = vsnprintf(span.data(), span.size(), fmt, args); r > 0)
-            span = span.subspan(static_cast<size_t>(std::min(r, static_cast<int>(span.size()))));
-        va_end(args);
-    }
-    else if (exp) {
-        append(span, "check('");
-        append(span, exp);
-        append(span, "') failed");
-    }
-
-    if (not span.empty())
-        span.front() = 0;
-    else
-        msg[std::size(msg) - 1] = 0;
-
-    switch (ec) {
-        case error_logic: // fallthrough
-        case error_assert : throw std::logic_error(msg);
-        case error_runtime: throw std::runtime_error(msg);
-        case ENOMEM       : throw std::bad_alloc();
-        case 0            : // fallthrough
-        case EINVAL       : throw std::invalid_argument(msg);
-        case EDOM         : throw std::domain_error(msg);
-        case ERANGE       : throw std::range_error(msg);
-#if defined(EOVERFLOW)
-        case EOVERFLOW: throw std::overflow_error(msg);
-#endif
-        default: throw std::runtime_error(msg);
     }
 }
 

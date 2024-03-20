@@ -23,38 +23,39 @@
 //
 #pragma once
 
-#include <cassert>
-#include <cerrno>
 #include <cinttypes>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
+#include <source_location>
+#include <string_view>
 
 #define POTASSCO_STRING2(x)    #x
 #define POTASSCO_STRING(x)     POTASSCO_STRING2(x)
 #define POTASSCO_CONCAT2(X, Y) X##Y
 #define POTASSCO_CONCAT(X, Y)  POTASSCO_CONCAT2(X, Y)
 
+#define POTASSCO_ATTR_NORETURN [[noreturn]]
+
 #if defined(_MSC_VER)
-#define POTASSCO_ATTR_UNUSED
-#define POTASSCO_ATTR_NORETURN         __declspec(noreturn)
 #define POTASSCO_PRAGMA_TODO(X)        __pragma(message(__FILE__ "(" POTASSCO_STRING(__LINE__) ") : TODO: " X))
 #define POTASSCO_FUNC_NAME             __FUNCTION__
 #define POTASSCO_WARNING_BEGIN_RELAXED __pragma(warning(push)) __pragma(warning(disable : 4200))
 
 #define POTASSCO_WARNING_END_RELAXED __pragma(warning(pop))
+#define POTASSCO_ATTRIBUTE_FORMAT(fp, ap)
 
 #elif defined(__GNUC__) || defined(__clang__)
-#if !defined(__STDC_FORMAT_MACROS)
+#if not defined(__STDC_FORMAT_MACROS)
 #define __STDC_FORMAT_MACROS
 #endif
-#if !defined(__STDC_LIMIT_MACROS)
+#if not defined(__STDC_LIMIT_MACROS)
 #define __STDC_LIMIT_MACROS
 #endif
-#define POTASSCO_ATTR_UNUSED     __attribute__((unused))
-#define POTASSCO_ATTR_NORETURN   __attribute__((noreturn))
-#define POTASSCO_FUNC_NAME       __PRETTY_FUNCTION__
-#define POTASSCO_APPLY_PRAGMA(x) _Pragma(#x)
-#define POTASSCO_PRAGMA_TODO(x)  POTASSCO_APPLY_PRAGMA(message("TODO: " #x))
+#define POTASSCO_FUNC_NAME                __PRETTY_FUNCTION__
+#define POTASSCO_APPLY_PRAGMA(x)          _Pragma(#x)
+#define POTASSCO_PRAGMA_TODO(x)           POTASSCO_APPLY_PRAGMA(message("TODO: " #x))
+#define POTASSCO_ATTRIBUTE_FORMAT(fp, ap) __attribute__((__format__(__printf__, fp, ap)))
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
@@ -71,54 +72,47 @@
 #define POTASSCO_WARNING_END_RELAXED _Pragma("GCC diagnostic pop")
 #endif
 #else
-#define POTASSCO_ATTR_UNUSED
-#define POTASSCO_ATTR_NORETURN
 #define POTASSCO_FUNC_NAME __FILE__
 #define POTASSCO_WARNING_BEGIN_RELAXED
 #define POTASSCO_WARNING_END_RELAXED
+#define POTASSCO_ATTRIBUTE_FORMAT(fp, ap)
 #endif
 
-#if !defined(POTASSCO_ENABLE_PRAGMA_TODO) || POTASSCO_ENABLE_PRAGMA_TODO == 0
+#if not defined(POTASSCO_ENABLE_PRAGMA_TODO) || POTASSCO_ENABLE_PRAGMA_TODO == 0
 #undef POTASSCO_PRAGMA_TODO
 #define POTASSCO_PRAGMA_TODO(X)
 #endif
 
-#if UINTPTR_MAX > UINT64_MAX
-#error Unsupported platform!
-#endif
-
-namespace Potassco {
-enum FailType { error_assert = -1, error_logic = -2, error_runtime = -3 };
-
-template <typename ActionT>
-struct AtScopeExit {
-    ~AtScopeExit() noexcept(false) { action(); }
-    ActionT action;
-};
-template <typename ActionT>
-AtScopeExit(ActionT) -> AtScopeExit<ActionT>;
-
-POTASSCO_ATTR_NORETURN extern void fail(int ec, const char* file, unsigned line, const char* exp, const char* fmt, ...);
-
-#define POTASSCO_SCOPE_EXIT(...)                                                                                       \
-    Potassco::AtScopeExit POTASSCO_CONCAT(e, __COUNTER__) { [&]() __VA_ARGS__ }
-} // namespace Potassco
+static_assert(UINTPTR_MAX <= UINT64_MAX, "Unsupported platform!");
 
 /*!
  * \addtogroup BasicTypes
  */
 ///@{
+namespace Potassco {
+struct ExpressionInfo {
+    std::string_view     expression;
+    std::source_location location;
+    //! Returns `loc`'s file_name() relative to source root directory.
+    /*!
+     * \note If the given location is not from the same source tree, file_name() is returned unmodified.
+     */
+    static const char* relativeFileName(const std::source_location& loc);
+};
+#define POTASSCO_CURRENT_LOCATION() std::source_location::current()
+#define POTASSCO_CAPTURE_EXPRESSION(E)                                                                                 \
+    Potassco::ExpressionInfo { .expression = #E, .location = POTASSCO_CURRENT_LOCATION() }
 
-//! Executes the given expression and calls Potassco::fail() with the given error code if it evaluates to false.
-#define POTASSCO_CHECK(exp, ec, ...)                                                                                   \
-    (void) ((!!(exp)) || (Potassco::fail(ec, POTASSCO_FUNC_NAME, unsigned(__LINE__), #exp, ##__VA_ARGS__, 0), 0))
+using AbortHandler = void (*)(const char* msg);
+//! Sets handler as the new abort handler returns the previously installed handler.
+/*!
+ * \note If called, handler shall either abort the program or throw an exception. If handler is not set or is set to
+ *       nullptr, std::abort() is used as the abort handler.
+ */
+extern AbortHandler setAbortHandler(AbortHandler handler);
 
-//! Shorthand for POTASSCO_CHECK(exp, Potassco::error_logic, args...).
-#define POTASSCO_REQUIRE(exp, ...) POTASSCO_CHECK(exp, Potassco::error_logic, ##__VA_ARGS__)
-//! Shorthand for POTASSCO_CHECK(exp, Potassco::error_assert, args...).
-#define POTASSCO_ASSERT(exp, ...) POTASSCO_CHECK(exp, Potassco::error_assert, ##__VA_ARGS__)
-//! Shorthand for POTASSCO_CHECK(exp, Potassco::error_runtime, args...).
-#define POTASSCO_EXPECT(exp, ...) POTASSCO_CHECK(exp, Potassco::error_runtime, ##__VA_ARGS__)
+} // namespace Potassco
+
 ///@}
 
 #if defined(__GNUC__)

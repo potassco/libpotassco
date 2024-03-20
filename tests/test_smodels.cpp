@@ -43,11 +43,11 @@ static void finalize(std::stringstream& str, const AtomTab& atoms = AtomTab(), c
     str << "0\n";
     for (const auto& s : atoms) str << s << "\n";
     str << "0\nB+\n" << bpos;
-    if (!bpos.empty() && bpos.back() != '\n')
+    if (not bpos.empty() && bpos.back() != '\n')
         str << "\n";
     str << "0\nB-\n";
     str << bneg;
-    if (!bneg.empty() && bneg.back() != '\n')
+    if (not bneg.empty() && bneg.back() != '\n')
         str << "\n";
     str << "0\n1\n";
 }
@@ -66,14 +66,14 @@ enum class Rule_t : unsigned {
 class ReadObserver : public Test::ReadObserver {
 public:
     void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override {
-        if (empty(head)) {
+        if (head.empty()) {
             if (ht == Head_t::Choice)
                 return;
             compute.push_back(-lit(body[0]));
         }
         else {
             Rule_t           rt = Rule_t::Basic;
-            std::vector<int> r(1, head[0]);
+            std::vector<int> r(1, lit(head[0]));
             if (size(head) > 1 || ht == Head_t::Choice) {
                 r[0] = static_cast<int>(size(head));
                 r.insert(r.end(), begin(head), end(head));
@@ -87,7 +87,7 @@ public:
         int rt = isSmodelsRule(ht, head, bound, body);
         REQUIRE(rt != 0);
         REQUIRE(size(head) == 1);
-        std::vector<int> r(1, head[0]);
+        std::vector<int> r(1, lit(head[0]));
         r.push_back(bound);
         for (auto&& x : body) {
             r.push_back(lit(x));
@@ -222,7 +222,7 @@ TEST_CASE("SmodelsExtReader ", "[smodels][smodels_ext]") {
         finalize(input);
         input << "90 0\n";
         finalize(input);
-        REQUIRE(Potassco::readSmodels(input, observer, nullptr, opts) == 0);
+        REQUIRE(Potassco::readSmodels(input, observer, opts) == 0);
         REQUIRE(observer.incremental == true);
         REQUIRE(observer.nStep == 2);
     }
@@ -231,7 +231,7 @@ TEST_CASE("SmodelsExtReader ", "[smodels][smodels_ext]") {
         input << "91 3 1\n";
         input << "91 4 2\n";
         finalize(input);
-        REQUIRE(Potassco::readSmodels(input, observer, nullptr, opts) == 0);
+        REQUIRE(Potassco::readSmodels(input, observer, opts) == 0);
         REQUIRE(observer.rules[Rule_t::ClaspAssignExt].size() == 3);
         REQUIRE(observer.rules[Rule_t::ClaspAssignExt][0] == RawRule({2, static_cast<int>(Value_t::False)}));
         REQUIRE(observer.rules[Rule_t::ClaspAssignExt][1] == RawRule({3, static_cast<int>(Value_t::True)}));
@@ -241,7 +241,7 @@ TEST_CASE("SmodelsExtReader ", "[smodels][smodels_ext]") {
         input << "91 2 0\n";
         input << "92 2\n";
         finalize(input);
-        REQUIRE(Potassco::readSmodels(input, observer, nullptr, opts) == 0);
+        REQUIRE(Potassco::readSmodels(input, observer, opts) == 0);
         REQUIRE(observer.rules[Rule_t::ClaspAssignExt].size() == 1);
         REQUIRE(observer.rules[Rule_t::ClaspReleaseExt].size() == 1);
         REQUIRE(observer.rules[Rule_t::ClaspAssignExt][0] == RawRule({2, static_cast<int>(Value_t::False)}));
@@ -446,7 +446,7 @@ TEST_CASE("Convert to smodels", "[convert]") {
         BodyLits lits = {4, -3, -2, 5};
         convert.rule(Head_t::Disjunctive, {&a, 1}, {begin(lits), lits.size()});
         REQUIRE(observer.rules[Rule_t::Basic].size() == 1);
-        RawRule r = {convert.get(a), convert.get(4), convert.get(-3), convert.get(-2), convert.get(5)};
+        RawRule r = {convert.get(lit(a)), convert.get(4), convert.get(-3), convert.get(-2), convert.get(5)};
         REQUIRE(observer.rules[Rule_t::Basic][0] == r);
     }
     SECTION("convert mixed rule") {
@@ -483,7 +483,7 @@ TEST_CASE("Convert to smodels", "[convert]") {
         convert.endStep();
         REQUIRE(observer.rules[Rule_t::Basic].size() == 1);
         REQUIRE(convert.maxAtom() == 5);
-        Atom_t aux = observer.rules[Rule_t::Basic][0][0];
+        auto aux = static_cast<Atom_t>(observer.rules[Rule_t::Basic][0][0]);
         REQUIRE(std::strcmp(convert.getName(aux), "Foo") == 0);
     }
 
@@ -569,7 +569,7 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
         writer.output(R"(_edge("1,2","2,1"))", {&b, 1});
         writer.output(R"(_edge("2,1","1,2"))", {&c, 1});
         writer.endStep();
-        REQUIRE(readSmodels(str, observer, nullptr, opts) == 0);
+        REQUIRE(readSmodels(str, observer, opts) == 0);
         REQUIRE(observer.edges.size() == 3);
         REQUIRE(observer.edges[0].cond == Vec<Lit_t>({a}));
         REQUIRE(observer.edges[0].s == 0);
@@ -589,7 +589,7 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
             writer.output("_edge(4321,1234)", {&b, 1});
         }
         writer.endStep();
-        REQUIRE(readSmodels(str, observer, nullptr, opts) == 0);
+        REQUIRE(readSmodels(str, observer, opts) == 0);
         REQUIRE(observer.edges.size() == 2);
         REQUIRE(observer.edges[0].cond == Vec<Lit_t>({a}));
         REQUIRE(observer.edges[1].cond == Vec<Lit_t>({b}));
@@ -605,7 +605,7 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
         writer.output("_heuristic(f(\"a,b(c,d)\"),level,-1,10)", {&h3, 1});
         writer.output("_heuristic(f(\"a,b(c,d)\"),factor,2,1)", {&h4, 1});
         writer.endStep();
-        REQUIRE(readSmodels(str, observer, nullptr, opts) == 0);
+        REQUIRE(readSmodels(str, observer, opts) == 0);
         REQUIRE(observer.heuristics.size() == 4);
         Heuristic exp[] = {{static_cast<Atom_t>(a), Heuristic_t::Sign, -1, 1, {h1}},
                            {static_cast<Atom_t>(a), Heuristic_t::True, 1, 1, {h2}},
