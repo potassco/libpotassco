@@ -468,10 +468,11 @@ void fail(int ec, const char* file, unsigned line, const char* exp, const char* 
 		case error_logic  : throw std::logic_error(msg);
 		case error_assert : throw std::logic_error(msg);
 		case error_runtime: throw std::runtime_error(msg);
+		case E2BIG        : throw std::length_error(msg);
 		case ENOMEM       : throw std::bad_alloc();
 		case EINVAL       : throw std::invalid_argument(msg);
 		case EDOM         : throw std::domain_error(msg);
-		case ERANGE       : throw std::range_error(msg);
+		case ERANGE       : throw std::out_of_range(msg);
 #if defined(EOVERFLOW)
 		case EOVERFLOW    : throw std::overflow_error(msg);
 #endif
