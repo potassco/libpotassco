@@ -30,7 +30,6 @@
 #include <potassco/program_opts/typed_value.h>
 
 #include <cctype>
-#include <cstdlib>
 #include <fstream>
 #include <iostream>
 
@@ -40,7 +39,7 @@ class LpConvert : public Potassco::Application {
 public:
     [[nodiscard]] const char* getName() const override { return "lpconvert"; }
     [[nodiscard]] const char* getVersion() const override { return "1.0.0"; }
-    [[nodiscard]] PosOption   getPositional() const override { return &positional; }
+    [[nodiscard]] const char* getPositional(const std::string&) const override { return "input"; }
     [[nodiscard]] const char* getUsage() const override {
         return "[options] [<file>]\n"
                "Convert program in <file> or standard input";
@@ -51,10 +50,10 @@ public:
     void run() override;
     void printVersion() override {
         Potassco::Application::printVersion();
-        printf("libpotassco version %s\n", LIB_POTASSCO_VERSION);
-        printf("Copyright (C) Benjamin Kaufmann\n");
-        printf("License: The MIT License <https://opensource.org/licenses/MIT>\n");
-        fflush(stdout);
+        println("libpotassco version %s\n"
+                "Copyright (C) Benjamin Kaufmann\n"
+                "License: The MIT License <https://opensource.org/licenses/MIT>",
+                LIB_POTASSCO_VERSION);
     }
 
 private:
@@ -67,12 +66,12 @@ private:
 
 void LpConvert::initOptions(OptionContext& root) {
     OptionGroup convert("Conversion Options");
-    convert.addOptions()                                                                          //
-        ("input,i,@2", storeTo(input_), "Input file")                                             //
-        ("potassco,p", flag(potassco_ = false), "Enable potassco extensions")                     //
-        ("filter,f", flag(filter_ = false), "Hide converted potassco predicates")                 //
-        ("output,o", storeTo(output_)->arg("<file>"), "Write output to <file> (default: stdout)") //
-        ("text,t", flag(text_ = false), "Convert to ground text format")                          //
+    convert.addOptions()                                                                                         //
+        ("input,i,@2", storeTo(input_, std::string()), "Input file")                                             //
+        ("potassco,p", flag(potassco_, false), "Enable potassco extensions")                                     //
+        ("filter,f", flag(filter_, false), "Hide converted potassco predicates")                                 //
+        ("output,o", storeTo(output_, std::string())->arg("<file>"), "Write output to <file> (default: stdout)") //
+        ("text,t", flag(text_, false), "Convert to ground text format")                                          //
         ;
     root.add(convert);
 }

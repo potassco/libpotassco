@@ -29,16 +29,14 @@ namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
 
 struct MyApp : public Potassco::Application {
-    const char*   getName() const override { return "TestApp"; }
-    const char*   getVersion() const override { return "1.0"; }
-    const char*   getUsage() const override { return "[options] [files]"; }
-    HelpOpt       getHelpOption() const override { return HelpOpt("Print {1=basic|2=extended} help and exit", 2); }
-    Po::PosOption getPositional() const override { return parsePos; }
-    void          error(const char* m) const override { err = m; }
-    void          info(const char*) const override {}
-    void          run() override { setExitCode(0); }
-    void          setup() override {}
-    void          initOptions(ProgramOptions::OptionContext& root) override {
+    const char* getName() const override { return "TestApp"; }
+    const char* getVersion() const override { return "1.0"; }
+    const char* getUsage() const override { return "[options] [files]"; }
+    HelpOpt     getHelpOption() const override { return HelpOpt("Print {1=basic|2=extended} help and exit", 2); }
+    const char* getPositional(const std::string&) const override { return "file"; }
+    void        run() override { setExitCode(0); }
+    void        setup() override {}
+    void        initOptions(ProgramOptions::OptionContext& root) override {
         Po::OptionGroup g("Basic Options");
         g.addOptions()("foo,@,@1", Po::storeTo(foo), "Option on level 1");
         root.add(g);
@@ -53,16 +51,11 @@ struct MyApp : public Potassco::Application {
         Po::OptionPrinter out(desc);
         ctx.description(out);
     }
-    static bool parsePos(const std::string&, std::string& opt) {
-        opt = "file";
-        return true;
-    }
     using Potassco::Application::verbose;
-    using StringSeq         = std::vector<std::string>;
-    int                 foo = {};
-    StringSeq           input;
-    std::string         desc;
-    mutable std::string err;
+    using StringSeq = std::vector<std::string>;
+    int         foo = {};
+    StringSeq   input;
+    std::string desc;
 };
 
 TEST_CASE("Test application", "[app]") {
@@ -79,8 +72,15 @@ TEST_CASE("Test application", "[app]") {
     REQUIRE(app.desc.find("E1") == std::string::npos);
 
     argv[1] = (char*) "-h3";
+    std::vector<std::string> msg;
+    app.setErrorSink([&](std::string_view e) { msg.emplace_back(e); });
+    app.setOutputSink([](std::string_view) { FAIL("unexpected output"); });
     REQUIRE(app.main(2, argv) == EXIT_FAILURE);
-    REQUIRE(app.err.find("'help'") != std::string::npos);
+    REQUIRE(msg.size() == 2);
+    REQUIRE(msg.at(0).find("ERROR") != std::string::npos);
+    REQUIRE(msg.at(1).find("Info") != std::string::npos);
+    REQUIRE(msg.at(0).find("'help'") != std::string::npos);
+    REQUIRE(msg.at(1).find("'--help'") != std::string::npos);
 }
 TEST_CASE("Test alarm", "[app]") {
     struct TimedApp : MyApp {

@@ -21,21 +21,22 @@
 //
 #pragma once
 
+#include <potassco/platform.h>
 #include <potassco/program_opts/program_options.h>
 
-#include <cstdio>
 #include <string>
 #include <utility>
 namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Application base class
 /////////////////////////////////////////////////////////////////////////////////////////
-#define WRITE_STDERR(type, sys, msg) (fprintf(stderr, "*** %-5s: (%s): %s\n", (type), (sys), (msg)), fflush(stderr))
 class Application {
 public:
     //! Description of and max value for help option.
-    using HelpOpt   = std::pair<const char*, unsigned>;
-    using PosOption = ProgramOptions::PosOption;
+    using HelpOpt = std::pair<const char*, unsigned>;
+    //! Output sink.
+    using OutputSink = std::function<void(std::string_view)>;
+
     /*!
      * \name Basic functions.
      */
@@ -50,20 +51,26 @@ public:
     [[nodiscard]] virtual const char* getUsage() const { return "[options]"; }
     //! Returns the application's help option and its description.
     [[nodiscard]] virtual HelpOpt getHelpOption() const { return {"Print help information and exit", 1}; }
-    //! Returns the parser function for handling positional options.
-    [[nodiscard]] virtual PosOption getPositional() const { return nullptr; }
-    //! Prints the given error message to stderr.
-    virtual void error(const char* msg) const { WRITE_STDERR("ERROR", getName(), msg); }
-    //! Prints the given info message to stderr.
-    virtual void info(const char* msg) const { WRITE_STDERR("Info", getName(), msg); }
-    //! Prints the given warning message to stderr.
-    virtual void warn(const char* msg) const { WRITE_STDERR("Warn", getName(), msg); }
+    //! Returns the name of the option that should receive positional values or nullptr if not supported.
+    [[nodiscard]] virtual const char* getPositional([[maybe_unused]] const std::string& value) const { return nullptr; }
+    //! Prints the given error message to the error sink with prefix "*** ERROR: (getName()): ".
+    POTASSCO_ATTRIBUTE_FORMAT(2, 3) void error(const char* msg, ...) const noexcept;
+    //! Prints the given warning message to the error sink with prefix "*** Warn : (getName()): ".
+    POTASSCO_ATTRIBUTE_FORMAT(2, 3) void warn(const char* msg, ...) const noexcept;
+    //! Prints the given warning message to the error sink with prefix "*** Info : (getName()): ".
+    POTASSCO_ATTRIBUTE_FORMAT(2, 3) void info(const char* msg, ...) const noexcept;
+    //! Prints the given message to the output sink.
+    POTASSCO_ATTRIBUTE_FORMAT(2, 3) void println(const char* msg, ...) const noexcept;
+
     //@}
 
     /*!
      * \name Main functions.
      */
     //@{
+    void setOutputSink(OutputSink out);
+    void setErrorSink(OutputSink err);
+
     //! Runs this application with the given command-line arguments.
     int main(int argc, char** argv);
     //! Sets the value that should be returned as the application's exit code.
@@ -115,17 +122,20 @@ protected:
     void processSignal(int sigNum);
 
 private:
-    bool                applyOptions(int argc, char** argv);
-    static void         initInstance(Application& app);
-    static void         resetInstance(Application& app);
-    static void         sigHandler(int sig); // signal handler
-    int                 exitCode_;           // application's exit code
-    unsigned            timeout_;            // active time limit or 0 for no limit
-    unsigned            verbose_;            // active verbosity level
-    bool                fastExit_;           // force fast exit?
-    volatile long       blocked_;            // temporarily block signals?
-    volatile long       pending_;            // pending signal or 0 if no pending signal
-    static Application* instance_s;          // running instance (only valid during run()).
+    bool        applyOptions(int argc, char** argv);
+    static void initInstance(Application& app);
+    static void resetInstance(Application& app);
+    static void sigHandler(int sig);
+
+    OutputSink          out_;       // standard output sink (defaults to stdout)
+    OutputSink          err_;       // standard error sink (defaults to stderr)
+    int                 exitCode_;  // application's exit code
+    unsigned            timeout_;   // active time limit or 0 for no limit
+    unsigned            verbose_;   // active verbosity level
+    bool                fastExit_;  // force fast exit?
+    volatile long       blocked_;   // temporarily block signals?
+    volatile long       pending_;   // pending signal or 0 if no pending signal
+    static Application* instance_s; // running instance (only valid during run()).
 };
 
 } // namespace Potassco

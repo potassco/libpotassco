@@ -28,7 +28,6 @@
 #include <potassco/error.h>
 #include <potassco/program_opts/typed_value.h>
 
-#include <cctype>
 #include <climits>
 #include <cstdarg>
 #include <cstring>
@@ -68,7 +67,10 @@ Application::Application()
     , verbose_(0)
     , fastExit_(false)
     , blocked_(0)
-    , pending_(0) {}
+    , pending_(0) {
+    out_ = [](std::string_view v) { fwrite(v.data(), 1, v.size(), stdout); };
+    err_ = [](std::string_view v) { fwrite(v.data(), 1, v.size(), stderr); };
+}
 Application::~Application() { resetInstance(*this); }
 void Application::initInstance(Application& app) { instance_s = &app; }
 void Application::resetInstance(Application& app) {
@@ -115,6 +117,10 @@ int Application::setAlarm(unsigned sec) {
     return 1;
 }
 #endif
+
+void Application::setOutputSink(Potassco::Application::OutputSink out) { out_ = std::move(out); }
+void Application::setErrorSink(Potassco::Application::OutputSink err) { err_ = std::move(err); }
+
 // Application entry point.
 int Application::main(int argc, char** argv) {
     initInstance(*this); // singleton instance used for signal handling
@@ -153,23 +159,68 @@ int Application::main(int argc, char** argv) {
 
 Application* Application::getInstance() { return instance_s; }
 
+POTASSCO_ATTRIBUTE_FORMAT(4, 0)
+static void formatMessage(const Application::OutputSink& sink, const char* sys, const char* type, const char* msg,
+                          va_list* args) try {
+    va_list argsCopy;
+    va_copy(argsCopy, *args);
+    auto len = msg && *msg ? std::vsnprintf(nullptr, 0, msg, argsCopy) : 0;
+    va_end(argsCopy);
+    if (len < 0)
+        return;
+
+    auto fullLen = static_cast<size_t>(len) + 2; // newline + \0
+    if (type && sys) {
+        auto typeLen  = std::strlen(type);
+        auto padLen   = typeLen < 5 ? 5 - typeLen : 0;
+        fullLen      += typeLen + padLen + std::strlen(sys) + 10;
+    }
+    auto offSet = std::size_t(0);
+
+    char                    fix[1024];
+    std::unique_ptr<char[]> dyn;
+    std::span<char>         buf(fix);
+    if (fullLen > buf.size()) {
+        dyn = std::make_unique<char[]>(fullLen);
+        buf = std::span<char>(dyn.get(), dyn.get() + fullLen);
+    }
+    if (sys && type) {
+        auto r = static_cast<std::size_t>(snprintf(buf.data(), buf.size(), "*** %-5s: (%s): ", type, sys));
+        offSet = r < buf.size() ? r : 0;
+    }
+    std::vsnprintf(buf.data() + offSet, buf.size() - offSet, msg, *args);
+    buf[fullLen - 2] = '\n';
+    buf[fullLen - 1] = '\0';
+    sink(std::string_view{buf.data(), fullLen - 1});
+}
+catch (...) {
+}
+
+#define OUTPUT_MESSAGE(SINK, NAME, TYPE, MSG)                                                                          \
+    if ((SINK)) {                                                                                                      \
+        va_list args;                                                                                                  \
+        va_start(args, MSG);                                                                                           \
+        formatMessage((SINK), (NAME), (TYPE), MSG, &args);                                                             \
+        va_end(args);                                                                                                  \
+    }                                                                                                                  \
+    else                                                                                                               \
+        static_cast<void>(0)
+
+void Application::error(const char* msg, ...) const noexcept { OUTPUT_MESSAGE(err_, getName(), "ERROR", msg); }
+void Application::info(const char* msg, ...) const noexcept { OUTPUT_MESSAGE(err_, getName(), "Info", msg); }
+void Application::warn(const char* msg, ...) const noexcept { OUTPUT_MESSAGE(err_, getName(), "Warn", msg); }
+void Application::println(const char* msg, ...) const noexcept { OUTPUT_MESSAGE(out_, nullptr, nullptr, msg); }
+
 void Application::onUnhandledException() {
     try {
         throw;
     }
     catch (const RuntimeError& e) {
-        error(e.what());
-        std::string extra("in ");
-        extra.append(e.location().function_name())
-            .append(":")
-            .append(std::to_string(e.location().line()))
-            .append(": check '")
-            .append(e.expression())
-            .append("' failed.");
-        error(extra.c_str());
+        error("%s", e.what());
+        error("%s", e.details().c_str());
     }
     catch (const std::exception& e) {
-        error(e.what());
+        error("%s", e.what());
     }
     catch (...) {
         error("Unknown exception");
@@ -195,10 +246,10 @@ void Application::shutdown(bool hasError) {
 void Application::shutdown() {}
 
 // Force exit without calling destructors.
-void Application::exit(int status) const {
+void Application::exit(int exitCode) const {
     fflush(stdout);
     fflush(stderr);
-    _exit(status);
+    _exit(exitCode);
 }
 
 // Temporarily disable delivery of signals.
@@ -240,7 +291,6 @@ void Application::processSignal(int sig) {
 bool Application::onSignal(int x) {
     info("INTERRUPTED by signal!");
     exit(EXIT_FAILURE | (128 + x));
-    return false;
 }
 
 // Kill any pending alarm.
@@ -249,16 +299,6 @@ void Application::killAlarm() {
         setAlarm(0);
     }
 }
-
-namespace {
-struct HelpParser {
-    static unsigned maxValue_s;
-    static bool     parse(const std::string& v, unsigned& out) {
-        return stringTo(v, out) == std::errc{} && out > 0 && out <= maxValue_s;
-    }
-};
-unsigned HelpParser::maxValue_s = 0;
-} // namespace
 
 // Process command-line options.
 bool Application::applyOptions(int argc, char** argv) {
@@ -274,16 +314,29 @@ bool Application::applyOptions(int argc, char** argv) {
             exit(EXIT_FAILURE);
         }
         OptionGroup basic("Basic Options");
-        HelpParser::maxValue_s = helpO.second;
-        Value* hv =
-            helpO.second == 1 ? storeTo(help)->flag() : storeTo(help, &HelpParser::parse)->arg("<n>")->implicit("1");
-        basic.addOptions()("help,h", hv, helpO.first)("version,v", flag(version), "Print version information and exit")(
-            "verbose,V", storeTo(verbose_ = 0)->implicit("-1")->arg("<n>"), "Set verbosity level to %A")(
-            "time-limit", storeTo(timeout_ = 0)->arg("<n>"), "Set time limit to %A seconds (0=no limit)")(
-            "fast-exit,@1", flag(fastExit_ = false), "Force fast exit (do not call dtors)");
+        Value*      hv = helpO.second == 1
+                             ? storeTo(help)->flag()
+                             : storeTo(help,
+                                       [maxV = helpO.second](const std::string& v, unsigned& out) {
+                                      return Potassco::stringTo(v, out) == std::errc{} && out > 0 && out <= maxV;
+                                  })
+                              ->arg("<n>")
+                              ->implicit("1");
+        basic.addOptions()                                                                                 //
+            ("help,h", hv, helpO.first)                                                                    //
+            ("version,v", flag(version), "Print version information and exit")                             //
+            ("verbose,V", storeTo(verbose_ = 0)->implicit("-1")->arg("<n>"), "Set verbosity level to %A")  //
+            ("time-limit", storeTo(timeout_ = 0)->arg("<n>"), "Set time limit to %A seconds (0=no limit)") //
+            ("fast-exit,@1", flag(fastExit_ = false), "Force fast exit (do not call dtors)");              //
         allOpts.add(basic);
         initOptions(allOpts);
-        ParsedValues values = parseCommandLine(argc, argv, allOpts, false, getPositional());
+        auto values = parseCommandLine(argc, argv, allOpts, false, [this](const std::string& value, std::string& opt) {
+            if (const auto* n = getPositional(value); n) {
+                opt = n;
+                return true;
+            }
+            return false;
+        });
         parsed.assign(values);
         allOpts.assignDefaults(parsed);
         if (help || version) {
@@ -301,7 +354,7 @@ bool Application::applyOptions(int argc, char** argv) {
         validateOptions(allOpts, parsed, values);
     }
     catch (const std::exception& e) {
-        error(e.what());
+        error("%s", e.what());
         info("Try '--help' for usage information");
         return false;
     }
@@ -309,22 +362,25 @@ bool Application::applyOptions(int argc, char** argv) {
 }
 
 void Application::printHelp(const OptionContext& root) {
-    printf("%s version %s\n", getName(), getVersion());
+    println("%s version %s", getName(), getVersion());
     printUsage();
-    ProgramOptions::OptionPrinter out(stdout);
-    root.description(out);
-    printf("\n");
+    if (out_) {
+        ProgramOptions::OptionPrinter out(out_);
+        root.description(out);
+        out_("\n");
+    }
     printUsage();
-    printf("Default command-line:\n%s %s\n", getName(), root.defaults(strlen(getName()) + 1).c_str());
-    fflush(stdout);
+    println("Default command-line:\n"
+            "%s %s",
+            getName(), root.defaults(strlen(getName()) + 1).c_str());
 }
 void Application::printVersion() {
-    printf("%s version %s\n", getName(), getVersion());
-    printf("Address model: %d-bit\n", (int) (sizeof(void*) * CHAR_BIT));
-    fflush(stdout);
+    println("%s version %s\n"
+            "Address model: %d-bit",
+            getName(), getVersion(), (int) (sizeof(void*) * CHAR_BIT));
 }
 
-void Application::printUsage() { printf("usage: %s %s\n", getName(), getUsage()); }
+void Application::printUsage() { println("usage: %s %s", getName(), getUsage()); }
 
 unsigned Application::verbose() const { return verbose_; }
 void     Application::setVerbose(unsigned v) { verbose_ = v; }

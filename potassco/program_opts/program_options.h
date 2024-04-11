@@ -461,7 +461,7 @@ using OptionPrinter = OptionOutputImpl<>;
  * and store the name of the option that should receive the token as value
  * in its second argument or return false to signal an error.
  */
-using PosOption = bool (*)(const std::string&, std::string&);
+using PosOption = std::function<bool(const std::string&, std::string&)>;
 
 enum CommandLineFlags { command_line_allow_flag_value = 1u };
 

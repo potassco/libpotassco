@@ -111,6 +111,11 @@ inline Value* storeTo(T& v) {
         [address = &v](const std::string&, const std::string& value) { return Parser<T>()(value, *address); }};
 }
 
+template <typename T>
+inline Value* storeTo(T& v, T init) {
+    return storeTo(v = std::move(init));
+}
+
 /*!
  * Creates a value that is bound to an existing variable.
  * Assignments to the created value are directly stored in the given variable.
@@ -133,6 +138,10 @@ inline Value* storeTo(T& v, std::vector<std::pair<std::string, U>> values) {
 
 inline Value* flag(bool& b, bool (*action)(const std::string&, bool&) = store_true) {
     return storeTo(b, action)->flag();
+}
+
+inline Value* flag(bool& b, bool init, bool (*action)(const std::string&, bool&) = store_true) {
+    return flag(b = init, action);
 }
 
 /*!

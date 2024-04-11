@@ -4,6 +4,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <span>
+#include <string>
 #include <utility>
 
 namespace Potassco {
