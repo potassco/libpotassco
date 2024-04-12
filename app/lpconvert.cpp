@@ -48,12 +48,11 @@ public:
     void validateOptions(const OptionContext&, const ParsedOptions&, const ParsedValues&) override {}
     void setup() override {}
     void run() override;
-    void printVersion() override {
-        Potassco::Application::printVersion();
-        println("libpotassco version %s\n"
-                "Copyright (C) Benjamin Kaufmann\n"
-                "License: The MIT License <https://opensource.org/licenses/MIT>",
-                LIB_POTASSCO_VERSION);
+    void printVersion(std::ostream& os) override {
+        Potassco::Application::printVersion(os);
+        os << "libpotassco version " << LIB_POTASSCO_VERSION
+           << "\nCopyright (C) Benjamin Kaufmann\n"
+              "License: The MIT License <https://opensource.org/licenses/MIT>\n";
     }
 
 private:

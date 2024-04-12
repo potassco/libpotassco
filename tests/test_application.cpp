@@ -24,6 +24,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <csignal>
+#include <sstream>
 
 namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
@@ -46,41 +47,51 @@ struct MyApp : public Potassco::Application {
         root.add(g2);
     }
     void validateOptions(const Po::OptionContext&, const Po::ParsedOptions&, const Po::ParsedValues&) override {}
-    void printHelp(const Po::OptionContext& ctx) override {
-        desc.clear();
-        Po::OptionPrinter out(desc);
-        ctx.description(out);
-    }
     using Potassco::Application::verbose;
     using StringSeq = std::vector<std::string>;
-    int         foo = {};
-    StringSeq   input;
-    std::string desc;
+    int       foo   = {};
+    StringSeq input;
 };
 
 TEST_CASE("Test application", "[app]") {
     char* argv[] = {(char*) "app", (char*) "-h", (char*) "-V3", (char*) "--vers", (char*) "hallo", nullptr};
     int   argc   = 5;
     MyApp app;
+    std::ostringstream out;
+    app.setStdout(out);
     REQUIRE(app.main(argc, argv) == EXIT_SUCCESS);
-    REQUIRE(not app.desc.empty());
+    const auto& desc = out.str();
+    REQUIRE(not desc.empty());
     REQUIRE(app.verbose() == 3);
     REQUIRE((not app.input.empty() && app.input[0] == "hallo"));
-    REQUIRE(app.desc.find("verbose") != std::string::npos);
-    REQUIRE(app.desc.find("file") == std::string::npos);
-    REQUIRE(app.desc.find("foo") == std::string::npos);
-    REQUIRE(app.desc.find("E1") == std::string::npos);
+    std::string_view view(desc);
+    REQUIRE(view.starts_with("TestApp version 1.0\n"));
+    view.remove_prefix(view.find('\n') + 1);
+    REQUIRE(view.starts_with("usage: TestApp [options] [files]\n"));
+    view.remove_prefix(view.find('\n') + 1);
+    auto pos = view.find("usage:");
+    REQUIRE(pos < view.size());
+    view.remove_suffix(view.size() - pos);
+    constexpr auto contains = [](std::string_view where, std::string_view what) {
+        return where.find(what) < where.size();
+    };
+    REQUIRE(contains(view, "verbose"));
+    REQUIRE_FALSE(contains(view, "file"));
+    REQUIRE_FALSE(contains(view, "foo"));
+    REQUIRE_FALSE(contains(view, "E1"));
 
     argv[1] = (char*) "-h3";
-    std::vector<std::string> msg;
-    app.setErrorSink([&](std::string_view e) { msg.emplace_back(e); });
-    app.setOutputSink([](std::string_view) { FAIL("unexpected output"); });
+    std::ostringstream err;
+    out.str("");
+    app.setStderr(err);
     REQUIRE(app.main(2, argv) == EXIT_FAILURE);
-    REQUIRE(msg.size() == 2);
-    REQUIRE(msg.at(0).find("ERROR") != std::string::npos);
-    REQUIRE(msg.at(1).find("Info") != std::string::npos);
-    REQUIRE(msg.at(0).find("'help'") != std::string::npos);
-    REQUIRE(msg.at(1).find("'--help'") != std::string::npos);
+    REQUIRE(out.str().empty());
+    REQUIRE(err.str().find("*** ERROR: (TestApp): ") == 0);
+    auto firstLn = err.str().find('\n');
+    REQUIRE(firstLn != std::string::npos);
+    REQUIRE(err.str().find("'help'") < firstLn);
+    REQUIRE(err.str().find("*** Info : (TestApp): ") != std::string::npos);
+    REQUIRE(err.str().find("'--help'") != std::string::npos);
 }
 TEST_CASE("Test alarm", "[app]") {
     struct TimedApp : MyApp {

@@ -24,6 +24,7 @@
 #include <potassco/platform.h>
 #include <potassco/program_opts/program_options.h>
 
+#include <functional>
 #include <string>
 #include <utility>
 namespace Potassco {
@@ -34,11 +35,11 @@ class Application {
 public:
     //! Description of and max value for help option.
     using HelpOpt = std::pair<const char*, unsigned>;
-    //! Output sink.
-    using OutputSink = std::function<void(std::string_view)>;
+
+    Application(Application&&) = delete;
 
     /*!
-     * \name Basic functions.
+     * \name Query functions.
      */
     //@{
     //! Returns the name of this application.
@@ -51,42 +52,56 @@ public:
     [[nodiscard]] virtual const char* getUsage() const { return "[options]"; }
     //! Returns the application's help option and its description.
     [[nodiscard]] virtual HelpOpt getHelpOption() const { return {"Print help information and exit", 1}; }
-    //! Returns the name of the option that should receive positional values or nullptr if not supported.
+    //! Returns the name of the option that should receive the given positional value or nullptr if not supported.
     [[nodiscard]] virtual const char* getPositional([[maybe_unused]] const std::string& value) const { return nullptr; }
-    //! Prints the given error message to the error sink with prefix "*** ERROR: (getName()): ".
-    POTASSCO_ATTRIBUTE_FORMAT(2, 3) void error(const char* msg, ...) const noexcept;
-    //! Prints the given warning message to the error sink with prefix "*** Warn : (getName()): ".
-    POTASSCO_ATTRIBUTE_FORMAT(2, 3) void warn(const char* msg, ...) const noexcept;
-    //! Prints the given warning message to the error sink with prefix "*** Info : (getName()): ".
-    POTASSCO_ATTRIBUTE_FORMAT(2, 3) void info(const char* msg, ...) const noexcept;
-    //! Prints the given message to the output sink.
-    POTASSCO_ATTRIBUTE_FORMAT(2, 3) void println(const char* msg, ...) const noexcept;
-
     //@}
 
     /*!
      * \name Main functions.
      */
     //@{
-    void setOutputSink(OutputSink out);
-    void setErrorSink(OutputSink err);
-
     //! Runs this application with the given command-line arguments.
     int main(int argc, char** argv);
     //! Sets the value that should be returned as the application's exit code.
     void setExitCode(int n);
+    //! Sets the standard output stream (default: std::cout)
+    void setStdout(std::ostream& os);
+    //! Sets the standard error stream (default: std::cerr)
+    void setStderr(std::ostream& err);
     //! Returns the application's exit code.
     [[nodiscard]] int getExitCode() const;
     //! Returns the application object that is running.
     static Application* getInstance();
     //! Prints the application's help information (called if options contain '--help').
-    virtual void printHelp(const ProgramOptions::OptionContext& root);
+    void printHelp(const ProgramOptions::OptionContext& root);
     //! Prints the application's version message (called if options contain '--version').
-    virtual void printVersion();
+    void printVersion();
     //! Prints the application's usage message (default is: "usage: getName() getUsage()").
-    virtual void printUsage();
+    void printUsage();
+
+    //! Returns synchronized standard error stream initialized to "*** ERROR: (getName()): ".
+    [[nodiscard]] std::osyncstream error() const;
+    //! Returns synchronized standard error stream initialized to "*** Warn : (getName()): ".
+    [[nodiscard]] std::osyncstream warn() const;
+    //! Returns synchronized standard error stream initialized to "*** Info : (getName()): ".
+    [[nodiscard]] std::osyncstream info() const;
+    //! Returns synchronized standard output stream.
+    [[nodiscard]] std::osyncstream log() const;
+
     //@}
 protected:
+    /*!
+     * \name Help output
+     */
+    //@{
+    //! Prints help to os.
+    virtual void printHelp(std::ostream& os, const ProgramOptions::OptionContext& root);
+    //! Prints version info to os (default prints app name followed by version and address model).
+    virtual void printVersion(std::ostream& os);
+    //! Prints usage info to os (default: "usage: <getName()> <getUsage()>").
+    virtual void printUsage(std::ostream& os);
+    //@}
+
     /*!
      * \name Life cycle and option handling
      */
@@ -107,7 +122,7 @@ protected:
     //! Called when a signal is received. The default terminates the application.
     virtual bool onSignal(int);
     //@}
-protected:
+
     Application();
     virtual ~Application();
     [[nodiscard]] unsigned verbose() const;
@@ -115,20 +130,26 @@ protected:
 
     void shutdown(bool hasError);
     void setVerbose(unsigned v);
-    int  setAlarm(unsigned sec);
+    void setAlarm(unsigned sec);
     void killAlarm();
     int  blockSignals();
     void unblockSignals(bool deliverPending);
     void processSignal(int sigNum);
 
+    std::ostream& errorPrefix(std::ostream&) const;
+    std::ostream& infoPrefix(std::ostream&) const;
+    std::ostream& warnPrefix(std::ostream&) const;
+
 private:
+    using StreamRef = std::reference_wrapper<std::ostream>;
     bool        applyOptions(int argc, char** argv);
+    void        flush() const;
     static void initInstance(Application& app);
     static void resetInstance(Application& app);
     static void sigHandler(int sig);
 
-    OutputSink          out_;       // standard output sink (defaults to stdout)
-    OutputSink          err_;       // standard error sink (defaults to stderr)
+    StreamRef           out_;       // standard output stream (defaults to stdout)
+    StreamRef           err_;       // standard error stream (defaults to stderr)
     int                 exitCode_;  // application's exit code
     unsigned            timeout_;   // active time limit or 0 for no limit
     unsigned            verbose_;   // active verbosity level
