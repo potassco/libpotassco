@@ -46,19 +46,17 @@ enum class Errc : std::underlying_type_t<std::errc> {
 
 class RuntimeError : public std::runtime_error {
 public:
-    RuntimeError(Errc ec, const ExpressionInfo& location, const char* message)
+    RuntimeError(Errc ec, const std::source_location& location, const char* message)
         : std::runtime_error(message)
-        , expression_(location.expression)
-        , location_(location.location)
+        , location_(location)
         , errc_(ec) {}
 
     [[nodiscard]] Errc                        errc() const noexcept { return errc_; }
     [[nodiscard]] const std::source_location& location() const noexcept { return location_; }
-    [[nodiscard]] const char*                 expression() const noexcept { return expression_.c_str(); }
-    [[nodiscard]] std::string                 details() const;
+    [[nodiscard]] std::string_view            message() const noexcept;
+    [[nodiscard]] std::string_view            details() const noexcept;
 
 private:
-    std::string          expression_;
     std::source_location location_;
     Errc                 errc_;
 };

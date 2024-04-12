@@ -37,7 +37,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
-#include <syncstream>
 #if not defined(SIGALRM)
 #define SIGALRM 14
 #endif
@@ -120,38 +119,22 @@ void Application::setAlarm(unsigned sec) {
 }
 #endif
 
-std::ostream& Application::errorPrefix(std::ostream& os) const { return os << "*** ERROR: (" << getName() << "): "; }
-std::ostream& Application::infoPrefix(std::ostream& os) const { return os << "*** Info : (" << getName() << "): "; }
-std::ostream& Application::warnPrefix(std::ostream& os) const { return os << "*** Warn : (" << getName() << "): "; }
+std::ostream& Application::write(std::ostream& os, Prefix::Type t) const {
+    switch (const char* n = getName(); t) {
+        case Prefix::error  : return os << "*** ERROR: (" << n << "): ";
+        case Prefix::warning: return os << "*** Warn : (" << n << "): ";
+        default             : return os << "*** Info : (" << n << "): ";
+    }
+}
 
 void Application::setStdout(std::ostream& os) { out_ = std::ref(os); }
 void Application::setStderr(std::ostream& err) { err_ = std::ref(err); }
 void Application::flush() const {
-    std::osyncstream(out_).emit();
-    std::osyncstream(err_).emit();
+    err_.get().flush();
+    out_.get().flush();
     fflush(stderr);
     fflush(stdout);
 }
-
-std::osyncstream Application::error() const {
-    std::osyncstream out(err_);
-    errorPrefix(out);
-    return out;
-}
-
-std::osyncstream Application::warn() const {
-    std::osyncstream out(err_);
-    warnPrefix(out);
-    return out;
-}
-
-std::osyncstream Application::info() const {
-    std::osyncstream out(err_);
-    infoPrefix(out);
-    return out;
-}
-
-std::osyncstream Application::log() const { return std::osyncstream(out_); }
 
 // Application entry point.
 int Application::main(int argc, char** argv) {
@@ -193,9 +176,7 @@ void Application::onUnhandledException() {
         throw;
     }
     catch (const RuntimeError& e) {
-        std::osyncstream out(err_.get());
-        errorPrefix(out) << e.what() << "\n";
-        errorPrefix(out) << e.details() << "\n";
+        error() << e.message() << "\n" << errorPrefix() << e.details() << "\n";
     }
     catch (const std::exception& e) {
         error() << e.what() << "\n";
@@ -335,9 +316,7 @@ bool Application::applyOptions(int argc, char** argv) {
         validateOptions(allOpts, parsed, values);
     }
     catch (const std::exception& e) {
-        std::osyncstream out(err_);
-        errorPrefix(out) << e.what() << "\n";
-        infoPrefix(out) << "Try '--help' for usage information\n";
+        error() << e.what() << "\n" << infoPrefix() << "Try '--help' for usage information\n";
         return false;
     }
     return true;
@@ -354,21 +333,24 @@ void Application::printHelp(std::ostream& os, const OptionContext& root) {
 }
 
 void Application::printHelp(const OptionContext& root) {
-    std::osyncstream out(out_);
-    printHelp(out, root);
+    printHelp(out_, root);
+    out_.get().flush();
 }
 
 void Application::printVersion() {
-    std::osyncstream out(out_);
-    printVersion(out);
+    printVersion(out_);
+    out_.get().flush();
 }
 void Application::printVersion(std::ostream& os) {
-    os << getName() << " version " << getVersion() << "\nAddress model: " << (int) (sizeof(void*) * CHAR_BIT) << "\n";
+    os << getName() << " version " << getVersion()
+       << "\n"
+          "Address model: "
+       << (int) (sizeof(void*) * CHAR_BIT) << "-bit\n";
 }
 
 void Application::printUsage() {
-    std::osyncstream out(out_);
-    printUsage(out);
+    printUsage(out_);
+    out_.get().flush();
 }
 
 void Application::printUsage(std::ostream& os) { os << "usage: " << getName() << " " << getUsage() << "\n"; }

@@ -4,7 +4,6 @@
 #include <cstdarg>
 #include <cstdio>
 #include <span>
-#include <string>
 #include <utility>
 
 namespace Potassco {
@@ -96,30 +95,30 @@ extern void failThrow(Errc ec, const ExpressionInfo& info, const char* fmt, ...)
     }
     append(span, next);
     append(span, std::generic_category().message(static_cast<int>(ec)));
-    *span.data()       = 0;
-    auto addExpression = [&]() {
-        append(span, "\n");
-        appendExpression(span, info, false, info.expression.empty() ? ""sv : "check"sv, false);
-        *span.data() = 0;
-    };
+    append(span, "\n");
+    appendExpression(span, info, false, info.expression.empty() ? ""sv : "check"sv, false);
+    *span.data() = 0;
     switch (ec) {
         // logic
-        case Errc::length_error    : addExpression(); throw std::length_error(message);
-        case Errc::invalid_argument: addExpression(); throw std::invalid_argument(message);
-        case Errc::domain_error    : addExpression(); throw std::domain_error(message);
-        case Errc::out_of_range    : addExpression(); throw std::out_of_range(message);
+        case Errc::length_error    : throw std::length_error(message);
+        case Errc::invalid_argument: throw std::invalid_argument(message);
+        case Errc::domain_error    : throw std::domain_error(message);
+        case Errc::out_of_range    : throw std::out_of_range(message);
         // runtime
-        case Errc::overflow_error: addExpression(); throw std::overflow_error(message);
-        default                  : throw RuntimeError(ec, info, message);
+        case Errc::overflow_error: throw std::overflow_error(message);
+        default                  : throw RuntimeError(ec, info.location, message);
     }
 }
 
-std::string RuntimeError::details() const {
-    std::string ret;
-    ret.append("in ").append(location_.function_name()).append(":").append(std::to_string(location_.line()));
-    if (not expression_.empty())
-        ret.append(": check '").append(expression_).append("' failed");
-    return ret;
+std::string_view RuntimeError::message() const noexcept {
+    auto ret = std::string_view(what());
+    return ret.substr(0, ret.find('\n'));
+}
+
+std::string_view RuntimeError::details() const noexcept {
+    auto ret = std::string_view(what());
+    auto pos = ret.find('\n');
+    return ret.substr(pos < ret.size() ? pos + 1 : ret.size());
 }
 
 } // namespace Potassco

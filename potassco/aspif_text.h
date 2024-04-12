@@ -26,7 +26,6 @@
 #include <potassco/theory_data.h>
 
 #include <cstring>
-#include <string>
 
 namespace Potassco {
 //! Class for parsing logic programs in ground text format.

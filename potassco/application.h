@@ -32,6 +32,14 @@ namespace Potassco {
 // Application base class
 /////////////////////////////////////////////////////////////////////////////////////////
 class Application {
+private:
+    struct Prefix {
+        const Application* app;
+        enum Type { error, warning, info } type;
+        friend std::ostream& operator<<(std::ostream& os, const Prefix& p) { return p.app->write(os, p.type); }
+    };
+    friend std::ostream& operator<<(std::ostream& os, const Prefix& p);
+
 public:
     //! Description of and max value for help option.
     using HelpOpt = std::pair<const char*, unsigned>;
@@ -79,14 +87,19 @@ public:
     //! Prints the application's usage message (default is: "usage: getName() getUsage()").
     void printUsage();
 
-    //! Returns synchronized standard error stream initialized to "*** ERROR: (getName()): ".
-    [[nodiscard]] std::osyncstream error() const;
-    //! Returns synchronized standard error stream initialized to "*** Warn : (getName()): ".
-    [[nodiscard]] std::osyncstream warn() const;
-    //! Returns synchronized standard error stream initialized to "*** Info : (getName()): ".
-    [[nodiscard]] std::osyncstream info() const;
-    //! Returns synchronized standard output stream.
-    [[nodiscard]] std::osyncstream log() const;
+    //! Writes Error prefix to the standard error stream and returns the stream.
+    [[nodiscard]] std::ostream& error() const { return write(err_, Prefix::error); }
+    //! Writes Warning prefix to the standard error stream and returns the stream.
+    [[nodiscard]] std::ostream& warn() const { return write(err_, Prefix::warning); }
+    //! Writes Info prefix to the standard error stream and returns the stream.
+    [[nodiscard]] std::ostream& info() const { return write(err_, Prefix::info); }
+
+    //! Returns an io-manipulator that writes an Error prefix when applied to a stream.
+    [[nodiscard]] Prefix errorPrefix() const { return {.app = this, .type = Prefix::error}; }
+    //! Returns an io-manipulator that writes a Warning prefix when applied to a stream.
+    [[nodiscard]] Prefix warnPrefix() const { return {.app = this, .type = Prefix::warning}; }
+    //! Returns an io-manipulator that writes an Info prefix when applied to a stream.
+    [[nodiscard]] Prefix infoPrefix() const { return {.app = this, .type = Prefix::info}; }
 
     //@}
 protected:
@@ -136,17 +149,14 @@ protected:
     void unblockSignals(bool deliverPending);
     void processSignal(int sigNum);
 
-    std::ostream& errorPrefix(std::ostream&) const;
-    std::ostream& infoPrefix(std::ostream&) const;
-    std::ostream& warnPrefix(std::ostream&) const;
-
 private:
     using StreamRef = std::reference_wrapper<std::ostream>;
-    bool        applyOptions(int argc, char** argv);
-    void        flush() const;
-    static void initInstance(Application& app);
-    static void resetInstance(Application& app);
-    static void sigHandler(int sig);
+    bool          applyOptions(int argc, char** argv);
+    void          flush() const;
+    std::ostream& write(std::ostream&, Prefix::Type t) const;
+    static void   initInstance(Application& app);
+    static void   resetInstance(Application& app);
+    static void   sigHandler(int sig);
 
     StreamRef           out_;       // standard output stream (defaults to stdout)
     StreamRef           err_;       // standard error stream (defaults to stderr)

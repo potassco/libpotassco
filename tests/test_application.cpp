@@ -92,6 +92,20 @@ TEST_CASE("Test application", "[app]") {
     REQUIRE(err.str().find("'help'") < firstLn);
     REQUIRE(err.str().find("*** Info : (TestApp): ") != std::string::npos);
     REQUIRE(err.str().find("'--help'") != std::string::npos);
+
+    std::ostringstream str;
+    str << app.errorPrefix();
+    REQUIRE(str.str() == "*** ERROR: (TestApp): ");
+    str.str("");
+    str << app.warnPrefix();
+    REQUIRE(str.str() == "*** Warn : (TestApp): ");
+    str.str("");
+    str << app.infoPrefix();
+    REQUIRE(str.str() == "*** Info : (TestApp): ");
+
+    err.str("");
+    app.error() << "Foo expected!";
+    REQUIRE(err.str() == "*** ERROR: (TestApp): Foo expected!");
 }
 TEST_CASE("Test alarm", "[app]") {
     struct TimedApp : MyApp {
