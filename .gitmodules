@@ -1,3 +1,6 @@
 [submodule "third_party/Catch2"]
 	path = third_party/Catch2
 	url = ../../catchorg/Catch2.git
+[submodule "third_party/amc"]
+	path = third_party/amc
+	url = ../../AmadeusITGroup/amc

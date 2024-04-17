@@ -148,9 +148,9 @@ public:
     [[nodiscard]] WeightLit_t* wlits_end() const;
     [[nodiscard]] Weight_t     bound() const;
     //@}
-    struct Rule;
 
 private:
+    struct Rule;
     [[nodiscard]] Weight_t* bound_() const;
     [[nodiscard]] Rule*     rule_() const;
 

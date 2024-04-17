@@ -48,7 +48,8 @@ if(MSVC)
 	set(VC_RELEASE_OPTIONS /Oi /Oy /GL /Gy)
 	target_compile_options(libpotassco PUBLIC "$<$<CONFIG:RELEASE>:${VC_RELEASE_OPTIONS}>")
 endif()
-target_link_libraries(libpotassco PRIVATE potassco_default_warnings)
+target_compile_definitions(libpotassco PRIVATE AMC_NONSTD_FEATURES)
+target_link_libraries(libpotassco PRIVATE  amc::amc potassco_default_warnings)
 target_include_directories(libpotassco PUBLIC
 	$<BUILD_INTERFACE:${LIB_POTASSCO_SOURCE_DIR}>
 	$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/${include_dest}>)

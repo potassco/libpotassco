@@ -26,10 +26,11 @@
 #include <potassco/rule_utils.h>
 #include <potassco/theory_data.h>
 
-#include <functional>
+#include <amc/vector.hpp>
+
 #include <ostream>
-#include <string>
-#include <vector>
+#include <string_view>
+
 #if defined(_MSC_VER)
 #pragma warning(disable : 4996)
 #endif
@@ -38,9 +39,13 @@ namespace Potassco {
 // AspifInput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifInput::Extra {
-    std::vector<Id_t> ids;
-    std::string       sym;
+    static_assert(amc::is_trivially_relocatable_v<Id_t>, "should be relocatable");
+    amc::SmallVector<Id_t, 64>  ids;
+    amc::SmallVector<char, 256> sym;
+
+    [[nodiscard]] std::string_view symView() const noexcept { return {sym.data(), sym.size()}; }
 };
+
 AspifInput::AspifInput(AbstractProgram& out) : out_(out), rule_(nullptr), data_(nullptr) {}
 
 bool AspifInput::doAttach(bool& inc) {
@@ -93,7 +98,7 @@ bool AspifInput::doParse() {
             case Directive_t::Output: {
                 matchString();
                 matchLits();
-                out_.output(data.sym, rule.body());
+                out_.output(data.symView(), rule.body());
                 break;
             }
             case Directive_t::External:
@@ -159,7 +164,7 @@ void AspifInput::matchTheory(Theory_t rt) {
         case Theory_t::Number: out_.theoryTerm(tId, matchInt()); break;
         case Theory_t::Symbol:
             matchString();
-            out_.theoryTerm(tId, data_->sym);
+            out_.theoryTerm(tId, data_->symView());
             break;
         case Theory_t::Compound: {
             int type = matchInt(-static_cast<int>(enum_count<Tuple_t>()), INT_MAX, "unrecognized compound term type");

@@ -71,6 +71,7 @@ target_compile_options(potassco_default_warnings
 )
 
 add_subdirectory(src)
+add_subdirectory(third_party/amc)
 if(LIB_POTASSCO_BUILD_TESTS)
 	enable_testing()
 	set(CATCH_BUILD_STATIC_LIBRARY ON CACHE INTERNAL "" FORCE)

@@ -25,6 +25,7 @@
 #include "test_common.h"
 
 #include <potassco/convert.h>
+#include <potassco/smodels.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -483,8 +484,8 @@ TEST_CASE("Convert to smodels", "[convert]") {
         convert.endStep();
         REQUIRE(observer.rules[Rule_t::Basic].size() == 1);
         REQUIRE(convert.maxAtom() == 5);
-        auto aux = static_cast<Atom_t>(observer.rules[Rule_t::Basic][0][0]);
-        REQUIRE(std::strcmp(convert.getName(aux), "Foo") == 0);
+        auto aux = observer.rules[Rule_t::Basic][0][0];
+        REQUIRE(observer.atoms.at(aux) == "Foo");
     }
 
     SECTION("convert external") {
@@ -599,13 +600,24 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
     SECTION("_heuristic atoms are converted to heuristic directive") {
         Lit_t a = 1, b = 2, h1 = 3, h2 = 4, h3 = 5, h4 = 6;
         writer.output("f(a,b,c,d(q(r(s))))", {&a, 1});
-        writer.output("f(\"a,b(c,d)\")", {&b, 1});
         writer.output("_heuristic(f(a,b,c,d(q(r(s)))),sign,-1)", {&h1, 1});
         writer.output("_heuristic(f(a,b,c,d(q(r(s)))),true,1)", {&h2, 1});
         writer.output("_heuristic(f(\"a,b(c,d)\"),level,-1,10)", {&h3, 1});
         writer.output("_heuristic(f(\"a,b(c,d)\"),factor,2,1)", {&h4, 1});
+        writer.output("f(\"a,b(c,d)\")", {&b, 1});
         writer.endStep();
-        REQUIRE(readSmodels(str, observer, opts) == 0);
+        SECTION("via default lookup") { REQUIRE(readSmodels(str, observer, opts) == 0); }
+        SECTION("via user lookup") {
+            SmodelsInput reader(observer, opts, [&](std::string_view name) {
+                for (const auto& [id, n] : observer.atoms) {
+                    if (n == name)
+                        return static_cast<Atom_t>(id);
+                }
+                return Atom_t(0);
+            });
+            readProgram(str, reader);
+        }
+
         REQUIRE(observer.heuristics.size() == 4);
         Heuristic exp[] = {{static_cast<Atom_t>(a), Heuristic_t::Sign, -1, 1, {h1}},
                            {static_cast<Atom_t>(a), Heuristic_t::True, 1, 1, {h2}},

@@ -65,10 +65,11 @@
 #define POTASSCO_WARNING_END_RELAXED _Pragma("clang diagnostic pop")
 #else
 #pragma GCC diagnostic push
-#pragma GCC            system_header
+#pragma GCC system_header
 #define POTASSCO_WARNING_BEGIN_RELAXED                                                                                 \
     _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wpragmas\"")                                     \
-        _Pragma("GCC diagnostic ignored \"-Wpedantic\"") _Pragma("GCC diagnostic ignored \"-pedantic\"")
+        _Pragma("GCC diagnostic ignored \"-Wpedantic\"") _Pragma("GCC diagnostic ignored \"-pedantic\"")               \
+            _Pragma("GCC diagnostic ignored \"-Wsign-conversion\"")
 #define POTASSCO_WARNING_END_RELAXED _Pragma("GCC diagnostic pop")
 #endif
 #else

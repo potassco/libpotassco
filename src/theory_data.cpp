@@ -169,15 +169,16 @@ const Id_t* TheoryAtom::rhs() const { return guard_ != 0 ? &term_[nTerms_ + 1] :
 struct TheoryData::Data {
     template <class T>
     struct RawStack {
+        static constexpr auto c_elemSize = sizeof(T); // NOLINT(bugprone-sizeof-expression)
         RawStack() : top(0) {}
         [[nodiscard]] T*       begin() const { return static_cast<T*>(mem.begin()); }
-        [[nodiscard]] uint32_t size() const { return static_cast<uint32_t>(top / sizeof(T)); }
+        [[nodiscard]] uint32_t size() const { return static_cast<uint32_t>(top / c_elemSize); }
 
         void push(const T& x = T()) {
-            mem.grow(top += sizeof(T));
-            new (mem[top - sizeof(T)]) T(x);
+            mem.grow(top += c_elemSize);
+            new (mem[top - c_elemSize]) T(x);
         }
-        void pop() { top -= sizeof(T); }
+        void pop() { top -= c_elemSize; }
         void reset() {
             mem.release();
             top = 0;

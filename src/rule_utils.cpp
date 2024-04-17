@@ -69,34 +69,34 @@ struct RuleBuilder::Rule {
         [[nodiscard]] constexpr T type() const {
             return static_cast<T>(mtype);
         }
+        template <typename T>
+        [[nodiscard]] std::span<const T> toSpan(const MemoryRegion& m) const noexcept {
+            return {static_cast<const T*>(m[mbeg]), len() / sizeof(T)};
+        }
 
         uint32_t mbeg  : 30;
         uint32_t mtype : 2;
         uint32_t mend;
     };
+
+    template <typename T>
+    friend inline Rule* push(Rule* r, MemoryRegion& m, const T& what) {
+        POTASSCO_ASSERT(r == m.begin());
+        uint32_t t = r->top, nt = t + sizeof(T);
+        if (nt > m.size()) {
+            m.grow(nt);
+            r = static_cast<Rule*>(m.begin());
+        }
+        new (m[t]) T(what);
+        r->top = nt;
+        return r;
+    }
     uint32_t top : 31;
     uint32_t fix : 1;
     Span     head{};
     Span     body{};
 };
-namespace {
-template <typename T>
-inline std::span<const T> span_cast(const MemoryRegion& m, const RuleBuilder::Rule::Span& in) {
-    return {static_cast<const T*>(m[in.mbeg]), in.len() / sizeof(T)};
-}
-template <typename T>
-inline RuleBuilder::Rule* push(MemoryRegion& m, RuleBuilder::Rule* r, const T& what) {
-    POTASSCO_ASSERT(r == m.begin());
-    uint32_t t = r->top, nt = t + sizeof(T);
-    if (nt > m.size()) {
-        m.grow(nt);
-        r = static_cast<RuleBuilder::Rule*>(m.begin());
-    }
-    new (m[t]) T(what);
-    r->top = nt;
-    return r;
-}
-} // namespace
+
 RuleBuilder::RuleBuilder() : mem_(64) { new (mem_.begin()) Rule(); }
 RuleBuilder::Rule* RuleBuilder::rule_() const { return static_cast<Rule*>(mem_.begin()); }
 RuleBuilder::RuleBuilder(const RuleBuilder& other) {
@@ -142,7 +142,7 @@ RuleBuilder& RuleBuilder::addHead(Atom_t a) {
         r->head.init(r->top, 0);
     }
     POTASSCO_CHECK_PRE(r->head.mbeg >= r->body.mend, "Invalid call to addHead() after startBody()");
-    r            = push(mem_, r, a);
+    r            = push(r, mem_, a);
     r->head.mend = r->top;
     return *this;
 }
@@ -152,7 +152,7 @@ RuleBuilder& RuleBuilder::clearHead() {
     r->head.init(0, 0);
     return *this;
 }
-AtomSpan RuleBuilder::head() const { return span_cast<Atom_t>(mem_, rule_()->head); }
+AtomSpan RuleBuilder::head() const { return rule_()->head.toSpan<Atom_t>(mem_); }
 Atom_t*  RuleBuilder::head_begin() const { return static_cast<Atom_t*>(mem_[rule_()->head.mbeg]); }
 Atom_t*  RuleBuilder::head_end() const { return static_cast<Atom_t*>(mem_[rule_()->head.mend]); }
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -162,7 +162,7 @@ void RuleBuilder::startBody(Body_t bt, Weight_t bnd) {
     auto* r = unfreeze(true);
     if (not r->body.mend) {
         if (bt != Body_t::Normal) {
-            r = push(mem_, r, bnd);
+            r = push(r, mem_, bnd);
         }
         r->body.init(r->top, bt);
     }
@@ -182,7 +182,7 @@ RuleBuilder& RuleBuilder::startMinimize(Weight_t prio) {
     auto* r = unfreeze(true);
     POTASSCO_CHECK_PRE(not r->head.mbeg && not r->body.mbeg, "Invalid call to startMinimize()");
     r->head.init(r->top, Directive_t::Minimize);
-    r = push(mem_, r, prio);
+    r = push(r, mem_, prio);
     r->body.init(r->top, Body_t::Sum);
     return *this;
 }
@@ -196,7 +196,7 @@ RuleBuilder& RuleBuilder::addGoal(WeightLit_t lit) {
     if (lit.weight == 0) {
         return *this;
     }
-    r            = bodyType() == Body_t::Normal ? push(mem_, r, lit.lit) : push(mem_, r, lit);
+    r            = bodyType() == Body_t::Normal ? push(r, mem_, lit.lit) : push(r, mem_, lit);
     r->body.mend = r->top;
     return *this;
 }
@@ -238,10 +238,10 @@ RuleBuilder& RuleBuilder::weaken(Body_t to, bool w) {
     return *this;
 }
 Body_t       RuleBuilder::bodyType() const { return rule_()->body.type<Body_t>(); }
-LitSpan      RuleBuilder::body() const { return span_cast<Lit_t>(mem_, rule_()->body); }
+LitSpan      RuleBuilder::body() const { return rule_()->body.toSpan<Lit_t>(mem_); }
 Lit_t*       RuleBuilder::lits_begin() const { return static_cast<Lit_t*>(mem_[rule_()->body.mbeg]); }
 Lit_t*       RuleBuilder::lits_end() const { return static_cast<Lit_t*>(mem_[rule_()->body.mend]); }
-Sum_t        RuleBuilder::sum() const { return {span_cast<WeightLit_t>(mem_, rule_()->body), bound()}; }
+Sum_t        RuleBuilder::sum() const { return {rule_()->body.toSpan<WeightLit_t>(mem_), bound()}; }
 WeightLit_t* RuleBuilder::wlits_begin() const { return static_cast<WeightLit_t*>(mem_[rule_()->body.mbeg]); }
 WeightLit_t* RuleBuilder::wlits_end() const { return static_cast<WeightLit_t*>(mem_[rule_()->body.mend]); }
 Weight_t     RuleBuilder::bound() const { return bodyType() != Body_t::Normal ? *bound_() : -1; }

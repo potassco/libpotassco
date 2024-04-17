@@ -26,11 +26,13 @@
 #include <potassco/error.h>
 #include <potassco/rule_utils.h>
 
+POTASSCO_WARNING_BEGIN_RELAXED
+#include <amc/vector.hpp>
+POTASSCO_WARNING_END_RELAXED
+
 #include <ostream>
-#include <string>
 #include <unordered_map>
-#include <vector>
-using StrMap = std::unordered_map<std::string, Potassco::Id_t>;
+
 namespace Potassco {
 
 enum SmodelsRule {
@@ -67,52 +69,64 @@ int isSmodelsRule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLi
     }
     return Cardinality;
 }
-AtomTable::~AtomTable() = default;
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsInput
 /////////////////////////////////////////////////////////////////////////////////////////
-struct SmodelsInput::SymTab : public AtomTable {
-    SymTab(AbstractProgram& o) : out(&o) {}
-    void add(Atom_t id, const std::string_view& name, bool output) override {
-        atoms.insert(StrMap::value_type(name, id));
-        if (output) {
-            auto lit = static_cast<Lit_t>(id);
-            out->output(name, {&lit, 1});
+struct SmodelsInput::StringTab {
+    StringTab()            = default;
+    StringTab(StringTab&&) = delete;
+    ~StringTab() {
+        while (not map.empty()) dealloc(map.extract(map.begin()).key());
+    }
+
+    static const char* alloc(std::string_view n) {
+        char* outName = new char[n.size()];
+        std::copy(n.begin(), n.end(), outName);
+        return outName;
+    }
+    static void dealloc(std::string_view n) { delete[] n.data(); }
+
+    bool addUnique(const std::string_view& name, Id_t id) {
+        if (auto k = std::string_view{alloc(name), name.size()}; map.emplace(k, id).second) {
+            return true;
+        }
+        else {
+            dealloc(k);
+            return false;
         }
     }
-    Atom_t find(const std::string_view& name) override {
-        temp.assign(name);
-        auto it = atoms.find(temp);
-        return it != atoms.end() ? it->second : 0;
+
+    Id_t tryAdd(const std::string_view& name, Id_t id) {
+        if (auto it = map.find(name); it != map.end())
+            return it->second;
+        addUnique(name, id);
+        return id;
     }
-    struct Heuristic {
-        std::string atom;
-        Heuristic_t type;
-        int         bias{};
-        unsigned    prio{};
-        Lit_t       cond;
-    };
-    StrMap           atoms;
-    std::string      temp;
-    AbstractProgram* out;
-};
-struct SmodelsInput::NodeTab {
-    Id_t add(const std::string_view& n) {
-        return nodes.insert(StrMap::value_type(n, (Id_t) nodes.size())).first->second;
+
+    [[nodiscard]] Id_t findOr(const std::string_view& name, Id_t orVal) const {
+        if (auto it = map.find(name); it != map.end()) {
+            return it->second;
+        }
+        return orVal;
     }
-    StrMap nodes;
+    [[nodiscard]] uint32_t size() const noexcept { return map.size(); }
+    using StringMap = std::unordered_map<std::string_view, Id_t>;
+    StringMap map;
 };
-SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts, AtomTable* syms)
+
+SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts, AtomLookup lookup)
     : out_(out)
-    , atoms_(syms)
-    , nodes_(nullptr)
-    , opts_(opts)
-    , delSyms_(false) {}
-SmodelsInput::~SmodelsInput() {
-    if (delSyms_)
-        delete atoms_;
-    delete nodes_;
+    , lookup_(std::move(lookup))
+    , opts_(opts) {
+    if (opts_.cEdge) {
+        nodes_ = std::make_unique<StringTab>();
+    }
+    if (opts_.cHeuristic && not lookup_) {
+        atoms_  = std::make_unique<StringTab>();
+        lookup_ = [this](std::string_view name) { return atoms_->findOr(name, 0); };
+    }
 }
+SmodelsInput::~SmodelsInput() = default;
 void SmodelsInput::doReset() {}
 bool SmodelsInput::doAttach(bool& inc) {
     char n = stream()->peek();
@@ -168,6 +182,15 @@ void SmodelsInput::matchSum(RuleBuilder& rule, bool weights) {
         }
     }
 }
+
+bool SmodelsInput::addHeuristic(std::string_view atom, Heuristic_t type, int bias, unsigned int prio, Lit_t cond) {
+    if (Atom_t id = lookup_(atom); id) {
+        out_.heuristic(id, type, bias, prio, {&cond, 1});
+        return true;
+    }
+    return false;
+}
+
 bool SmodelsInput::readRules() {
     RuleBuilder rule;
     Weight_t    minPrio = 0;
@@ -216,56 +239,73 @@ bool SmodelsInput::readRules() {
 }
 
 bool SmodelsInput::readSymbols() {
-    std::string name;
-    if (opts_.cEdge && nodes_ == nullptr) {
-        nodes_ = new NodeTab;
-    }
-    if (opts_.cHeuristic && atoms_ == nullptr) {
-        atoms_   = new SymTab(out_);
-        delSyms_ = true;
-    }
-    std::string_view               n0, n1;
-    SymTab::Heuristic              heu;
-    std::vector<SymTab::Heuristic> doms;
+    std::string_view           n0, n1;
+    amc::SmallVector<char, 64> scratch;
+    auto                       heuType = Heuristic_t::Init;
+    auto                       bias    = 0;
+    auto                       prio    = 0u;
+    struct Deferred {
+        Lit_t    cond;
+        int32_t  bias;
+        uint32_t prio;
+        uint32_t type : 3;
+        uint32_t size : 29;
+    };
+    static constexpr auto c_defSize = sizeof(Deferred);
+    static_assert(c_defSize == 16);
+    amc::vector<char> deferredDom;
+
     for (Lit_t atom; (atom = (Lit_t) matchPos()) != 0;) {
-        name.clear();
+        scratch.clear();
         stream()->get();
         for (char c; (c = stream()->get()) != '\n';) {
             require(c != 0, "atom name expected!");
-            name += c;
+            scratch.push_back(c);
         }
-        const char* n      = name.c_str();
+        std::string_view name{scratch.data(), scratch.size()};
+        scratch.push_back(0);
+        const char* n      = scratch.data();
         bool        filter = false;
         if (opts_.cEdge && matchEdgePred(n, n0, n1) > 0) {
-            Id_t s = nodes_->add(n0);
-            Id_t t = nodes_->add(n1);
+            Id_t s = nodes_->tryAdd(n0, nodes_->size());
+            Id_t t = nodes_->tryAdd(n1, nodes_->size());
             out_.acycEdge(static_cast<int>(s), static_cast<int>(t), {&atom, 1});
             filter = opts_.filter;
         }
-        else if (opts_.cHeuristic && matchDomHeuPred(n, n0, heu.type, heu.bias, heu.prio) > 0) {
-            heu.cond = atom;
-            heu.atom.assign(n0);
-            doms.push_back(heu);
+        else if (opts_.cHeuristic && matchDomHeuPred(n, n0, heuType, bias, prio) > 0) {
+            if (not addHeuristic(n0, heuType, bias, prio, atom)) { // atom n0 not (yet) seen - try again later
+                Deferred def{.cond = atom,
+                             .bias = bias,
+                             .prio = prio,
+                             .type = static_cast<uint32_t>(heuType),
+                             .size = static_cast<uint32_t>(n0.size())};
+                POTASSCO_CHECK_PRE(def.size == n0.size(), "Name too long");
+                auto* bytes = reinterpret_cast<char*>(&def);
+                deferredDom.append(bytes, bytes + sizeof(Deferred));
+                deferredDom.append(n0.begin(), n0.end());
+            }
             filter = opts_.filter;
         }
-        if (atoms_) {
-            atoms_->add(Potassco::atom(atom), name, not filter);
-        }
-        else if (not filter) {
+        if (not filter) {
             out_.output(name, {&atom, 1});
         }
-    }
-    for (const auto& dom : doms) {
-        if (Atom_t x = atoms_->find(dom.atom)) {
-            out_.heuristic(x, dom.type, dom.bias, dom.prio, {&dom.cond, 1});
+        if (atoms_) {
+            POTASSCO_CHECK_PRE(atoms_->addUnique(name, Potassco::atom(atom)), "Redefinition: atom '%s' already exists",
+                               scratch.data());
         }
     }
+    for (auto defDom = std::span{deferredDom}; defDom.size() > c_defSize;) {
+        Deferred data;
+        std::memcpy(&data, defDom.data(), c_defSize);
+        auto name = std::string_view{defDom.data() + c_defSize, data.size};
+        POTASSCO_ASSERT(defDom.size() >= data.size + c_defSize);
+        addHeuristic(name, static_cast<Heuristic_t>(data.type), data.bias, data.prio, data.cond);
+        defDom = defDom.subspan(c_defSize + data.size);
+    }
+
     if (not incremental()) {
-        delete nodes_;
-        if (delSyms_)
-            delete atoms_;
-        nodes_ = nullptr;
-        atoms_ = nullptr;
+        nodes_.reset();
+        atoms_.reset();
     }
     return true;
 }

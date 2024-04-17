@@ -25,25 +25,20 @@
 
 #include <potassco/match_basic_types.h>
 
+#include <functional>
+#include <memory>
+
 namespace Potassco {
 /*!
  * \addtogroup ParseType
  */
 ///@{
 
-//! Interface representing an smodels-style symbol table.
-class AtomTable {
-public:
-    virtual ~AtomTable();
-    //! Associate a name with the given (output) atom.
-    virtual void add(Atom_t id, const std::string_view& name, bool output) = 0;
-    //! Return the atom with the given name or 0 if no such atom was previously added.
-    virtual Atom_t find(const std::string_view& name) = 0;
-};
-
 //! Class for parsing logic programs in (extended) smodels format.
 class SmodelsInput : public ProgramReader {
 public:
+    //! (Optional) lookup function for finding atoms by name. Should return 0 if given name is not a known atom.
+    using AtomLookup = std::function<Atom_t(std::string_view name)>;
     //! Options for configuring reading of smodels format.
     struct Options {
         Options() : claspExt(false), cEdge(false), cHeuristic(false), filter(false) {}
@@ -73,7 +68,11 @@ public:
         bool filter;
     };
     //! Creates a new parser object that calls out on each parsed element.
-    SmodelsInput(AbstractProgram& out, const Options& opts, AtomTable* symTab = nullptr);
+    /*!
+     * \note The (optional) lookup function is used to lookup atoms referenced in _heuristic predicates. If not given,
+     *       SmodelsInput maintains an internal lookup table for this.
+     */
+    SmodelsInput(AbstractProgram& out, const Options& opts, AtomLookup lookup = nullptr);
     ~SmodelsInput() override;
 
 protected:
@@ -97,15 +96,16 @@ protected:
     virtual bool readExtra();
 
 private:
-    struct NodeTab;
-    struct SymTab;
-    void             matchBody(RuleBuilder& rule);
-    void             matchSum(RuleBuilder& rule, bool weights);
-    AbstractProgram& out_;
-    AtomTable*       atoms_;
-    NodeTab*         nodes_;
-    Options          opts_;
-    bool             delSyms_;
+    struct StringTab;
+    void matchBody(RuleBuilder& rule);
+    void matchSum(RuleBuilder& rule, bool weights);
+    bool addHeuristic(std::string_view atom, Heuristic_t type, int bias, unsigned prio, Lit_t cond);
+
+    AbstractProgram&           out_;
+    AtomLookup                 lookup_;
+    std::unique_ptr<StringTab> atoms_;
+    std::unique_ptr<StringTab> nodes_;
+    Options                    opts_;
 };
 
 /*!

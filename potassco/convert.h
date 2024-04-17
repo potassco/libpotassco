@@ -23,7 +23,7 @@
 //
 #pragma once
 
-#include <potassco/smodels.h>
+#include <potassco/match_basic_types.h>
 
 namespace Potassco {
 
@@ -69,8 +69,6 @@ public:
 
     //! Returns the output literal associated to in.
     [[nodiscard]] Lit_t get(Lit_t in) const;
-    //! Returns the name associated with the given (output) smodels atom or 0 if no name exists.
-    [[nodiscard]] const char* getName(Atom_t a) const;
     //! Returns the max used smodels atom (valid atoms are [1..n]).
     [[nodiscard]] unsigned maxAtom() const;
 

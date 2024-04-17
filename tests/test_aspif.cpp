@@ -114,6 +114,35 @@ static unsigned compareRead(std::stringstream& input, ReadObserver& observer, co
     }
     return subset.second;
 }
+TEST_CASE("Test MemoryRegion", "[rule]") {
+    SECTION("starts empty") {
+        MemoryRegion r;
+        REQUIRE(r.size() == 0);
+        REQUIRE(r.begin() == r.end());
+    }
+    SECTION("supports initial size") {
+        MemoryRegion r(256);
+        REQUIRE(r.size() == 256);
+        REQUIRE(std::distance((char*) r.begin(), (char*) r.end()) == 256);
+    }
+    SECTION("grows geometrically") {
+        MemoryRegion r;
+        for (int i = 0; i != 10; ++i) { r.grow(r.size() + 1); }
+        REQUIRE(r.size() >= 50);
+    }
+    SECTION("copies data on grow") {
+        MemoryRegion r;
+        r.grow(12);
+        std::memset(r[0], 'A', 12);
+        r.grow(24);
+        std::memset(r[12], 'B', 12);
+        std::string exp(12, 'A');
+        exp.append(12, 'B');
+        r.grow(r.size() + 1);
+        *(char*) r[24] = 0;
+        REQUIRE(exp == (char*) r.begin());
+    }
+}
 TEST_CASE("Test RuleBuilder", "[rule]") {
     RuleBuilder rb;
     SECTION("simple rule") {
@@ -379,8 +408,7 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         REQUIRE(vis.out.str() == "&diff{-(end(1),start(1))}<=200");
     }
     SECTION("ignore comments") {
-        input << (unsigned) Directive_t::Comment << "Hello World"
-              << "\n";
+        input << (unsigned) Directive_t::Comment << "Hello World" << "\n";
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
     }
