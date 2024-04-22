@@ -289,10 +289,10 @@ void MemoryRegion::swap(MemoryRegion& other) {
 }
 void MemoryRegion::grow(std::size_t n) {
 	if (n > size()) {
-		std::size_t nc = std::max(n, (size() * 3) >> 1);
+		std::size_t nc = std::max(n, (size() * 3 + 1) >> 1);
 		void* t = std::realloc(beg_, nc);
 		POTASSCO_CHECK(t, ENOMEM);
-		beg_ = t; end_ = static_cast<unsigned char*>(t)+n;
+		beg_ = t; end_ = static_cast<unsigned char*>(t)+nc;
 	}
 }
 
