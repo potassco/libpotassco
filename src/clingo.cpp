@@ -24,17 +24,17 @@
 
 namespace Potassco {
 AbstractAssignment::~AbstractAssignment() = default;
-bool     AbstractAssignment::isTotal() const { return unassigned() == 0u; }
-bool     AbstractAssignment::isFixed(Lit_t lit) const { return value(lit) != Value_t::Free && level(lit) == 0; }
-bool     AbstractAssignment::isTrue(Lit_t lit) const { return value(lit) == Value_t::True; }
-bool     AbstractAssignment::isFalse(Lit_t lit) const { return value(lit) == Value_t::False; }
-uint32_t AbstractAssignment::trailEnd(uint32_t level) const {
-    return level < this->level() ? this->trailBegin(level + 1) : this->trailSize();
-}
-
 AbstractSolver::~AbstractSolver()         = default;
 AbstractPropagator::~AbstractPropagator() = default;
 AbstractHeuristic::~AbstractHeuristic()   = default;
 AbstractStatistics::~AbstractStatistics() = default;
+
+auto AbstractAssignment::isTotal() const -> bool { return unassigned() == 0u; }
+auto AbstractAssignment::isFixed(Lit_t lit) const -> bool { return value(lit) != Value_t::Free && level(lit) == 0; }
+auto AbstractAssignment::isTrue(Lit_t lit) const -> bool { return value(lit) == Value_t::True; }
+auto AbstractAssignment::isFalse(Lit_t lit) const -> bool { return value(lit) == Value_t::False; }
+auto AbstractAssignment::trailEnd(uint32_t lev) const -> uint32_t {
+    return lev < level() ? trailBegin(lev + 1) : trailSize();
+}
 
 } // namespace Potassco

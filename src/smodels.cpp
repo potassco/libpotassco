@@ -26,10 +26,7 @@
 #include <potassco/error.h>
 #include <potassco/rule_utils.h>
 
-POTASSCO_WARNING_BEGIN_RELAXED
-#include <amc/vector.hpp>
-POTASSCO_WARNING_END_RELAXED
-
+#include <cstring>
 #include <ostream>
 #include <unordered_map>
 
@@ -48,9 +45,9 @@ enum SmodelsRule {
     ClaspAssignExt  = 91,
     ClaspReleaseExt = 92
 };
-int isSmodelsHead(Head_t t, const AtomSpan& head) {
+int isSmodelsHead(Head_t t, const AtomSpan& head, bool allowConstraint) {
     if (head.empty()) {
-        return End;
+        return allowConstraint && t != Head_t::Choice ? Basic : End;
     }
     if (t == Head_t::Choice) {
         return Choice;
@@ -58,16 +55,18 @@ int isSmodelsHead(Head_t t, const AtomSpan& head) {
     return head.size() == 1 ? Basic : Disjunctive;
 }
 
-int isSmodelsRule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
-    if (isSmodelsHead(t, head) != Basic || bound < 0) {
+int isSmodelsRule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body, bool allowConstraint) {
+    if (isSmodelsHead(t, head, allowConstraint) != Basic || bound < 0) {
         return End;
     }
+    auto ret = Cardinality;
     for (const auto& wl : body) {
-        if (weight(wl) != 1) {
-            return Weight;
-        }
+        if (auto w = weight(wl); w < 0)
+            return End;
+        else if (w != 1)
+            ret = Weight;
     }
-    return Cardinality;
+    return ret;
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsInput
@@ -81,7 +80,7 @@ struct SmodelsInput::StringTab {
 
     static const char* alloc(std::string_view n) {
         char* outName = new char[n.size()];
-        std::copy(n.begin(), n.end(), outName);
+        std::ranges::copy(n, outName);
         return outName;
     }
     static void dealloc(std::string_view n) { delete[] n.data(); }
@@ -129,7 +128,7 @@ SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts, AtomLookup
 SmodelsInput::~SmodelsInput() = default;
 void SmodelsInput::doReset() {}
 bool SmodelsInput::doAttach(bool& inc) {
-    char n = stream()->peek();
+    auto n = stream()->peek();
     if (BufferedStream::isDigit(n) && ((inc = (n == '9')) == false || opts_.claspExt)) {
         out_.initProgram(inc);
         return true;
@@ -147,8 +146,8 @@ bool SmodelsInput::doParse() {
 }
 
 void SmodelsInput::matchBody(RuleBuilder& rule) {
-    uint32_t len = matchPos();
-    uint32_t neg = matchPos();
+    auto len = matchPos();
+    auto neg = matchPos();
     for (rule.startBody(); len--;) {
         Lit_t p = lit(matchAtom());
         if (neg) {
@@ -160,35 +159,27 @@ void SmodelsInput::matchBody(RuleBuilder& rule) {
 }
 
 void SmodelsInput::matchSum(RuleBuilder& rule, bool weights) {
-    uint32_t bnd = matchPos();
-    uint32_t len = matchPos();
-    uint32_t neg = matchPos();
+    auto bnd = matchPos();
+    auto len = matchPos();
+    auto neg = matchPos();
     if (not weights) {
         std::swap(len, bnd);
         std::swap(bnd, neg);
     }
     rule.startSum(static_cast<Weight_t>(bnd));
     for (uint32_t i = 0; i != len; ++i) {
-        Lit_t p = lit(matchAtom());
+        auto p = lit(matchAtom());
         if (neg) {
             p *= -1;
             --neg;
         }
-        rule.addGoal(p, 1);
+        rule.addGoal(p);
     }
     if (weights) {
-        for (WeightLit_t *x = rule.wlits_begin(), *end = x + len; x != end; ++x) {
+        for (auto *x = rule.wlits_begin(), *end = x + len; x != end; ++x) {
             x->weight = (Weight_t) matchPos("non-negative weight expected");
         }
     }
-}
-
-bool SmodelsInput::addHeuristic(std::string_view atom, Heuristic_t type, int bias, unsigned int prio, Lit_t cond) {
-    if (Atom_t id = lookup_(atom); id) {
-        out_.heuristic(id, type, bias, prio, {&cond, 1});
-        return true;
-    }
-    return false;
 }
 
 bool SmodelsInput::readRules() {
@@ -239,50 +230,52 @@ bool SmodelsInput::readRules() {
 }
 
 bool SmodelsInput::readSymbols() {
-    std::string_view           n0, n1;
-    amc::SmallVector<char, 64> scratch;
-    auto                       heuType = Heuristic_t::Init;
-    auto                       bias    = 0;
-    auto                       prio    = 0u;
+    std::string_view n0, n1;
+    DynamicBuffer    scratch;
+    auto             heuType = Heuristic_t::Init;
+    auto             bias    = 0;
+    auto             prio    = 0u;
     struct Deferred {
-        Lit_t    cond;
-        int32_t  bias;
-        uint32_t prio;
-        uint32_t type : 3;
-        uint32_t size : 29;
+        constexpr bool setAtom(Atom_t a) { return a && ((sizeOrId = a) == a) && (atom = 1); }
+        Lit_t          cond;
+        int32_t        bias;
+        uint32_t       prio;
+        uint32_t       type     : 3;
+        uint32_t       atom     : 1;
+        uint32_t       sizeOrId : 28;
     };
     static constexpr auto c_defSize = sizeof(Deferred);
     static_assert(c_defSize == 16);
-    amc::vector<char> deferredDom;
+    DynamicBuffer deferredDom;
 
     for (Lit_t atom; (atom = (Lit_t) matchPos()) != 0;) {
         scratch.clear();
         stream()->get();
         for (char c; (c = stream()->get()) != '\n';) {
             require(c != 0, "atom name expected!");
-            scratch.push_back(c);
+            scratch.push(c);
         }
-        std::string_view name{scratch.data(), scratch.size()};
-        scratch.push_back(0);
-        const char* n      = scratch.data();
-        bool        filter = false;
+        scratch.push(0);
+        auto        name   = scratch.view(0, scratch.size() - 1);
+        const auto* n      = scratch.data();
+        auto        filter = false;
         if (opts_.cEdge && matchEdgePred(n, n0, n1) > 0) {
-            Id_t s = nodes_->tryAdd(n0, nodes_->size());
-            Id_t t = nodes_->tryAdd(n1, nodes_->size());
-            out_.acycEdge(static_cast<int>(s), static_cast<int>(t), {&atom, 1});
+            auto s = (int) nodes_->tryAdd(n0, nodes_->size());
+            auto t = (int) nodes_->tryAdd(n1, nodes_->size());
+            out_.acycEdge(s, t, {&atom, 1});
             filter = opts_.filter;
         }
         else if (opts_.cHeuristic && matchDomHeuPred(n, n0, heuType, bias, prio) > 0) {
-            if (not addHeuristic(n0, heuType, bias, prio, atom)) { // atom n0 not (yet) seen - try again later
-                Deferred def{.cond = atom,
-                             .bias = bias,
-                             .prio = prio,
-                             .type = static_cast<uint32_t>(heuType),
-                             .size = static_cast<uint32_t>(n0.size())};
-                POTASSCO_CHECK_PRE(def.size == n0.size(), "Name too long");
-                auto* bytes = reinterpret_cast<char*>(&def);
-                deferredDom.append(bytes, bytes + sizeof(Deferred));
-                deferredDom.append(n0.begin(), n0.end());
+            auto type = static_cast<uint32_t>(heuType);
+            auto def  = Deferred{.cond = atom, .bias = bias, .prio = prio, .type = type, .atom = 0, .sizeOrId = 0};
+            if (def.setAtom(lookup_(n0))) {
+                std::memcpy(deferredDom.alloc(c_defSize).data(), &def, c_defSize);
+            }
+            else { // atom n0 not (yet) seen - lookup again later
+                POTASSCO_CHECK_PRE((def.sizeOrId = n0.size()) == n0.size(), "Name too long");
+                auto space = deferredDom.alloc(c_defSize + n0.size());
+                std::memcpy(space.data(), &def, c_defSize);
+                std::memcpy(space.data() + c_defSize, n0.data(), n0.size());
             }
             filter = opts_.filter;
         }
@@ -294,13 +287,20 @@ bool SmodelsInput::readSymbols() {
                                scratch.data());
         }
     }
-    for (auto defDom = std::span{deferredDom}; defDom.size() > c_defSize;) {
+    for (auto dom = deferredDom.view(); dom.size() > c_defSize;) {
         Deferred data;
-        std::memcpy(&data, defDom.data(), c_defSize);
-        auto name = std::string_view{defDom.data() + c_defSize, data.size};
-        POTASSCO_ASSERT(defDom.size() >= data.size + c_defSize);
-        addHeuristic(name, static_cast<Heuristic_t>(data.type), data.bias, data.prio, data.cond);
-        defDom = defDom.subspan(c_defSize + data.size);
+        std::memcpy(&data, dom.data(), c_defSize);
+        dom.remove_prefix(c_defSize);
+        auto atomId = data.sizeOrId;
+        if (not data.atom) {
+            auto name = std::string_view{dom.data(), data.sizeOrId};
+            POTASSCO_ASSERT(dom.size() >= data.sizeOrId);
+            dom.remove_prefix(data.sizeOrId);
+            atomId = lookup_(name);
+        }
+        if (atomId) {
+            out_.heuristic(atomId, static_cast<Heuristic_t>(data.type), data.bias, data.prio, {&data.cond, 1});
+        }
     }
 
     if (not incremental()) {
@@ -336,28 +336,17 @@ int readSmodels(std::istream& in, AbstractProgram& out, const SmodelsInput::Opti
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsOutput
 /////////////////////////////////////////////////////////////////////////////////////////
-namespace {
-struct Atom {
-    template <class T>
-    Atom_t operator()(T x) const {
-        return atom(x);
-    }
-};
-struct SmWeight {
-    uint32_t operator()(const WeightLit_t& x) const {
-        return static_cast<unsigned>(x.weight >= 0 ? x.weight : -x.weight);
-    }
-};
-inline Lit_t smLit(const WeightLit_t& x) { return x.weight >= 0 ? x.lit : -x.lit; }
-inline Lit_t smLit(Lit_t x) { return x; }
-template <class T>
-unsigned negSize(const std::span<T>& lits) {
+static constexpr Lit_t smLit(const WeightLit_t& x) { return x.weight >= 0 ? x.lit : -x.lit; }
+static constexpr Lit_t smLit(Lit_t x) { return x; }
+template <typename T>
+static constexpr unsigned negSize(const std::span<T>& lits) {
     unsigned r = 0;
     for (const auto& x : lits) { r += smLit(x) < 0; }
     return r;
 }
-template <class T, class Op>
-void print(std::ostream& os, const std::span<T>& span, unsigned neg, unsigned pos, Op op) {
+
+template <typename T, typename Op>
+static void print(std::ostream& os, const std::span<T>& span, unsigned neg, unsigned pos, Op op) {
     for (auto it = span.begin(); neg; ++it) {
         if (smLit(*it) < 0) {
             os << " " << op(*it);
@@ -371,7 +360,10 @@ void print(std::ostream& os, const std::span<T>& span, unsigned neg, unsigned po
         }
     }
 }
-} // namespace
+template <typename T>
+static void print(std::ostream& os, const std::span<T>& span, unsigned neg, unsigned pos) {
+    print(os, span, neg, pos, [](auto x) { return atom(x); });
+}
 SmodelsOutput::SmodelsOutput(std::ostream& os, bool ext, Atom_t fAtom)
     : os_(os)
     , false_(fAtom)
@@ -380,6 +372,7 @@ SmodelsOutput::SmodelsOutput(std::ostream& os, bool ext, Atom_t fAtom)
     , inc_(false)
     , fHead_(false) {}
 SmodelsOutput& SmodelsOutput::startRule(int rt) {
+    POTASSCO_CHECK_PRE(sec_ == 0 || rt == End || rt >= ClaspIncrement, "adding rules after symbols not supported");
     os_ << rt;
     return *this;
 }
@@ -388,6 +381,11 @@ SmodelsOutput& SmodelsOutput::add(unsigned i) {
     return *this;
 }
 SmodelsOutput& SmodelsOutput::add(Head_t ht, const AtomSpan& head) {
+    if (head.empty()) {
+        POTASSCO_CHECK_PRE(false_ != 0 && ht == Head_t::Disjunctive, "empty head requires false atom");
+        fHead_ = true;
+        return add(false_);
+    }
     if (ht == Head_t::Choice || head.size() > 1) {
         add((unsigned) head.size());
     }
@@ -398,7 +396,7 @@ SmodelsOutput& SmodelsOutput::add(Head_t ht, const AtomSpan& head) {
 SmodelsOutput& SmodelsOutput::add(const LitSpan& lits) {
     unsigned neg = negSize(lits), size = static_cast<unsigned>(lits.size());
     add(size).add(neg);
-    print(os_, lits, neg, size - neg, Atom());
+    print(os_, lits, neg, size - neg);
     return *this;
 }
 SmodelsOutput& SmodelsOutput::add(Weight_t bnd, const WeightLitSpan& lits, bool card) {
@@ -410,9 +408,9 @@ SmodelsOutput& SmodelsOutput::add(Weight_t bnd, const WeightLitSpan& lits, bool 
     if (card) {
         add(static_cast<unsigned>(bnd));
     }
-    print(os_, lits, neg, size - neg, Atom());
+    print(os_, lits, neg, size - neg);
     if (not card) {
-        print(os_, lits, neg, size - neg, SmWeight());
+        print(os_, lits, neg, size - neg, [](const WeightLit_t& wl) { return wl.weight; });
     }
     return *this;
 }
@@ -425,36 +423,23 @@ void SmodelsOutput::initProgram(bool b) {
     inc_ = b;
 }
 void SmodelsOutput::beginStep() {
+    sec_   = 0;
+    fHead_ = false;
     if (ext_ && inc_) {
         startRule(ClaspIncrement).add(0).endRule();
     }
-    sec_   = 0;
-    fHead_ = false;
 }
 void SmodelsOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
-    POTASSCO_CHECK_PRE(sec_ == 0, "adding rules after symbols not supported");
-    if (head.empty()) {
-        if (ht == Head_t::Choice) {
-            return;
-        }
-        else {
-            POTASSCO_CHECK_PRE(false_ != 0, "empty head requires false atom");
-            fHead_ = true;
-            return SmodelsOutput::rule(ht, {&false_, 1}, body);
-        }
-    }
-    auto rt = (SmodelsRule) isSmodelsHead(ht, head);
+    if (head.empty() && ht == Head_t::Choice)
+        return;
+    auto rt = (SmodelsRule) isSmodelsHead(ht, head, false_ != 0);
     POTASSCO_CHECK_PRE(rt != End, "unsupported rule type");
     startRule(rt).add(ht, head).add(body).endRule();
 }
 void SmodelsOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
-    POTASSCO_CHECK_PRE(sec_ == 0, "adding rules after symbols not supported");
-    if (head.empty()) {
-        POTASSCO_CHECK_PRE(false_ != 0, "empty head requires false atom");
-        fHead_ = true;
-        return SmodelsOutput::rule(ht, {&false_, 1}, bound, body);
-    }
-    auto rt = (SmodelsRule) isSmodelsRule(ht, head, bound, body);
+    if (head.empty() && ht == Head_t::Choice)
+        return;
+    auto rt = (SmodelsRule) isSmodelsRule(ht, head, bound, body, false_ != 0);
     POTASSCO_CHECK_PRE(rt != End, "unsupported rule type");
     startRule(rt).add(ht, head).add(bound, body, rt == Cardinality).endRule();
 }

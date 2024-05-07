@@ -25,6 +25,8 @@
 
 #include <potassco/match_basic_types.h>
 
+#include <memory>
+
 namespace Potassco {
 
 //! Converts a given program so that it can be expressed in smodels format.
@@ -37,9 +39,9 @@ public:
     /*!
      * The parameter enableClaspExt determines how heuristic, edge, and external directives are handled.
      * If true, heuristic and edge directives are converted to _heuristic and _edge predicates, while external
-     * directives are passed to out.
-     * Otherwise, heuristic and edge directives are not converted but directly passed to out, while external directives
-     * are mapped to choice rules or integrity constraints.
+     * directives are passed to `out`.
+     * Otherwise, heuristic and edge directives are not converted but directly passed to `out`, while external
+     * directives are mapped to choice rules or integrity constraints.
      */
     SmodelsConvert(AbstractProgram& out, bool enableClaspExt);
     ~SmodelsConvert() override;
@@ -55,9 +57,9 @@ public:
     void rule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override;
     //! Converts literals associated with a priority to a set of corresponding smodels minimize rules.
     void minimize(Weight_t prio, const WeightLitSpan& lits) override;
-    //! Adds an atom named str that is equivalent to the condition to the symbol table.
-    void output(const std::string_view& str, const LitSpan& cond) override;
-    //! Marks the atom that is equivalent to a as external.
+    //! Adds an atom with the given name that is equivalent to the condition to the symbol table.
+    void output(const std::string_view& name, const LitSpan& cond) override;
+    //! Marks the atom that is equivalent to `a` as external.
     void external(Atom_t a, Value_t v) override;
     //! Adds an _heuristic predicate over the given atom to the symbol table that is equivalent to condition.
     void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;
@@ -88,9 +90,9 @@ protected:
 
 private:
     struct SmData;
-    AbstractProgram& out_;
-    SmData*          data_;
-    bool             ext_;
+    AbstractProgram&        out_;
+    std::unique_ptr<SmData> data_;
+    bool                    ext_;
 };
 
 } // namespace Potassco

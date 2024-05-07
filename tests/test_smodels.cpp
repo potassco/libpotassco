@@ -260,6 +260,22 @@ TEST_CASE("Write smodels", "[smodels]") {
         exp << "0\n0\nB+\n0\nB-\n0\n1\n";
         REQUIRE(str.str() == exp.str());
     }
+    SECTION("constraints require false atom") {
+        REQUIRE_THROWS_AS(writer.rule(Head_t::Disjunctive, {}, {}), std::logic_error);
+        REQUIRE_NOTHROW(writer.rule(Head_t::Choice, {}, {}));
+        writer.endStep();
+        exp << "0\n0\nB+\n0\nB-\n0\n1\n";
+        REQUIRE(str.str() == exp.str());
+        str.clear();
+        str.str("");
+        SmodelsOutput withFalse(str, false, 1);
+        Vec<Lit_t>    body = {2, -3, -4, 5};
+        REQUIRE_NOTHROW(withFalse.rule(Head_t::Disjunctive, {}, body));
+        Vec<WeightLit_t> wbody = {{2, 2}, {-3, 1}, {-4, 3}, {5, 4}};
+        REQUIRE_NOTHROW(withFalse.rule(Head_t::Disjunctive, {}, 2, wbody));
+        REQUIRE(str.str().find("1 1 4 2 3 4 2 5") != std::string::npos);
+        REQUIRE(str.str().find("5 1 2 4 2 3 4 2 5 1 3 2 4") != std::string::npos);
+    }
     SECTION("body literals are correctly reordered") {
         Atom_t     a    = 1;
         Vec<Lit_t> body = {2, -3, -4, 5};
@@ -450,6 +466,15 @@ TEST_CASE("Convert to smodels", "[convert]") {
         RawRule r = {convert.get(lit(a)), convert.get(4), convert.get(-3), convert.get(-2), convert.get(5)};
         REQUIRE(observer.rules[Rule_t::Basic][0] == r);
     }
+    SECTION("convert sum rule") {
+        Atom_t  a    = 1;
+        AggLits lits = {{4, 2}, {-3, 3}, {-2, 1}, {5, 4}};
+        convert.rule(Head_t::Disjunctive, {&a, 1}, 3, {begin(lits), lits.size()});
+        REQUIRE(observer.rules[Rule_t::Weight].size() == 1);
+        RawRule sr = {convert.get(lit(a)), 3, convert.get(4), 2, convert.get(-3), 3,
+                      convert.get(-2),     1, convert.get(5), 4};
+        REQUIRE(observer.rules[Rule_t::Weight][0] == sr);
+    }
     SECTION("convert mixed rule") {
         std::initializer_list<Atom_t> h    = {1, 2, 3};
         AggLits                       lits = {{4, 2}, {-3, 3}, {-2, 1}, {5, 4}};
@@ -461,6 +486,15 @@ TEST_CASE("Convert to smodels", "[convert]") {
         RawRule sr  = {aux, 3, convert.get(4), 2, convert.get(-3), 3, convert.get(-2), 1, convert.get(5), 4};
         REQUIRE(cr == observer.rules[Rule_t::Choice][0]);
         REQUIRE(sr == observer.rules[Rule_t::Weight][0]);
+    }
+    SECTION("convert invalid rule") {
+        std::initializer_list<Atom_t> h    = {1, 2, 3};
+        AggLits                       lits = {{4, 2}, {-3, 3}, {-2, 1}, {5, 4}};
+        REQUIRE_THROWS_AS(convert.rule(Head_t::Choice, {begin(h), h.size()}, -2, {begin(lits), lits.size()}),
+                          std::logic_error);
+        AggLits invalid = {{4, 2}, {-3, -3}};
+        REQUIRE_THROWS_AS(convert.rule(Head_t::Choice, {begin(h), h.size()}, 2, {begin(invalid), invalid.size()}),
+                          std::logic_error);
     }
 
     SECTION("convert minimize") {

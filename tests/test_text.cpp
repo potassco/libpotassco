@@ -205,6 +205,14 @@ TEST_CASE("Text writer ", "[text]") {
         read(prg, input);
         REQUIRE(output.str() == "foo.\n");
     }
+    SECTION("long named fact") {
+        std::string longName(33, 'a');
+        input << "x1.\n#output " << longName << " : x1.";
+        read(prg, input);
+        longName.push_back('.');
+        longName.push_back('\n');
+        REQUIRE(output.str() == longName);
+    }
     SECTION("simple choice") {
         input << "{x1,x2}.\n#output foo : x1.";
         read(prg, input);

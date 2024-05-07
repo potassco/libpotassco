@@ -26,7 +26,7 @@
 #include <potassco/error.h>
 
 #include <algorithm>
-#include <cstring>
+#include <utility>
 
 namespace Potassco {
 Rule_t Rule_t::normal(Head_t ht, const AtomSpan& head, const LitSpan& body) {
@@ -51,236 +51,183 @@ Rule_t Rule_t::sum(Head_t ht, const AtomSpan& head, Weight_t bound, const Weight
 /////////////////////////////////////////////////////////////////////////////////////////
 // RuleBuilder
 /////////////////////////////////////////////////////////////////////////////////////////
-struct RuleBuilder::Rule {
-    Rule() {
-        head.init(0, 0);
-        body.init(0, 0);
-        top = sizeof(Rule);
-        fix = 0;
-    }
-    struct Span {
-        template <typename T>
-        void init(uint32_t p, T t) {
-            mbeg = mend = p;
-            mtype       = static_cast<uint32_t>(t);
-        }
-        [[nodiscard]] constexpr uint32_t len() const { return mend - mbeg; }
-        template <typename T>
-        [[nodiscard]] constexpr T type() const {
-            return static_cast<T>(mtype);
-        }
-        template <typename T>
-        [[nodiscard]] std::span<const T> toSpan(const MemoryRegion& m) const noexcept {
-            return {static_cast<const T*>(m[mbeg]), len() / sizeof(T)};
-        }
-
-        uint32_t mbeg  : 30;
-        uint32_t mtype : 2;
-        uint32_t mend;
-    };
-
-    template <typename T>
-    friend inline Rule* push(Rule* r, MemoryRegion& m, const T& what) {
-        POTASSCO_ASSERT(r == m.begin());
-        uint32_t t = r->top, nt = t + sizeof(T);
-        if (nt > m.size()) {
-            m.grow(nt);
-            r = static_cast<Rule*>(m.begin());
-        }
-        new (m[t]) T(what);
-        r->top = nt;
-        return r;
-    }
-    uint32_t top : 31;
-    uint32_t fix : 1;
-    Span     head{};
-    Span     body{};
-};
-
-RuleBuilder::RuleBuilder() : mem_(64) { new (mem_.begin()) Rule(); }
-RuleBuilder::Rule* RuleBuilder::rule_() const { return static_cast<Rule*>(mem_.begin()); }
-RuleBuilder::RuleBuilder(const RuleBuilder& other) {
-    mem_.grow(other.rule_()->top);
-    std::memcpy(mem_.begin(), other.mem_.begin(), other.rule_()->top);
+template <typename T>
+requires(std::is_pointer_v<T>)
+static T storage_cast(const DynamicBuffer& mem, uint32_t pos) {
+    return reinterpret_cast<T>(mem.data(pos));
 }
-RuleBuilder& RuleBuilder::operator=(const RuleBuilder& other) {
-    RuleBuilder(other).swap(*this);
+template <typename T, typename R>
+static std::span<T> makeSpan(const DynamicBuffer& mem, const R& range) {
+    return {storage_cast<T*>(mem, range.start()), (range.end() - range.start()) / sizeof(T)};
+}
+RuleBuilder::RuleBuilder(RuleBuilder&& other) noexcept
+    : mem_(std::move(other.mem_))
+    , head_(std::exchange(other.head_, {}))
+    , body_(std::exchange(other.body_, {})) {}
+RuleBuilder& RuleBuilder::operator=(RuleBuilder&& other) noexcept {
+    if (this != &other) {
+        RuleBuilder(std::move(other)).swap(*this);
+    }
     return *this;
 }
-RuleBuilder::~RuleBuilder() { mem_.release(); }
-void         RuleBuilder::swap(RuleBuilder& other) { mem_.swap(other.mem_); }
+void RuleBuilder::swap(RuleBuilder& other) noexcept {
+    mem_.swap(other.mem_);
+    std::swap(head_, other.head_);
+    std::swap(body_, other.body_);
+}
 RuleBuilder& RuleBuilder::clear() {
-    new (mem_.begin()) Rule();
+    mem_.clear();
+    head_ = body_ = {};
     return *this;
 }
-RuleBuilder::Rule* RuleBuilder::unfreeze(bool discard) {
-    auto* r = rule_();
-    if (r->fix) {
-        if (not discard) {
-            r->fix = 0;
-        }
-        else {
-            clear();
+bool RuleBuilder::frozen() const { return (head_.end_flag & 3u) == 3u && (body_.end_flag & 3u) == 3u; }
+void RuleBuilder::start(Range& r, uint32_t type, const Weight_t* bound) {
+    if (not frozen()) {
+        POTASSCO_CHECK_PRE(r.open(), "%s already started", (&r == &head_ ? "Head" : "Body"));
+        if (auto& other = &r == &head_ ? body_ : head_; not other.open()) {
+            other.end_flag |= 2u;
         }
     }
-    return r;
+    else {
+        clear();
+    }
+    if (bound) {
+        new (mem_.alloc(sizeof(Weight_t)).data()) Weight_t(*bound);
+    }
+    auto pos = mem_.size();
+    POTASSCO_ASSERT((pos & 3u) == 0u, "unexpected alignment");
+    r = Range{.start_type = pos | type, .end_flag = pos | 1u};
+}
+template <typename T>
+void RuleBuilder::extend(Range& r, const T& elem, const char* what) {
+    if (not r.started())
+        start(r, 0u);
+    POTASSCO_CHECK_PRE(not r.finished(), "%s already frozen", what);
+    new (mem_.alloc(sizeof(T)).data()) T(elem);
+    r.end_flag += sizeof(T);
+}
+void RuleBuilder::clear(Range& r) {
+    if (const auto& other = &r == &head_ ? body_ : head_; r.start() >= other.end())
+        mem_.pop(mem_.size() - other.end());
+    r = {};
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // RuleBuilder - Head management
 /////////////////////////////////////////////////////////////////////////////////////////
 RuleBuilder& RuleBuilder::start(Head_t ht) {
-    auto* r = unfreeze(true);
-    auto& h = r->head;
-    POTASSCO_CHECK_PRE(not h.mbeg || h.len() == 0u, "Invalid second call to start()");
-    h.init(r->top, ht);
+    start(head_, static_cast<uint32_t>(ht));
     return *this;
 }
 RuleBuilder& RuleBuilder::addHead(Atom_t a) {
-    auto* r = rule_();
-    POTASSCO_CHECK_PRE(not r->fix, "Invalid call to addHead() on frozen rule");
-    if (not r->head.mend) {
-        r->head.init(r->top, 0);
-    }
-    POTASSCO_CHECK_PRE(r->head.mbeg >= r->body.mend, "Invalid call to addHead() after startBody()");
-    r            = push(r, mem_, a);
-    r->head.mend = r->top;
+    extend(head_, a, "Head");
     return *this;
 }
 RuleBuilder& RuleBuilder::clearHead() {
-    auto* r = unfreeze(false);
-    r->top  = std::max(r->body.mend, static_cast<uint32_t>(sizeof(Rule)));
-    r->head.init(0, 0);
+    clear(head_);
     return *this;
 }
-AtomSpan RuleBuilder::head() const { return rule_()->head.toSpan<Atom_t>(mem_); }
-Atom_t*  RuleBuilder::head_begin() const { return static_cast<Atom_t*>(mem_[rule_()->head.mbeg]); }
-Atom_t*  RuleBuilder::head_end() const { return static_cast<Atom_t*>(mem_[rule_()->head.mend]); }
+Head_t   RuleBuilder::headType() const { return static_cast<Head_t>(head_.type()); }
+AtomSpan RuleBuilder::head() const { return makeSpan<Atom_t>(mem_, head_); }
+Atom_t*  RuleBuilder::head_begin() const { return storage_cast<Atom_t*>(mem_, head_.start()); }
+Atom_t*  RuleBuilder::head_end() const { return storage_cast<Atom_t*>(mem_, head_.end()); }
+bool     RuleBuilder::isMinimize() const { return headType() == static_cast<Head_t>(Directive_t::Minimize); }
 /////////////////////////////////////////////////////////////////////////////////////////
 // RuleBuilder - Body management
 /////////////////////////////////////////////////////////////////////////////////////////
-void RuleBuilder::startBody(Body_t bt, Weight_t bnd) {
-    auto* r = unfreeze(true);
-    if (not r->body.mend) {
-        if (bt != Body_t::Normal) {
-            r = push(r, mem_, bnd);
-        }
-        r->body.init(r->top, bt);
-    }
-    else {
-        POTASSCO_CHECK_PRE(r->body.len() == 0, "Invalid second call to startBody()");
-    }
-}
-RuleBuilder& RuleBuilder::startBody() {
-    startBody(Body_t::Normal, -1);
+static constexpr auto boundPos(uint32_t pos) { return pos - sizeof(Weight_t); }
+RuleBuilder&          RuleBuilder::startBody() {
+    start(body_, static_cast<uint32_t>(Body_t::Normal));
     return *this;
 }
 RuleBuilder& RuleBuilder::startSum(Weight_t bound) {
-    startBody(Body_t::Sum, bound);
+    if (not isMinimize() || frozen()) {
+        start(body_, static_cast<uint32_t>(Body_t::Sum), &bound);
+    }
     return *this;
 }
 RuleBuilder& RuleBuilder::startMinimize(Weight_t prio) {
-    auto* r = unfreeze(true);
-    POTASSCO_CHECK_PRE(not r->head.mbeg && not r->body.mbeg, "Invalid call to startMinimize()");
-    r->head.init(r->top, Directive_t::Minimize);
-    r = push(r, mem_, prio);
-    r->body.init(r->top, Body_t::Sum);
+    start(head_, static_cast<uint32_t>(Directive_t::Minimize));
+    start(body_, static_cast<uint32_t>(Body_t::Sum), &prio);
+    return *this;
+}
+RuleBuilder& RuleBuilder::addGoal(Lit_t lit) {
+    bodyType() == Body_t::Normal ? extend(body_, lit, "Body")
+                                 : extend(body_, WeightLit_t{.lit = lit, .weight = 1}, "Sum");
     return *this;
 }
 RuleBuilder& RuleBuilder::addGoal(WeightLit_t lit) {
-    auto* r = rule_();
-    POTASSCO_CHECK_PRE(not r->fix, "Invalid call to addGoal() on frozen rule");
-    if (not r->body.mbeg) {
-        r->body.init(r->top, 0);
-    }
-    POTASSCO_CHECK_PRE(r->body.mbeg >= r->head.mend, "Invalid call to addGoal() after start()");
-    if (lit.weight == 0) {
-        return *this;
-    }
-    r            = bodyType() == Body_t::Normal ? push(r, mem_, lit.lit) : push(r, mem_, lit);
-    r->body.mend = r->top;
-    return *this;
-}
-RuleBuilder& RuleBuilder::setBound(Weight_t bound) {
-    POTASSCO_CHECK_PRE(not rule_()->fix && bodyType() != Body_t::Normal, "Invalid call to setBound()");
-    std::memcpy(bound_(), &bound, sizeof(Weight_t));
+    POTASSCO_CHECK_PRE(bodyType() != Body_t::Normal, "weight literal not supported in normal body");
+    extend(body_, lit, "Sum");
     return *this;
 }
 RuleBuilder& RuleBuilder::clearBody() {
-    auto* r = unfreeze(false);
-    r->top  = std::max(r->head.mend, static_cast<uint32_t>(sizeof(Rule)));
-    r->body.init(0, 0);
+    clear(body_);
     return *this;
 }
-RuleBuilder& RuleBuilder::weaken(Body_t to, bool w) {
-    auto* r = rule_();
-    if (r->body.type<Body_t>() == Body_t::Normal || r->body.type<Body_t>() == to) {
-        return *this;
-    }
-    WeightLit_t *bIt = wlits_begin(), *bEnd = wlits_end();
-    if (to == Body_t::Normal) {
-        uint32_t i = r->body.mbeg - sizeof(Weight_t);
-        r->body.init(i, 0);
-        for (; bIt != bEnd; ++bIt, i += sizeof(Lit_t)) { new (mem_[i]) Lit_t(bIt->lit); }
-        r->body.mend = i;
-        r->top       = std::max(r->head.mend, r->body.mend);
-    }
-    else if (to == Body_t::Count && w && bIt != bEnd) {
-        Weight_t bnd = *bound_(), min = bIt->weight;
-        for (; bIt != bEnd; ++bIt) {
-            if (min > bIt->weight) {
-                min = bIt->weight;
-            }
-            bIt->weight = 1;
+RuleBuilder& RuleBuilder::setBound(Weight_t bound) {
+    POTASSCO_CHECK_PRE(bodyType() != Body_t::Normal && not frozen(), "Invalid call to setBound");
+    *storage_cast<Weight_t*>(mem_, boundPos(body_.start())) = bound;
+    return *this;
+}
+RuleBuilder& RuleBuilder::weaken(Body_t to, bool resetWeights) {
+    POTASSCO_CHECK_PRE(not isMinimize(), "Invalid call to weaken");
+    if (auto t = bodyType(); t != Body_t::Normal && t != to) {
+        auto s           = sum();
+        body_.start_type = (to == Body_t::Normal ? boundPos(body_.start()) : body_.start()) | static_cast<uint32_t>(to);
+        if (to == Body_t::Normal) { // drop bound and weights of literals
+            std::transform(s.lits.begin(), s.lits.end(), lits_begin(), [](WeightLit_t wl) { return wl.lit; });
+            auto drop = (s.lits.size() * sizeof(Weight_t)) + sizeof(Weight_t);
+            if (body_.start() > head_.start())
+                mem_.pop(drop);
+            body_.end_flag -= drop;
         }
-        setBound((bnd + (min - 1)) / min);
+        else if (not s.lits.empty() && resetWeights && to == Body_t::Count) { // set weight of all lits to 1
+            auto minW = s.lits[0].weight;
+            for (auto& wl : s.lits) {
+                minW                                = std::min(minW, wl.weight);
+                const_cast<WeightLit_t&>(wl).weight = 1;
+            }
+            setBound((s.bound + (minW - 1)) / minW);
+        }
     }
-    r->body.mtype = static_cast<uint32_t>(to);
     return *this;
 }
-Body_t       RuleBuilder::bodyType() const { return rule_()->body.type<Body_t>(); }
-LitSpan      RuleBuilder::body() const { return rule_()->body.toSpan<Lit_t>(mem_); }
-Lit_t*       RuleBuilder::lits_begin() const { return static_cast<Lit_t*>(mem_[rule_()->body.mbeg]); }
-Lit_t*       RuleBuilder::lits_end() const { return static_cast<Lit_t*>(mem_[rule_()->body.mend]); }
-Sum_t        RuleBuilder::sum() const { return {rule_()->body.toSpan<WeightLit_t>(mem_), bound()}; }
-WeightLit_t* RuleBuilder::wlits_begin() const { return static_cast<WeightLit_t*>(mem_[rule_()->body.mbeg]); }
-WeightLit_t* RuleBuilder::wlits_end() const { return static_cast<WeightLit_t*>(mem_[rule_()->body.mend]); }
-Weight_t     RuleBuilder::bound() const { return bodyType() != Body_t::Normal ? *bound_() : -1; }
-Weight_t*    RuleBuilder::bound_() const { return static_cast<Weight_t*>(mem_[rule_()->body.mbeg - sizeof(Weight_t)]); }
+Body_t   RuleBuilder::bodyType() const { return static_cast<Body_t>(body_.type()); }
+LitSpan  RuleBuilder::body() const { return makeSpan<Lit_t>(mem_, body_); }
+Lit_t*   RuleBuilder::lits_begin() const { return storage_cast<Lit_t*>(mem_, body_.start()); }
+Lit_t*   RuleBuilder::lits_end() const { return storage_cast<Lit_t*>(mem_, body_.end()); }
+Sum_t    RuleBuilder::sum() const { return {makeSpan<WeightLit_t>(mem_, body_), bound()}; }
+Weight_t RuleBuilder::bound() const {
+    return bodyType() != Body_t::Normal ? *storage_cast<Weight_t*>(mem_, boundPos(body_.start())) : -1;
+}
+WeightLit_t* RuleBuilder::wlits_begin() const { return storage_cast<WeightLit_t*>(mem_, body_.start()); }
+WeightLit_t* RuleBuilder::wlits_end() const { return storage_cast<WeightLit_t*>(mem_, body_.end()); }
 /////////////////////////////////////////////////////////////////////////////////////////
 // RuleBuilder - Product
 /////////////////////////////////////////////////////////////////////////////////////////
-RuleBuilder& RuleBuilder::end(AbstractProgram* out) {
-    auto* r = rule_();
-    r->fix  = 1;
-    if (not out) {
-        return *this;
-    }
-    if (auto isMinimize = static_cast<Directive_t>(r->head.mtype) == Directive_t::Minimize; isMinimize) {
-        out->minimize(*bound_(), sum().lits);
-    }
-    else if (r->body.type<Body_t>() == Body_t::Normal) {
-        out->rule(r->head.type<Head_t>(), head(), body());
+Rule_t RuleBuilder::rule() const {
+    if (bodyType() == Body_t::Normal) {
+        return Rule_t::normal(headType(), head(), body());
     }
     else {
-        out->rule(r->head.type<Head_t>(), head(), *bound_(), sum().lits);
+        return Rule_t::sum(headType(), head(), sum());
+    }
+}
+RuleBuilder& RuleBuilder::end(AbstractProgram* out) {
+    head_.end_flag |= 3u;
+    body_.end_flag |= 3u;
+    if (out) {
+        if (bodyType() == Body_t::Normal) {
+            out->rule(headType(), head(), body());
+        }
+        else if (auto s = sum(); isMinimize()) {
+            out->minimize(s.bound, s.lits);
+        }
+        else {
+            out->rule(headType(), head(), s.bound, s.lits);
+        }
     }
     return *this;
-}
-Rule_t RuleBuilder::rule() const {
-    auto*       r = rule_();
-    const auto& h = r->head;
-    const auto& b = r->body;
-    Rule_t      ret;
-    ret.ht   = h.type<Head_t>();
-    ret.head = head();
-    ret.bt   = b.type<Body_t>();
-    if (ret.bt == Body_t::Normal) {
-        ret.cond = body();
-    }
-    else {
-        ret.agg = sum();
-    }
-    return ret;
 }
 
 } // namespace Potassco

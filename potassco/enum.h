@@ -157,11 +157,11 @@ consteval auto enum_count() -> std::size_t {
     return std::size(EnumReflect<EnumT>::c_entries);
 }
 
-//! Returns the name of the given enumerator e.
+//! Returns the name of the given enumerator `e`.
 /*!
  * \tparam EnumT An enum type with reflection support.
  * \param e Enumerator for which the name should be returned.
- * \return The stringified name of e or an empty string_view if e is not a named enumerator of EnumT.
+ * \return The stringified name of `e` or an empty string_view if `e` is not a named enumerator of EnumT.
  */
 template <typename EnumT>
 requires EnumReflect<EnumT>::value

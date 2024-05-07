@@ -23,9 +23,9 @@
 //
 #include <potassco/convert.h>
 
-#include <potassco/smodels.h>
-
 #include <potassco/error.h>
+#include <potassco/rule_utils.h>
+#include <potassco/smodels.h>
 
 POTASSCO_WARNING_BEGIN_RELAXED
 #include <amc/vector.hpp>
@@ -46,23 +46,23 @@ using namespace std::literals;
 // SmodelsConvert::SmData
 /////////////////////////////////////////////////////////////////////////////////////////
 struct SmodelsConvert::SmData {
-    using ScratchType = amc::SmallVector<char, 64>;
+    using ScratchType = DynamicBuffer;
     template <std::integral T>
     static void append(ScratchType& scratch, T in) {
         char tmp[std::numeric_limits<T>::digits10 + 1];
         auto sz = std::to_chars(tmp, std::end(tmp), in).ptr - tmp;
-        scratch.insert(scratch.end(), tmp, tmp + static_cast<std::size_t>(sz));
+        scratch.append(tmp, static_cast<std::size_t>(sz));
     }
-    static void append(ScratchType& scratch, std::string_view n) { scratch.insert(scratch.end(), n.begin(), n.end()); }
+    static void append(ScratchType& scratch, std::string_view n) { scratch.append(n.data(), n.size()); }
     template <typename... Args>
     static std::string_view makePred(ScratchType& scratch, std::string_view name, Args... args) {
         static_assert(sizeof...(Args) > 0, "at least one arg expected");
         scratch.clear();
-        scratch.insert(scratch.end(), name.begin(), name.end());
-        scratch.push_back('(');
-        ((append(scratch, args), scratch.push_back(',')), ...);
+        scratch.append(name.data(), name.size());
+        scratch.push('(');
+        ((append(scratch, args), scratch.push(',')), ...);
         scratch.back() = ')';
-        return std::string_view{scratch.data(), scratch.size()};
+        return scratch.view();
     }
     struct Atom {
         Atom() : smId(0), head(0), show(0), extn(0) {}
@@ -109,7 +109,6 @@ struct SmodelsConvert::SmData {
                   amc::is_trivially_relocatable_v<Heuristic> && amc::is_trivially_relocatable_v<Output>);
     using AtomMap = amc::vector<Atom>;
     using AtomVec = amc::vector<Atom_t>;
-    using LitVec  = amc::vector<Lit_t>;
     using WLitVec = amc::vector<WeightLit_t>;
     using HeuVec  = amc::vector<Heuristic>;
     using OutVec  = amc::vector<Output>;
@@ -149,12 +148,18 @@ struct SmodelsConvert::SmData {
         x.head  = 1;
         return x;
     }
-    AtomSpan mapHead(const AtomSpan& h);
+    RuleBuilder& mapHead(const AtomSpan& h, Head_t ht = Head_t::Disjunctive) {
+        rule_.clear().start(ht);
+        for (auto a : h) { rule_.addHead(mapHeadAtom(a)); }
+        if (h.empty()) {
+            rule_.addHead(falseAtom());
+        }
+        return rule_;
+    }
     template <class T>
-    auto mapLits(const std::span<const T>& in, amc::vector<T>& out) -> std::span<const T> {
-        out.clear();
-        for (const auto& x : in) { out.push_back(mapLit(x)); }
-        return out;
+    RuleBuilder& mapBody(const std::span<const T>& in) {
+        for (const auto& x : in) { rule_.addGoal(mapLit(x)); }
+        return rule_;
     }
     const char*               addOutput(Atom_t atom, const std::string_view&);
     [[nodiscard]] const char* getName(const Atom& atom) const {
@@ -192,29 +197,17 @@ struct SmodelsConvert::SmData {
         HeuVec().swap(heuristic_);
         output_.clear();
     }
-    AtomMap atoms_;     // maps input atoms to output atoms
-    SymTab  symTab_;    // maps output atoms to their names
-    AtomVec head_;      // active rule head
-    LitVec  lits_;      // active body literals
-    WLitVec wlits_;     // active weight body literals
-    AtomVec extern_;    // external atoms
-    HeuVec  heuristic_; // list of heuristic modifications not yet processed
-    MinSet  minimize_;  // set of minimize literals
-    OutVec  output_;    // list of output atoms not yet processed
-    Atom_t  next_;      // next unused output atom
+    AtomMap     atoms_;     // maps input atoms to output atoms
+    SymTab      symTab_;    // maps output atoms to their names
+    AtomVec     extern_;    // external atoms
+    HeuVec      heuristic_; // list of heuristic modifications not yet processed
+    MinSet      minimize_;  // set of minimize literals
+    OutVec      output_;    // list of output atoms not yet processed
+    RuleBuilder rule_;      // active (mapped) rule
+    Atom_t      next_;      // next unused output atom
 };
-AtomSpan SmodelsConvert::SmData::mapHead(const AtomSpan& h) {
-    head_.clear();
-    for (auto a : h) { head_.push_back(mapHeadAtom(a)); }
-    if (head_.empty()) {
-        head_.push_back(falseAtom());
-    }
-    return head_;
-}
 const char* SmodelsConvert::SmData::addOutput(Atom_t atom, const std::string_view& str) {
-    auto name                                      = std::make_unique<char[]>(str.size() + 1);
-    *std::copy(str.begin(), str.end(), name.get()) = 0;
-
+    auto        name = toCString(str);
     const char* n    = name.get();
     auto [it, added] = symTab_.emplace(atom, std::move(name));
     POTASSCO_CHECK_PRE(added, "Redefinition: atom '%u:%s' already shown as '%s'", atom, n, it->second.get());
@@ -224,16 +217,19 @@ const char* SmodelsConvert::SmData::addOutput(Atom_t atom, const std::string_vie
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsConvert
 /////////////////////////////////////////////////////////////////////////////////////////
-SmodelsConvert::SmodelsConvert(AbstractProgram& out, bool ext) : out_(out), data_(new SmData), ext_(ext) {}
-SmodelsConvert::~SmodelsConvert() { delete data_; }
+SmodelsConvert::SmodelsConvert(AbstractProgram& out, bool ext)
+    : out_(out)
+    , data_(std::make_unique<SmData>())
+    , ext_(ext) {}
+SmodelsConvert::~SmodelsConvert() = default;
 Lit_t    SmodelsConvert::get(Lit_t in) const { return data_->mapLit(in); }
 unsigned SmodelsConvert::maxAtom() const { return data_->next_ - 1; }
 Atom_t   SmodelsConvert::makeAtom(const LitSpan& cond, bool named) {
     Atom_t id = 0;
     if (cond.size() != 1 || cond[0] < 0 || (data_->mapAtom(atom(cond[0])).show && named)) {
         // aux :- cond.
-        Atom_t aux = (id = data_->newAtom());
-        out_.rule(Head_t::Disjunctive, {&aux, 1}, data_->mapLits(cond, data_->lits_));
+        data_->rule_.clear().addHead(id = data_->newAtom());
+        data_->mapBody(cond).end(&out_);
     }
     else {
         SmData::Atom& ma = data_->mapAtom(atom(cond.front()));
@@ -246,22 +242,26 @@ void SmodelsConvert::initProgram(bool inc) { out_.initProgram(inc); }
 void SmodelsConvert::beginStep() { out_.beginStep(); }
 void SmodelsConvert::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
     if (not head.empty() || ht == Head_t::Disjunctive) {
-        AtomSpan mHead = data_->mapHead(head);
-        out_.rule(ht, mHead, data_->mapLits(body, data_->lits_));
+        data_->mapHead(head, ht).startBody();
+        data_->mapBody(body).end(&out_);
     }
 }
 void SmodelsConvert::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
     if (not head.empty() || ht == Head_t::Disjunctive) {
-        AtomSpan      mHead = data_->mapHead(head);
-        WeightLitSpan mBody = data_->mapLits(body, data_->wlits_);
+        data_->mapHead(head, ht).startSum(bound);
+        data_->mapBody(body);
+        auto mHead = data_->rule_.head();
+        auto mBody = data_->rule_.sum().lits;
         if (isSmodelsRule(ht, mHead, bound, mBody)) {
-            out_.rule(ht, mHead, bound, mBody);
+            data_->rule_.end(&out_);
             return;
         }
-        Atom_t aux = data_->newAtom();
-        data_->lits_.assign(1, lit(aux));
-        out_.rule(Head_t::Disjunctive, {&aux, 1}, bound, mBody);
-        out_.rule(ht, mHead, data_->lits_);
+        auto auxH = data_->newAtom();
+        auto auxB = lit(auxH);
+        POTASSCO_CHECK(isSmodelsRule(Head_t::Disjunctive, {&auxH, 1}, bound, mBody), Errc::invalid_argument,
+                       "unsupported rule");
+        out_.rule(Head_t::Disjunctive, {&auxH, 1}, bound, mBody);
+        out_.rule(ht, mHead, {&auxB, 1});
     }
 }
 
@@ -304,13 +304,14 @@ void SmodelsConvert::flushMinimize() {
     const SmData::Minimize* last = nullptr;
     for (const auto& m : data_->minimize_) {
         assert(not last || last->prio < m.prio);
-        out_.minimize(m.prio, data_->mapLits(std::span{m.lits}, data_->wlits_));
+        data_->rule_.clear().startMinimize(m.prio);
+        data_->mapBody(std::span{m.lits}).end(&out_);
         last = &m;
     }
 }
 void SmodelsConvert::flushExternal() {
     LitSpan T{};
-    data_->head_.clear();
+    data_->rule_.clear();
     for (auto ext : data_->extern_) {
         SmData::Atom& a  = data_->mapAtom(ext);
         auto          vt = static_cast<Value_t>(a.extn);
@@ -320,7 +321,7 @@ void SmodelsConvert::flushExternal() {
             }
             Atom_t at = a;
             if (vt == Value_t::Free) {
-                data_->head_.push_back(at);
+                data_->rule_.addHead(at);
             }
             else if (vt == Value_t::True) {
                 out_.rule(Head_t::Disjunctive, {&at, 1}, T);
@@ -330,14 +331,14 @@ void SmodelsConvert::flushExternal() {
             out_.external(a, vt);
         }
     }
-    if (not data_->head_.empty()) {
-        out_.rule(Head_t::Choice, data_->head_, T);
+    if (auto head = data_->rule_.head(); not head.empty()) {
+        out_.rule(Head_t::Choice, head, T);
     }
 }
 void SmodelsConvert::flushHeuristic() {
     if (data_->heuristic_.empty())
         return;
-    amc::SmallVector<char, 64> scratch;
+    SmData::ScratchType scratch;
     for (const auto& heu : data_->heuristic_) {
         if (not data_->mapped(heu.atom)) {
             continue;
@@ -353,7 +354,7 @@ void SmodelsConvert::flushHeuristic() {
     }
 }
 void SmodelsConvert::flushSymbols() {
-    amc::SmallVector<char, 64> scratch;
+    SmData::ScratchType scratch;
     std::stable_sort(data_->output_.begin(), data_->output_.end(),
                      [](const auto& lhs, const auto& rhs) { return lhs.atom < rhs.atom; });
     for (const auto& sym : data_->output_) {

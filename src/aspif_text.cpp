@@ -42,12 +42,11 @@ struct AspifTextInput::Data {
         rule.clear();
         symbol.clear();
     }
-    [[nodiscard]] AtomSpan         atoms() const { return rule.head(); }
-    [[nodiscard]] LitSpan          lits() const { return rule.body(); }
-    [[nodiscard]] std::string_view symView() const noexcept { return {symbol.data(), symbol.size()}; }
+    [[nodiscard]] AtomSpan atoms() const { return rule.head(); }
+    [[nodiscard]] LitSpan  lits() const { return rule.body(); }
 
-    RuleBuilder                rule;
-    amc::SmallVector<char, 64> symbol;
+    RuleBuilder   rule;
+    DynamicBuffer symbol;
 };
 AspifTextInput::AspifTextInput(AbstractProgram* out) : out_(out), data_(nullptr) {}
 void AspifTextInput::setOutput(AbstractProgram& out) { out_ = &out; }
@@ -58,8 +57,7 @@ bool AspifTextInput::doAttach(bool& inc) {
             skipLine();
             n = peek(true);
         }
-        inc = matchOpt("#incremental");
-        if (inc)
+        if (inc = matchOpt("#incremental"); inc)
             matchDelim('.');
         out_->initProgram(inc);
         return true;
@@ -76,8 +74,8 @@ bool AspifTextInput::doParse() {
 
 void AspifTextInput::parseStatements() {
     require(out_ != nullptr, "output not set");
-    POTASSCO_SCOPE_EXIT({ data_ = nullptr; });
     Data data;
+    POTASSCO_SCOPE_EXIT({ data_ = nullptr; });
     data_ = &data;
     for (char c; (c = peek(true)) != 0; data.clear()) {
         if (c == '.') {
@@ -144,11 +142,11 @@ bool AspifTextInput::matchDirective() {
         matchTerm();
         matchCondition();
         matchDelim('.');
-        out_->output(data_->symView(), data_->lits());
+        out_->output(data_->symbol.view(), data_->lits());
     }
     else if (matchOpt("#external")) {
-        Atom_t a = matchId();
-        auto   v = Value_t::False;
+        auto a = matchId();
+        auto v = Value_t::False;
         matchDelim('.');
         if (matchOpt("[")) {
             if (matchOpt("true")) {
@@ -177,18 +175,18 @@ bool AspifTextInput::matchDirective() {
         out_->assume(data_->lits());
     }
     else if (matchOpt("#heuristic")) {
-        Atom_t a = matchId();
+        auto a = matchId();
         matchCondition();
         matchDelim('.');
         matchDelim('[');
-        int v = matchInt();
-        int p = 0;
+        auto v = matchInt();
+        auto p = 0;
         if (matchOpt("@")) {
             p = matchInt();
             require(p >= 0, "positive priority expected");
         }
         matchDelim(',');
-        const char* w = matchWord();
+        const auto* w = matchWord();
         Heuristic_t ht;
         require(Potassco::match(w, ht), "unrecognized heuristic modification");
         skipws();
@@ -229,15 +227,15 @@ void AspifTextInput::matchDelim(char c) {
     if (stream()->get() == c)
         return skipws();
 
-    char buffer[] = "'x' expected";
-    buffer[1]     = c;
-    error(buffer);
+    char msg[] = "'x' expected";
+    msg[1]     = c;
+    error(msg);
 }
 
 void AspifTextInput::matchAtoms(const char* seps) {
     if (std::islower(static_cast<unsigned char>(peek(true))) != 0) {
         do {
-            Lit_t x = matchLit();
+            auto x = matchLit();
             require(x > 0, "positive atom expected");
             data_->rule.addHead(static_cast<Atom_t>(x));
         } while (std::strchr(seps, stream()->peek()) && stream()->get() && (skipws(), true));
@@ -258,7 +256,7 @@ void AspifTextInput::matchAgg() {
     matchDelim('{');
     if (not matchOpt("}")) {
         do {
-            WeightLit_t wl = {matchLit(), 1};
+            auto wl = WeightLit_t{matchLit(), 1};
             if (matchOpt("=")) {
                 wl.weight = matchInt();
             }
@@ -274,20 +272,20 @@ Lit_t AspifTextInput::matchLit() {
 }
 
 int AspifTextInput::matchInt() {
-    int i = ProgramReader::matchInt();
+    auto i = ProgramReader::matchInt();
     skipws();
     return i;
 }
 Atom_t AspifTextInput::matchId() {
-    char c = stream()->get();
-    char n = stream()->peek();
+    auto c = stream()->get();
+    auto n = stream()->peek();
     require(std::islower(static_cast<unsigned char>(c)) != 0, "<id> expected");
     require(std::islower(static_cast<unsigned char>(n)) == 0, "<pos-integer> expected");
     if (c == 'x' && (BufferedStream::isDigit(n) || n == '_')) {
         if (n == '_') {
             stream()->get();
         }
-        int i = matchInt();
+        auto i = matchInt();
         require(i > 0, "<pos-integer> expected");
         return static_cast<Atom_t>(i);
     }
@@ -296,10 +294,10 @@ Atom_t AspifTextInput::matchId() {
         return static_cast<Atom_t>(c - 'a') + 1;
     }
 }
-void AspifTextInput::push(char c) { data_->symbol.push_back(c); }
+void AspifTextInput::push(char c) { data_->symbol.push(c); }
 
 void AspifTextInput::matchTerm() {
-    char c = stream()->peek();
+    auto c = stream()->peek();
     if (std::islower(static_cast<unsigned char>(c)) != 0 || c == '_') {
         do {
             push(stream()->get());
@@ -344,7 +342,7 @@ void AspifTextInput::matchAtomArg() {
 void AspifTextInput::matchStr() {
     matchDelim('"');
     push('"');
-    bool quoted = false;
+    auto quoted = false;
     for (char c; (c = stream()->peek()) != 0 && (c != '\"' || quoted);) {
         quoted = not quoted && c == '\\';
         push(stream()->get());
@@ -364,30 +362,28 @@ const char* AspifTextInput::matchWord() {
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifTextOutput::Data {
     struct FixedString {
-        using trivially_relocatable     = std::true_type;
-        static constexpr auto c_ssoSize = 32;
-        FixedString(FixedString&&)      = delete;
+        using trivially_relocatable      = std::true_type;
+        static constexpr auto c_maxSmall = 31;
+        FixedString(FixedString&&)       = delete;
         FixedString(std::string_view view) {
-            sso[std::size(sso) - 1] = static_cast<char>(view.size() >= std::size(sso));
-            if (small()) {
-                *std::copy(view.begin(), view.end(), sso) = 0;
+            sso[c_maxSmall] = view.size() > c_maxSmall;
+            if (not small()) {
+                str = toCString(view).release();
             }
             else {
-                auto* ls                                 = static_cast<char*>(::operator new(view.size() + 1));
-                *std::copy(view.begin(), view.end(), ls) = 0;
-                str                                      = ls;
+                *std::copy(view.begin(), view.end(), sso) = 0;
             }
             assert(c_str() == view);
         }
         ~FixedString() {
             if (not small()) {
-                ::operator delete(const_cast<char*>(str));
+                delete[] str;
             }
         }
-        [[nodiscard]] bool        small() const { return sso[std::size(sso) - 1] == 0; }
+        [[nodiscard]] bool        small() const { return sso[c_maxSmall] == 0; }
         [[nodiscard]] const char* c_str() const { return small() ? sso : str; }
         union {
-            char        sso[c_ssoSize];
+            char        sso[c_maxSmall + 1];
             const char* str;
         };
     };
@@ -428,8 +424,9 @@ struct AspifTextOutput::Data {
 
     [[nodiscard]] auto getAtomIndex(Atom_t atom) const -> Id_t { return atom < atoms.size() ? atoms[atom] : idMax; }
 
-    template <std::integral X>
-    void push(X x) {
+    template <typename T>
+    requires(std::is_integral_v<T> || std::is_enum_v<T>)
+    void push(T x) {
         directives.push_back(static_cast<uint32_t>(x));
     }
     template <std::integral T>
@@ -466,7 +463,7 @@ std::ostream& AspifTextOutput::printName(std::ostream& os, Lit_t lit) const {
     if (lit < 0) {
         os << "not ";
     }
-    Atom_t id = Potassco::atom(lit);
+    auto id = Potassco::atom(lit);
     if (auto idx = data_->getAtomIndex(id); idx != idMax) {
         os << data_->string(idx);
     }
@@ -513,7 +510,7 @@ void AspifTextOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
     push(Directive_t::Minimize).push(lits).push(prio);
 }
 void AspifTextOutput::output(const std::string_view& str, const LitSpan& cond) {
-    bool isAtom = not str.empty() && (std::islower(static_cast<unsigned char>(str.front())) || str.front() == '_');
+    auto isAtom = not str.empty() && (std::islower(static_cast<unsigned char>(str.front())) || str.front() == '_');
     if (cond.size() == 1 && lit(cond.front()) > 0 && isAtom) {
         addAtom(Potassco::atom(cond.front()), str);
     }
@@ -550,20 +547,9 @@ void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& ele
     theory_.addAtom(atomOrZero, termId, elements, op, rhs);
 }
 
-AspifTextOutput& AspifTextOutput::push(uint32_t x) {
-    data_->push(x);
-    return *this;
-}
-AspifTextOutput& AspifTextOutput::push(const AtomSpan& atoms) {
-    data_->push(atoms);
-    return *this;
-}
-AspifTextOutput& AspifTextOutput::push(const LitSpan& lits) {
-    data_->push(lits);
-    return *this;
-}
-AspifTextOutput& AspifTextOutput::push(const WeightLitSpan& wlits) {
-    data_->push(wlits);
+template <typename T>
+AspifTextOutput& AspifTextOutput::push(T&& x) {
+    data_->push(std::forward<T>(x));
     return *this;
 }
 

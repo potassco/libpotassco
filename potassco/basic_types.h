@@ -37,6 +37,7 @@
 #include <potassco/enum.h>
 #include <potassco/platform.h>
 
+#include <memory>
 #include <span>
 #include <string_view>
 
@@ -72,9 +73,9 @@ constexpr Id_t idMax = static_cast<Id_t>(-1);
 //! Atom ids are positive integers in the range [atomMin..atomMax].
 using Atom_t = uint32_t;
 //! Minimum value for atom ids (must not be 0).
-constexpr Atom_t atomMin = static_cast<Atom_t>(1);
+constexpr auto atomMin = static_cast<Atom_t>(1);
 //! Maximum value for atom ids.
-constexpr Atom_t atomMax = static_cast<Atom_t>(((1u) << 31) - 1);
+constexpr auto atomMax = static_cast<Atom_t>(((1u) << 31) - 1);
 //! Literals are signed atoms.
 using Lit_t = int32_t;
 //! (Literal) weights are integers.
@@ -141,16 +142,16 @@ public:
     //@{
     //! Mark the given list of atoms as projection atoms.
     virtual void project(const AtomSpan& atoms);
-    //! Output str whenever condition is true in a stable model.
+    //! Output `str` whenever condition is true in a stable model.
     virtual void output(const std::string_view& str, const LitSpan& condition);
-    //! If v is not equal to Value_t::Release, mark a as external and assume value v. Otherwise, treat a as regular
+    //! If `v` is not equal to Value_t::Release, mark a as external and assume value `v`. Otherwise, treat a as regular
     //! atom.
     virtual void external(Atom_t a, Value_t v);
     //! Assume the given literals to true during solving.
     virtual void assume(const LitSpan& lits);
-    //! Apply the given heuristic modification to atom a whenever condition is true.
+    //! Apply the given heuristic modification to atom `a` whenever condition is true.
     virtual void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition);
-    //! Assume an edge between s and t whenever condition is true.
+    //! Assume an edge between `s` and `t` whenever condition is true.
     virtual void acycEdge(int s, int t, const LitSpan& condition);
     //@}
 
@@ -181,7 +182,7 @@ public:
 
 /*!
  * \defgroup BasicFunc Basic functions
- * \brief Additional functions over with basic types.
+ * \brief Additional functions over basic types.
  * \ingroup BasicTypes
  */
 ///@{
@@ -210,60 +211,81 @@ constexpr Weight_t weight(Lit_t) { return 1; }
 //! Returns the weight of the given weight literal.
 constexpr Weight_t weight(const WeightLit_t& w) { return w.weight; }
 
-constexpr bool operator==(Lit_t lhs, const WeightLit_t& rhs) { return lit(lhs) == lit(rhs) && weight(rhs) == 1; }
-constexpr bool operator==(const WeightLit_t& lhs, Lit_t rhs) { return rhs == lhs; }
-constexpr bool operator!=(const WeightLit_t& lhs, const WeightLit_t& rhs) { return !(lhs == rhs); }
-constexpr bool operator!=(Lit_t lhs, const WeightLit_t& rhs) { return !(lhs == rhs); }
-constexpr bool operator!=(const WeightLit_t& lhs, Lit_t rhs) { return rhs != lhs; }
+constexpr auto operator==(const WeightLit_t& lhs, Lit_t rhs) { return lit(lhs) == rhs && weight(lhs) == 1; }
+constexpr auto operator==(Lit_t lhs, const WeightLit_t& rhs) { return rhs == lhs; }
+constexpr auto operator<=>(const WeightLit_t& lhs, Lit_t rhs) { return lhs <=> WeightLit_t{.lit = rhs, .weight = 1}; }
+constexpr auto operator<=>(Lit_t lhs, const WeightLit_t& rhs) { return WeightLit_t{.lit = lhs, .weight = 1} <=> rhs; }
+
+//! Copies the given string_view to a null-terminated character array.
+std::unique_ptr<char[]> toCString(std::string_view in);
 
 ///@}
-///@}
 
-//! A (dynamic-sized) block of raw memory.
+//! A (dynamically-sized) buffer of raw memory.
 /*!
- * The class manages a (dynamic-sized) block of memory obtained by malloc/realloc
- * and uses a simple geometric scheme when the block needs to grow.
- *
- * \ingroup ParseType
+ * The class manages a (dynamically-sized) buffer of memory obtained by malloc/realloc.
+ * It uses a simple geometric scheme when the buffer needs to grow.
  */
-class MemoryRegion {
+class DynamicBuffer {
 public:
-    explicit MemoryRegion(std::size_t initialSize = 0);
-    ~MemoryRegion();
-    MemoryRegion(MemoryRegion&&) = delete;
+    //! Creates a buffer with given initial capacity.
+    explicit DynamicBuffer(std::size_t initialCap = 0);
+    ~DynamicBuffer();
+    DynamicBuffer(const DynamicBuffer&);
+    DynamicBuffer(DynamicBuffer&&) noexcept;
+    DynamicBuffer& operator=(DynamicBuffer&&) noexcept;
+    DynamicBuffer& operator=(const DynamicBuffer&);
 
-    //! Returns the current region size.
-    [[nodiscard]] std::size_t size() const {
-        return static_cast<std::size_t>(static_cast<unsigned char*>(end_) - static_cast<unsigned char*>(beg_));
+    //! Returns the maximum size that the buffer may grow to without triggering reallocation.
+    [[nodiscard]] uint32_t capacity() const noexcept { return cap_; }
+    //! Returns the number of bytes used in this buffer.
+    [[nodiscard]] uint32_t size() const noexcept { return size_; }
+    //! Returns a pointer to the beginning of the buffer.
+    [[nodiscard]] char*            data() const noexcept { return static_cast<char*>(beg_); }
+    [[nodiscard]] char*            data(std::size_t pos) const noexcept { return data() + pos; }
+    [[nodiscard]] std::string_view view(std::size_t pos = 0, std::size_t n = std::string_view::npos) const {
+        return {data() + pos, std::min(n, size() - pos)};
     }
-    //! Returns a pointer to the beginning of the region.
-    [[nodiscard]] void* begin() const { return beg_; }
-    //! Returns a pointer past-the-end of the region.
-    [[nodiscard]] void* end() const { return end_; }
-    //! Returns a pointer into the region at the given index.
+
+    //! Increases the capacity of the buffer to a value that's greater or equal to @c n.
+    void reserve(std::size_t n);
+
+    //! Resizes the buffer to accommodate an additional @c n bytes at the end.
     /*!
-     * \pre  idx < size()
-     * \note The returned pointer is only valid until the next grow operation.
-     */
-    void* operator[](std::size_t idx) const;
-    //! Grows the region to at least n bytes.
-    /*!
+     * If the current capacity is not sufficient, this function grows the region by reallocating a new block of memory
+     * thereby invalidating all existing references into the region.
+     *
      * \post size() >= n
      */
-    void grow(std::size_t n = 0);
+    [[nodiscard]] std::span<char> alloc(std::size_t n);
+    void                          append(const void* what, std::size_t n);
+    //! Appends the given character to the buffer.
+    void  push(char c) { append(&c, 1); }
+    char& back() { return data()[size() - 1]; }
+
+    //! Reduces the number of used bytes in this region by @c n.
+    void pop(size_t n) { size_ = n <= size_ ? size_ - n : 0; }
+    //! Reduces the number of used bytes in this region to 0.
+    void clear() { size_ = 0; }
+
     //! Swaps this and other.
-    void swap(MemoryRegion& other);
-    //! Releases the region and its memory.
+    void swap(DynamicBuffer& other) noexcept;
+
+    //! Releases all allocated memory in this region.
     /*!
-     * \post size() == 0
+     * \post size() == capacity() == 0
      */
-    void release();
+    void release() noexcept;
 
 private:
-    void* beg_;
-    void* end_;
+    void*    beg_;
+    uint32_t cap_;
+    uint32_t size_;
 };
-inline void swap(MemoryRegion& lhs, MemoryRegion& rhs) { lhs.swap(rhs); }
+inline void swap(DynamicBuffer& lhs, DynamicBuffer& rhs) { lhs.swap(rhs); }
+
 class RuleBuilder;
+
+///@}
 
 } // namespace Potassco

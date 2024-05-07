@@ -52,26 +52,26 @@ protected:
     void parseStatements();
 
 private:
-    void             skipws();
-    bool             matchDirective();
-    void             matchRule(char peek);
-    void             matchAtoms(const char* seps);
-    void             matchLits();
-    void             matchCondition();
-    void             matchAgg();
-    void             matchDelim(char);
-    bool             matchOpt(const char* ts);
-    Atom_t           matchId();
-    Lit_t            matchLit();
-    int              matchInt();
-    void             matchTerm();
-    void             matchAtomArg();
-    void             matchStr();
-    const char*      matchWord();
-    void             push(char c);
-    AbstractProgram* out_;
+    void        skipws();
+    bool        matchDirective();
+    void        matchRule(char peek);
+    void        matchAtoms(const char* seps);
+    void        matchLits();
+    void        matchCondition();
+    void        matchAgg();
+    void        matchDelim(char);
+    bool        matchOpt(const char* ts);
+    Atom_t      matchId();
+    Lit_t       matchLit();
+    int         matchInt();
+    void        matchTerm();
+    void        matchAtomArg();
+    void        matchStr();
+    const char* matchWord();
+    void        push(char c);
     struct Data;
-    Data* data_;
+    AbstractProgram* out_;
+    Data*            data_;
 };
 
 //! Class for writing logic programs in ground text format.
@@ -108,20 +108,14 @@ public:
     void addAtom(Atom_t id, const std::string_view& str);
 
 private:
-    std::ostream&    printName(std::ostream& os, Lit_t lit) const;
-    std::ostream&    printName(std::ostream& os, Atom_t at) const { return printName(os, lit(at)); }
-    std::ostream&    printTheoryAtom(std::ostream&, const TheoryAtom&) const;
-    std::ostream&    appendTerm(std::ostream&, Id_t term) const;
-    void             writeDirectives();
-    void             visitTheoryAtoms();
-    AspifTextOutput& push(uint32_t x);
-    AspifTextOutput& push(const AtomSpan& atoms);
-    AspifTextOutput& push(const LitSpan& lits);
-    AspifTextOutput& push(const WeightLitSpan& wlits);
-    template <typename EnumT>
-    AspifTextOutput& push(EnumT t) {
-        return push(static_cast<uint32_t>(t));
-    }
+    std::ostream& printName(std::ostream& os, Lit_t lit) const;
+    std::ostream& printName(std::ostream& os, Atom_t at) const { return printName(os, lit(at)); }
+    std::ostream& printTheoryAtom(std::ostream&, const TheoryAtom&) const;
+    std::ostream& appendTerm(std::ostream&, Id_t term) const;
+    void          writeDirectives();
+    void          visitTheoryAtoms();
+    template <typename T>
+    AspifTextOutput& push(T&& x);
 
     std::ostream& os_;
     struct Data;

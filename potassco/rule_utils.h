@@ -23,7 +23,7 @@
 //
 #pragma once
 
-#include <potassco/match_basic_types.h>
+#include <potassco/basic_types.h>
 
 #include <new>
 
@@ -64,18 +64,19 @@ struct Rule_t {
 //! A builder class for creating a rule.
 class RuleBuilder {
 public:
-    RuleBuilder();
-    RuleBuilder(const RuleBuilder&);
-    RuleBuilder& operator=(const RuleBuilder&);
-    ~RuleBuilder();
-    void swap(RuleBuilder& other);
+    RuleBuilder()                         = default;
+    RuleBuilder(const RuleBuilder& other) = default;
+    RuleBuilder(RuleBuilder&& other) noexcept;
+    ~RuleBuilder()                                   = default;
+    RuleBuilder& operator=(const RuleBuilder& other) = default;
+    RuleBuilder& operator=(RuleBuilder&& other) noexcept;
+    void         swap(RuleBuilder& other) noexcept;
     /*!
      * \name Start functions
      * Functions for starting the definition of a rule's head or body.
-     * If the active rule is frozen (i.e. end() was called), the active
-     * rule is discarded.
-     * \note The body of a rule can be defined before or after its head is defined
-     * but definitions of head and body must not be mixed.
+     * If the active rule is frozen (i.e. end() was called), the active rule is discarded.
+     * \note The body of a rule can be defined before or after its head is defined but definitions
+     * of head and body must not be mixed.
      */
     //@{
     //! Start definition of the rule's head, which can be either disjunctive or a choice.
@@ -94,23 +95,15 @@ public:
      * \name Update functions
      * Functions for adding elements to the active rule.
      * \note Update functions shall not be called once a rule is frozen.
-     * \note Calling an update function implicitly starts the definition of the
-     * corresponding rule part.
+     * \note Calling an update function implicitly starts the definition of the corresponding rule part.
      */
     //@{
     //! Add a to the rule's head.
     RuleBuilder& addHead(Atom_t a);
     //! Add lit to the rule's body.
-    RuleBuilder& addGoal(Lit_t lit) {
-        WeightLit_t p = {lit, 1};
-        return addGoal(p);
-    }
-    //! Add lit with given weight to rule's body if body is a sum aggregate or rule is a minimize rule.
-    RuleBuilder& addGoal(Lit_t lit, Weight_t w) {
-        WeightLit_t p = {lit, w};
-        return addGoal(p);
-    }
+    RuleBuilder& addGoal(Lit_t lit);
     RuleBuilder& addGoal(WeightLit_t lit);
+    RuleBuilder& addGoal(Lit_t lit, Weight_t w) { return addGoal(WeightLit_t{.lit = lit, .weight = w}); }
     //@}
 
     //! Stop definition of rule and add rule to out if given.
@@ -130,17 +123,19 @@ public:
     /*!
      * \name Query functions
      * Functions for accessing parts of the active rule.
-     * \note The result of these functions is only valid until the next call to
-     * an update function.
+     * \note The result of these functions is only valid until the next call to an update function.
      */
     //@{
+    [[nodiscard]] Head_t   headType() const;
     [[nodiscard]] AtomSpan head() const;
     [[nodiscard]] Atom_t*  head_begin() const;
     [[nodiscard]] Atom_t*  head_end() const;
+    [[nodiscard]] bool     isMinimize() const;
     [[nodiscard]] Body_t   bodyType() const;
     [[nodiscard]] LitSpan  body() const;
     [[nodiscard]] Sum_t    sum() const;
     [[nodiscard]] Rule_t   rule() const;
+    [[nodiscard]] bool     frozen() const;
     // low-level access:
     [[nodiscard]] Lit_t*       lits_begin() const;
     [[nodiscard]] Lit_t*       lits_end() const;
@@ -148,16 +143,25 @@ public:
     [[nodiscard]] WeightLit_t* wlits_end() const;
     [[nodiscard]] Weight_t     bound() const;
     //@}
-
 private:
-    struct Rule;
-    [[nodiscard]] Weight_t* bound_() const;
-    [[nodiscard]] Rule*     rule_() const;
+    struct Range {
+        [[nodiscard]] uint32_t start() const { return start_type & ~3u; }
+        [[nodiscard]] uint32_t end() const { return end_flag & ~3u; }
+        [[nodiscard]] uint32_t type() const { return start_type & 3u; }
+        [[nodiscard]] bool     started() const { return end_flag & 1u; }
+        [[nodiscard]] bool     finished() const { return end_flag & 2u; }
+        [[nodiscard]] bool     open() const { return (end_flag & 3u) == 0; }
+        uint32_t               start_type = 0; // 4-byte aligned, align-bits = type
+        uint32_t               end_flag   = 0; // 4-byte aligned, align-bits = flags
+    };
+    void start(Range& r, uint32_t type, const Weight_t* bound = nullptr);
+    void clear(Range& r);
+    template <typename T>
+    void extend(Range& r, const T& elem, const char* what);
 
-    void  startBody(Body_t bt, Weight_t bnd);
-    Rule* unfreeze(bool clear);
-
-    MemoryRegion mem_;
+    DynamicBuffer mem_;
+    Range         head_{};
+    Range         body_{};
 };
 ///@}
 

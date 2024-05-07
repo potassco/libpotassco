@@ -32,7 +32,6 @@
 namespace Potassco {
 
 class TheoryData;
-struct FuncData;
 
 /*!
  * \addtogroup BasicTypes
@@ -52,28 +51,10 @@ consteval auto getEnumEntries(enum_type<Tuple_t>) {
 //! A term is either a number, symbolic, or compound term (function or tuple).
 class TheoryTerm {
 public:
+    TheoryTerm() noexcept = default;
     //! Iterator type for iterating over arguments of a compound term.
     using iterator = const Id_t*;
-    //! Creates an invalid term.
-    TheoryTerm();
-    //! Creates a number term.
-    explicit TheoryTerm(int num);
-    //! Creates a symbolic term.
-    /*!
-     * \pre sym != nullptr
-     */
-    explicit TheoryTerm(const char* sym);
-    //! Creates a compound term.
-    /*!
-     * \pre c != nullptr
-     */
-    explicit TheoryTerm(const FuncData* c);
-    //! Returns whether this object holds a valid number, symbol or compound.
-    [[nodiscard]] bool valid() const;
     //! Returns the type of this term.
-    /*!
-     * \pre valid()
-     */
     [[nodiscard]] Theory_t type() const;
     //! Returns the number stored in this or throws if type() != Number.
     [[nodiscard]] int number() const;
@@ -99,11 +80,12 @@ public:
     [[nodiscard]] IdSpan terms() const { return {begin(), size()}; }
 
 private:
+    TheoryTerm(uint64_t d) noexcept : data_(d) {}
+    struct FuncData;
     friend class TheoryData;
     [[nodiscard]] uintptr_t getPtr() const;
     [[nodiscard]] FuncData* func() const;
-
-    uint64_t data_;
+    uint64_t                data_ = 0;
 };
 
 //! A basic building block for a theory atom.
@@ -114,10 +96,6 @@ public:
 
     //! Iterator type for iterating over the terms of an element.
     using iterator = const Id_t*;
-    //! Creates a new TheoryElement over the given terms.
-    static TheoryElement* newElement(const IdSpan& terms, Id_t condition);
-    //! Destroys the given TheoryElement.
-    static void destroy(TheoryElement* a);
     //! Returns the number of terms belonging to this element.
     [[nodiscard]] uint32_t size() const { return nTerms_; }
     //! Returns an iterator pointing to the first term of this element.
@@ -131,7 +109,7 @@ public:
 
 private:
     friend class TheoryData;
-    TheoryElement(const IdSpan& terms, Id_t c);
+    TheoryElement(const IdSpan& terms, const Id_t* c);
     void     setCondition(Id_t c);
     uint32_t nTerms_ : 31;
     uint32_t nCond_  : 1;
@@ -145,16 +123,8 @@ class TheoryAtom {
 public:
     TheoryAtom(const TheoryAtom&)            = delete;
     TheoryAtom& operator=(const TheoryAtom&) = delete;
-
     //! Iterator type for iterating over the elements of a theory atom.
     using iterator = const Id_t*;
-    //! Creates a new theory atom.
-    static TheoryAtom* newAtom(Id_t atom, Id_t term, const IdSpan& elements);
-    //! Creates a new theory atom with guard.
-    static TheoryAtom* newAtom(Id_t atom, Id_t term, const IdSpan& elements, Id_t op, Id_t rhs);
-    //! Destroys the given theory atom.
-    static void destroy(TheoryAtom* a);
-
     //! Returns the associated program atom or 0 if this originated from a directive.
     [[nodiscard]] Id_t atom() const { return static_cast<Id_t>(atom_); }
     //! Returns the term that is associated with this atom.
@@ -173,6 +143,7 @@ public:
     [[nodiscard]] const Id_t* rhs() const;
 
 private:
+    friend class TheoryData;
     TheoryAtom(Id_t atom, Id_t term, const IdSpan& elements, const Id_t* op, const Id_t* rhs);
     uint32_t atom_  : 31;
     uint32_t guard_ : 1;
@@ -207,9 +178,9 @@ public:
      * Each element in elements shall be an id associated with an atom element
      * eventually added via addElement().
      */
-    const TheoryAtom& addAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements);
+    void addAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements);
     //! Adds a new theory atom with guard and right hand side.
-    const TheoryAtom& addAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs);
+    void addAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs);
 
     //! Adds a new theory atom element with the given id.
     /*!
@@ -217,7 +188,7 @@ public:
      * eventually added via one of the addTerm() overloads.
      * \note If cond is COND_DEFERRED, the condition may later be changed via a call to setCondition().
      */
-    const TheoryElement& addElement(Id_t elementId, const IdSpan& terms, Id_t cond = COND_DEFERRED);
+    void addElement(Id_t elementId, const IdSpan& terms, Id_t cond = COND_DEFERRED);
     //! Changes the condition of the element with the given id.
     /*!
      * \pre The element was previously added with condition COND_DEFERRED.
@@ -225,19 +196,19 @@ public:
     void setCondition(Id_t elementId, Id_t newCond);
 
     //! Adds a new number term with the given id.
-    const TheoryTerm& addTerm(Id_t termId, int number);
+    void addTerm(Id_t termId, int number);
     //! Adds a new symbolic term with the given name and id.
-    const TheoryTerm& addTerm(Id_t termId, const std::string_view& name);
+    void addTerm(Id_t termId, const std::string_view& name);
     //! Adds a new symbolic term with the given name and id.
-    const TheoryTerm& addTerm(Id_t termId, const char* name);
+    void addTerm(Id_t termId, const char* name);
     //! Adds a new function term with the given id.
     /*!
      * The parameter funcSym represents the name of the function and shall be the id of a symbolic term.
      * Each element in args shall be an id of a theory term.
      */
-    const TheoryTerm& addTerm(Id_t termId, Id_t funcSym, const IdSpan& args);
+    void addTerm(Id_t termId, Id_t funcSym, const IdSpan& args);
     //! Adds a new tuple term with the given id.
-    const TheoryTerm& addTerm(Id_t termId, Tuple_t type, const IdSpan& args);
+    void addTerm(Id_t termId, Tuple_t type, const IdSpan& args);
 
     //! Removes the term with the given id.
     /*!
@@ -264,23 +235,22 @@ public:
     //! Returns whether the given element was added after last call to update.
     [[nodiscard]] bool isNewElement(Id_t e) const;
     //! Returns the term with the given id or throws if no such term exists.
-    [[nodiscard]] const Term& getTerm(Id_t t) const;
+    [[nodiscard]] Term getTerm(Id_t t) const;
     //! Returns the element with the given id or throws if no such element exists.
     [[nodiscard]] const Element& getElement(Id_t e) const;
 
-    //! Removes all theory atoms a for which f(a) returns true.
+    //! Removes all theory atoms `a` for which `f(a)` returns true.
     template <class F>
     void filter(const F& f) {
-        auto**   j   = const_cast<TheoryAtom**>(currBegin());
-        uint32_t pop = 0;
+        auto** j   = const_cast<TheoryAtom**>(currBegin());
+        auto   pop = 0u;
         for (atom_iterator it = j, end = this->end(); it != end; ++it) {
-            Id_t atom = (*it)->atom();
-            if (not atom || not f(**it)) {
+            if (auto atom = (*it)->atom(); not atom || not f(**it)) {
                 *j++ = const_cast<TheoryAtom*>(*it);
             }
             else {
                 ++pop;
-                TheoryAtom::destroy(const_cast<TheoryAtom*>(*it));
+                destroyAtom(const_cast<TheoryAtom*>(*it));
             }
         }
         resizeAtoms(numAtoms() - pop);
@@ -304,93 +274,28 @@ public:
     enum VisitMode { visit_all, visit_current };
     //! Calls out.visit(*this, a) for all theory atoms.
     void accept(Visitor& out, VisitMode m = visit_current) const;
-    //! Visits terms and elements of a.
+    //! Visits terms and elements of the given atom.
     void accept(const TheoryAtom& a, Visitor& out, VisitMode m = visit_all) const;
-    //! Visits terms of e.
+    //! Visits terms of the given element.
     void accept(const TheoryElement& e, Visitor& out, VisitMode m = visit_all) const;
-    //! If t is a compound term, visits sub terms of t.
+    //! If given term is a compound term, visits its sub terms.
     void accept(const TheoryTerm& t, Visitor& out, VisitMode m = visit_all) const;
 
 private:
     struct DestroyT;
-    [[nodiscard]] TheoryTerm*     terms() const;
-    [[nodiscard]] TheoryElement** elems() const;
-    [[nodiscard]] TheoryAtom**    atoms() const;
-    [[nodiscard]] uint32_t        numTerms() const;
-    [[nodiscard]] uint32_t        numElems() const;
+    [[nodiscard]] uint32_t numTerms() const;
+    [[nodiscard]] uint32_t numElems() const;
 
     TheoryTerm& setTerm(Id_t);
     void        resizeAtoms(uint32_t n);
+    void        destroyAtom(TheoryAtom*);
     // NOLINTBEGIN(modernize-use-nodiscard)
     bool doVisitTerm(VisitMode m, Id_t id) const { return m == visit_all || isNewTerm(id); }
     bool doVisitElem(VisitMode m, Id_t id) const { return m == visit_all || isNewElement(id); }
     // NOLINTEND(modernize-use-nodiscard)
     struct Data;
-    Data* data_;
+    std::unique_ptr<Data> data_;
 };
-
-/*!
- * Adaptor that couples an iterator returned from a theory atom, element, or term
- * with a TheoryData object so that dereferencing yields an object instead of an id.
- */
-template <class T, const T& (TheoryData::*get)(Id_t) const>
-class IteratorAdaptor {
-public:
-    using this_type         = IteratorAdaptor;
-    using iterator_category = std::bidirectional_iterator_tag;
-    using value_type        = const T;
-    using reference         = const T&;
-    using pointer           = const T*;
-    using difference_type   = std::ptrdiff_t;
-    IteratorAdaptor(const TheoryData& t, const Id_t* e) : data_(&t), elem_(e) {}
-    IteratorAdaptor() = default;
-    this_type& operator++() {
-        ++elem_;
-        return *this;
-    }
-    // NOLINTNEXTLINE(cert-dcl21-cpp)
-    this_type operator++(int) {
-        this_type t(*this);
-        ++*this;
-        return t;
-    }
-    this_type& operator--() {
-        --elem_;
-        return *this;
-    }
-    // NOLINTNEXTLINE(cert-dcl21-cpp)
-    this_type operator--(int) {
-        this_type t(*this);
-        --*this;
-        return t;
-    }
-    reference operator*() const { return (data_->*get)(*raw()); }
-    pointer   operator->() const { return &**this; }
-
-    friend void swap(this_type& lhs, this_type& rhs) {
-        std::swap(lhs.data_, rhs.data_);
-        std::swap(lhs.elem_, rhs.elem_);
-    }
-    friend bool operator==(const this_type& lhs, const this_type& rhs) {
-        return lhs.data_ == rhs.data_ && lhs.elem_ == rhs.elem_;
-    }
-    friend bool operator!=(const this_type& lhs, const this_type& rhs) { return !(lhs == rhs); }
-
-    [[nodiscard]] const Id_t*       raw() const { return elem_; }
-    [[nodiscard]] const TheoryData& theory() const { return *data_; }
-
-private:
-    const TheoryData* data_ = nullptr;
-    const Id_t*       elem_ = nullptr;
-};
-
-using TheoryElementIterator = IteratorAdaptor<TheoryElement, &TheoryData::getElement>;
-using TheoryTermIterator    = IteratorAdaptor<TheoryTerm, &TheoryData::getTerm>;
-
-inline TheoryElementIterator begin(const TheoryData& t, const TheoryAtom& a) { return {t, a.begin()}; }
-inline TheoryElementIterator end(const TheoryData& t, const TheoryAtom& a) { return {t, a.end()}; }
-inline TheoryTermIterator    begin(const TheoryData& t, const TheoryElement& e) { return {t, e.begin()}; }
-inline TheoryTermIterator    end(const TheoryData& t, const TheoryElement& e) { return {t, e.end()}; }
 
 inline void print(AbstractProgram& out, Id_t termId, const TheoryTerm& term) {
     switch (term.type()) {

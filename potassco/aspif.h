@@ -30,8 +30,7 @@ namespace Potassco {
  */
 ///@{
 /*!
- * Parses the given program in asp intermediate format and calls out on each parsed element.
- * The error handler h is called on error. If h is 0, std::exceptions are used to signal errors.
+ * Parses the given program in asp intermediate format and calls `out` on each parsed element.
  */
 int readAspif(std::istream& prg, AbstractProgram& out);
 
@@ -40,7 +39,7 @@ enum class Theory_t;
 //! Class for parsing logic programs in asp intermediate format.
 class AspifInput : public ProgramReader {
 public:
-    //! Creates a new parser object that calls out on each parsed element.
+    //! Creates a new parser object that calls `out` on each parsed element.
     AspifInput(AbstractProgram& out);
 
 protected:
@@ -70,7 +69,6 @@ private:
         return static_cast<EnumT>(matchPos(enum_count<EnumT>() - 1, err));
     }
     AbstractProgram& out_;
-    RuleBuilder*     rule_;
     Extra*           data_;
 };
 ///@}
@@ -127,16 +125,13 @@ public:
 protected:
     //! Starts writing an aspif directive.
     AspifOutput& startDir(Directive_t r);
-    //! Writes x.
-    AspifOutput& add(int x);
-    AspifOutput& add(unsigned x);
-    //! Writes size(lits) followed by the elements in lits.
-    AspifOutput& add(const WeightLitSpan& lits);
-    //! Writes size(lits) followed by the literals in lits.
-    AspifOutput& add(const LitSpan& lits);
-    //! Writes size(atoms) followed by the atoms in atoms.
-    AspifOutput& add(const AtomSpan& atoms);
-    //! Writes size(str) followed by the characters in str.
+    //! Writes `x`.
+    template <typename T>
+    AspifOutput& add(T x);
+    //! Writes `size(lits)` followed by the elements in `lits`.
+    template <typename T>
+    AspifOutput& add(const std::span<const T>& lits);
+    //! Writes `size(str)` followed by the characters in `str`.
     AspifOutput& add(const std::string_view& str);
     //! Terminates the active directive by writing a newline.
     AspifOutput& endDir();

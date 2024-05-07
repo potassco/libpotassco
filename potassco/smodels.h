@@ -99,7 +99,6 @@ private:
     struct StringTab;
     void matchBody(RuleBuilder& rule);
     void matchSum(RuleBuilder& rule, bool weights);
-    bool addHeuristic(std::string_view atom, Heuristic_t type, int bias, unsigned prio, Lit_t cond);
 
     AbstractProgram&           out_;
     AtomLookup                 lookup_;
@@ -120,10 +119,11 @@ int readSmodels(std::istream& prg, AbstractProgram& out, const SmodelsInput::Opt
  */
 ///@{
 
-//! Returns a non-zero value if head can be represented in smodels format (i.e. is not empty).
-int isSmodelsHead(Head_t ht, const AtomSpan& head);
+//! Returns a non-zero value if head can be represented in smodels format.
+int isSmodelsHead(Head_t ht, const AtomSpan& head, bool allowConstraint = false);
 //! Returns a non-zero value if rule can be represented in smodels format.
-int isSmodelsRule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body);
+int isSmodelsRule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body,
+                  bool allowConstraint = false);
 
 //! Writes a program in smodels numeric format to the given output stream.
 /*!

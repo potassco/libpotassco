@@ -33,6 +33,7 @@
 #include <cstdio>
 #include <cstring>
 #include <istream>
+#include <utility>
 namespace Potassco {
 #define POTASSCO_UNSUPPORTED(msg) POTASSCO_FAIL(Errc::domain_error, msg)
 
@@ -69,14 +70,14 @@ BufferedStream::BufferedStream(std::istream& str) : str_(str), rpos_(0), line_(1
 }
 BufferedStream::~BufferedStream() { delete[] buf_; }
 char BufferedStream::pop() {
-    char c = peek();
+    auto c = peek();
     if (not buf_[++rpos_]) {
         underflow();
     }
     return c;
 }
 char BufferedStream::get() {
-    if (char c = peek()) {
+    if (auto c = peek(); c) {
         pop();
         if (c == '\r') {
             c = '\n';
@@ -116,9 +117,8 @@ bool BufferedStream::unget(char c) {
     return true;
 }
 bool BufferedStream::match(const char* w) {
-    std::size_t wLen = std::strlen(w);
-    std::size_t bLen = BUF_SIZE - rpos_;
-    if (bLen < wLen) {
+    auto wLen = std::strlen(w);
+    if (auto bLen = BUF_SIZE - rpos_; bLen < wLen) {
         POTASSCO_ASSERT(wLen <= BUF_SIZE, "Token too long - Increase BUF_SIZE!");
         std::memcpy(buf_, buf_ + rpos_, bLen);
         rpos_ = bLen;
@@ -137,7 +137,7 @@ bool BufferedStream::match(int64_t& res, bool noSkipWs) {
     if (not noSkipWs) {
         skipWs();
     }
-    char s = peek();
+    auto s = peek();
     if (s == '+' || s == '-') {
         pop();
     }
@@ -156,9 +156,9 @@ bool BufferedStream::match(int64_t& res, bool noSkipWs) {
 std::size_t BufferedStream::copy(std::span<char> outBuf) {
     std::size_t os = 0;
     for (auto n = outBuf.size(); n && peek();) {
-        std::size_t b   = (ALLOC_SIZE - rpos_) - 1;
-        std::size_t m   = std::min(n, b);
-        char*       out = outBuf.data() + os;
+        auto  b   = (ALLOC_SIZE - rpos_) - 1;
+        auto  m   = std::min(n, b);
+        char* out = outBuf.data() + os;
         std::copy(buf_ + rpos_, buf_ + rpos_ + m, out);
         n     -= m;
         os    += m;
@@ -238,7 +238,7 @@ bool match(const char*& input, std::string_view word) {
 }
 bool matchAtomArg(const char*& input, std::string_view& arg) {
     const char* scan = input;
-    for (int p = 0; *scan; ++scan) {
+    for (auto p = 0; *scan; ++scan) {
         if (*scan == '(') {
             ++p;
         }
@@ -253,7 +253,7 @@ bool matchAtomArg(const char*& input, std::string_view& arg) {
             }
         }
         else if (*scan == '"') {
-            bool quoted = false;
+            auto quoted = false;
             for (++scan; *scan && (*scan != '\"' || quoted); ++scan) { quoted = not quoted && *scan == '\\'; }
             if (!*scan) {
                 return false;
@@ -277,7 +277,7 @@ bool match(const char*& input, Heuristic_t& heuType) {
 
 bool match(const char*& input, int& out) {
     char* eptr;
-    long  t = std::strtol(input, &eptr, 10);
+    auto  t = std::strtol(input, &eptr, 10);
     if (eptr == input || t < INT_MIN || t > INT_MAX) {
         return false;
     }
@@ -287,7 +287,6 @@ bool match(const char*& input, int& out) {
 }
 
 int matchDomHeuPred(const char*& in, std::string_view& atom, Heuristic_t& type, int& bias, unsigned& prio) {
-    int p;
     if (not match(in, heuristicPred)) {
         return 0;
     }
@@ -304,6 +303,7 @@ int matchDomHeuPred(const char*& in, std::string_view& atom, Heuristic_t& type, 
     if (not match(in, ","sv)) {
         return match(in, ")"sv) ? 1 : -3;
     }
+    int p;
     if (not match(in, p) || p < 0) {
         return -4;
     }
@@ -332,28 +332,67 @@ int matchEdgePred(const char*& in, std::string_view& n0, std::string_view& n1) {
     return 0;
 }
 /////////////////////////////////////////////////////////////////////////////////////////
-// MemoryRegion
+// DynamicBuffer
 /////////////////////////////////////////////////////////////////////////////////////////
-MemoryRegion::MemoryRegion(std::size_t init) : beg_(nullptr), end_(nullptr) { grow(init); }
-MemoryRegion::~MemoryRegion() { release(); }
-void MemoryRegion::release() {
-    std::free(beg_);
-    beg_ = end_ = nullptr;
+static constexpr uint32_t c_fastGrowCap = 0x20000u;
+static constexpr uint32_t nextCapacity(uint32_t current) {
+    if (current == 0u) {
+        return 64u;
+    }
+    return current <= c_fastGrowCap ? (current * 3 + 1) >> 1 : current << 1u;
 }
-void* MemoryRegion::operator[](std::size_t idx) const { return static_cast<unsigned char*>(beg_) + idx; }
-void  MemoryRegion::swap(MemoryRegion& other) {
+DynamicBuffer::DynamicBuffer(std::size_t init) : beg_(nullptr), cap_(0), size_(0) { reserve(init); }
+DynamicBuffer::DynamicBuffer(DynamicBuffer&& other) noexcept
+    : beg_(std::exchange(other.beg_, nullptr))
+    , cap_(std::exchange(other.cap_, 0))
+    , size_(std::exchange(other.size_, 0)) {}
+DynamicBuffer::DynamicBuffer(const DynamicBuffer& other) : DynamicBuffer() { append(other.data(), other.size_); }
+DynamicBuffer::~DynamicBuffer() { release(); }
+DynamicBuffer& DynamicBuffer::operator=(Potassco::DynamicBuffer&& other) noexcept {
+    if (this != &other) {
+        DynamicBuffer(std::move(other)).swap(*this);
+    }
+    return *this;
+}
+DynamicBuffer& DynamicBuffer::operator=(const Potassco::DynamicBuffer& other) {
+    if (this != &other) {
+        DynamicBuffer(other).swap(*this);
+    }
+    return *this;
+}
+void DynamicBuffer::release() noexcept {
+    if (auto p = std::exchange(beg_, nullptr); p) {
+        std::free(p);
+        cap_ = size_ = 0;
+    }
+}
+void DynamicBuffer::swap(DynamicBuffer& other) noexcept {
     std::swap(beg_, other.beg_);
-    std::swap(end_, other.end_);
+    std::swap(cap_, other.cap_);
+    std::swap(size_, other.size_);
 }
-
-void MemoryRegion::grow(std::size_t n) {
-    if (n > size()) {
-        std::size_t nc = std::max(std::max(n, std::size_t(8)), ((size() * 3 + 1) >> 1));
-        void*       t  = std::realloc(beg_, nc);
+void DynamicBuffer::reserve(std::size_t n) {
+    if (n > capacity()) {
+        auto newCap = std::max(static_cast<std::size_t>(nextCapacity(capacity())), n);
+        POTASSCO_CHECK(std::in_range<uint32_t>(newCap), Errc::length_error, "region too large");
+        void* t = std::realloc(beg_, newCap);
         POTASSCO_CHECK(t, Errc::bad_alloc);
         beg_ = t;
-        end_ = static_cast<unsigned char*>(t) + nc;
+        cap_ = newCap;
     }
+}
+std::span<char> DynamicBuffer::alloc(std::size_t n) {
+    reserve(size() + n);
+    return {data(std::exchange(size_, size_ + n)), n};
+}
+void DynamicBuffer::append(const void* what, std::size_t n) {
+    if (n)
+        std::memcpy(alloc(n).data(), what, n);
+}
+std::unique_ptr<char[]> toCString(std::string_view in) {
+    auto str                                    = std::make_unique<char[]>(in.size() + 1);
+    *std::copy(in.begin(), in.end(), str.get()) = 0;
+    return str;
 }
 
 } // namespace Potassco
