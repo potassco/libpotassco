@@ -36,6 +36,7 @@
 #pragma warning(disable : 4996)
 #endif
 namespace Potassco {
+using namespace std::literals;
 /////////////////////////////////////////////////////////////////////////////////////////
 // AspifInput
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -49,14 +50,14 @@ struct AspifInput::Extra {
 AspifInput::AspifInput(AbstractProgram& out) : out_(out), data_(nullptr) {}
 
 bool AspifInput::doAttach(bool& inc) {
-    if (not match("asp ")) {
+    if (not match("asp "sv)) {
         return false;
     }
     require(matchPos() == 1, "unsupported major version");
     require(matchPos() == 0, "unsupported minor version");
     matchPos("revision number expected");
-    while (match(" ", false)) { ; }
-    inc = match("incremental", false);
+    while (match(" "sv, false)) { ; }
+    inc = match("incremental"sv, false);
     out_.initProgram(inc);
     return require(stream()->get() == '\n', "invalid extra characters in problem line");
 }

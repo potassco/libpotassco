@@ -83,25 +83,26 @@ struct SmodelsConvert::SmData {
         unsigned    prio{};
         unsigned    cond{};
     };
+    using SymTab = std::unordered_map<Atom_t, FixedString>;
     struct Output {
         enum Type : uint8_t { Name = 0, Edge = 1 };
         struct EdgeT {
             int32_t s;
             int32_t t;
         };
-        Output(Atom_t a = 0, const char* n = nullptr) : atom(a), type(Name), name(n) {}
+        Output(SymTab::iterator it) : atom(it->first), type(Name), name(&it->second) {}
         Output(Atom_t a, int32_t s, int32_t t) : atom(a), type(Edge), edge{s, t} {}
         std::string_view makePred(ScratchType& scratch) const {
             if (type == Name)
-                return name;
+                return name->view();
             else
                 return SmData::makePred(scratch, "_edge"sv, edge.s, edge.t);
         }
         uint32_t atom : 31;
         uint32_t type : 1;
         union {
-            const char* name{};
-            EdgeT       edge;
+            const FixedString* name{};
+            EdgeT              edge;
         };
     };
     static_assert(amc::is_trivially_relocatable_v<Atom> && amc::is_trivially_relocatable_v<Atom_t> &&
@@ -112,7 +113,6 @@ struct SmodelsConvert::SmData {
     using WLitVec = amc::vector<WeightLit_t>;
     using HeuVec  = amc::vector<Heuristic>;
     using OutVec  = amc::vector<Output>;
-    using SymTab  = std::unordered_map<Atom_t, std::unique_ptr<char[]>>;
     struct Minimize {
         static_assert(amc::is_trivially_relocatable_v<WLitVec>);
         using trivially_relocatable = std::true_type;
@@ -161,13 +161,14 @@ struct SmodelsConvert::SmData {
         for (const auto& x : in) { rule_.addGoal(mapLit(x)); }
         return rule_;
     }
-    const char*               addOutput(Atom_t atom, const std::string_view&);
-    [[nodiscard]] const char* getName(const Atom& atom) const {
-        if (not atom.show)
-            return nullptr;
-        auto it = symTab_.find(atom);
-        return it != symTab_.end() ? it->second.get() : nullptr;
+    SymTab::iterator addOutput(Atom_t atom, const std::string_view& str) {
+        auto [it, added] = symTab_.try_emplace(atom, str);
+        POTASSCO_CHECK_PRE(added, "Redefinition: atom '%u:%.*s' already shown as '%s'", atom, int(str.size()),
+                           str.data(), it->second.c_str());
+        output_.emplace_back(it);
+        return it;
     }
+
     void addMinimize(Weight_t prio, const WeightLitSpan& lits) {
         auto it = std::lower_bound(minimize_.begin(), minimize_.end(), prio,
                                    [](const Minimize& lhs, Weight_t rhs) { return lhs.prio < rhs; });
@@ -206,14 +207,6 @@ struct SmodelsConvert::SmData {
     RuleBuilder rule_;      // active (mapped) rule
     Atom_t      next_;      // next unused output atom
 };
-const char* SmodelsConvert::SmData::addOutput(Atom_t atom, const std::string_view& str) {
-    auto        name = toCString(str);
-    const char* n    = name.get();
-    auto [it, added] = symTab_.emplace(atom, std::move(name));
-    POTASSCO_CHECK_PRE(added, "Redefinition: atom '%u:%s' already shown as '%s'", atom, n, it->second.get());
-    output_.emplace_back(atom, n);
-    return n;
-}
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsConvert
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -343,20 +336,20 @@ void SmodelsConvert::flushHeuristic() {
         if (not data_->mapped(heu.atom)) {
             continue;
         }
-        SmData::Atom& ma   = data_->mapAtom(heu.atom);
-        const char*   name = data_->getName(ma);
-        if (not name) {
+        SmData::Atom& ma = data_->mapAtom(heu.atom);
+        auto          it = ma.show ? data_->symTab_.find(ma.smId) : data_->symTab_.end();
+        if (it == data_->symTab_.end()) {
             ma.show = 1;
-            name    = data_->addOutput(ma, ma.makePred(scratch));
+            it      = data_->addOutput(ma, ma.makePred(scratch));
         }
         auto c = static_cast<Lit_t>(heu.cond);
-        out_.output(heu.makePred(scratch, name), {&c, 1});
+        out_.output(heu.makePred(scratch, it->second.view()), {&c, 1});
     }
 }
 void SmodelsConvert::flushSymbols() {
     SmData::ScratchType scratch;
-    std::stable_sort(data_->output_.begin(), data_->output_.end(),
-                     [](const auto& lhs, const auto& rhs) { return lhs.atom < rhs.atom; });
+    std::sort(data_->output_.begin(), data_->output_.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.atom < rhs.atom; });
     for (const auto& sym : data_->output_) {
         auto x = static_cast<Lit_t>(sym.atom);
         out_.output(sym.makePred(scratch), {&x, 1});

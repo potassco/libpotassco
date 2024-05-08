@@ -31,7 +31,7 @@
 #include <unordered_map>
 
 namespace Potassco {
-
+using namespace std::literals;
 enum SmodelsRule {
     End             = 0,
     Basic           = 1,
@@ -72,36 +72,19 @@ int isSmodelsRule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLi
 // SmodelsInput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct SmodelsInput::StringTab {
-    StringTab()            = default;
-    StringTab(StringTab&&) = delete;
-    ~StringTab() {
-        while (not map.empty()) dealloc(map.extract(map.begin()).key());
-    }
-
-    static const char* alloc(std::string_view n) {
-        char* outName = new char[n.size()];
-        std::ranges::copy(n, outName);
-        return outName;
-    }
-    static void dealloc(std::string_view n) { delete[] n.data(); }
-
-    bool addUnique(const std::string_view& name, Id_t id) {
-        if (auto k = std::string_view{alloc(name), name.size()}; map.emplace(k, id).second) {
-            return true;
+    struct Hash {
+        using is_transparent = void;
+        template <typename S>
+        std::size_t operator()(const S& s) const noexcept {
+            return std::hash<std::string_view>()(
+                static_cast<std::conditional_t<std::is_same_v<S, std::string_view>, const S&, std::string_view>>(s));
         }
-        else {
-            dealloc(k);
-            return false;
-        }
-    }
-
+    };
+    bool addUnique(const std::string_view& name, Id_t id) { return map.try_emplace(name, id).second; }
     Id_t tryAdd(const std::string_view& name, Id_t id) {
-        if (auto it = map.find(name); it != map.end())
-            return it->second;
-        addUnique(name, id);
-        return id;
+        auto it = map.find(name);
+        return it != map.end() ? it->second : map.emplace_hint(it, name, id)->second;
     }
-
     [[nodiscard]] Id_t findOr(const std::string_view& name, Id_t orVal) const {
         if (auto it = map.find(name); it != map.end()) {
             return it->second;
@@ -109,7 +92,7 @@ struct SmodelsInput::StringTab {
         return orVal;
     }
     [[nodiscard]] uint32_t size() const noexcept { return map.size(); }
-    using StringMap = std::unordered_map<std::string_view, Id_t>;
+    using StringMap = std::unordered_map<FixedString, Id_t, Hash, std::equal_to<>>;
     StringMap map;
 };
 
@@ -138,7 +121,7 @@ bool SmodelsInput::doAttach(bool& inc) {
 
 bool SmodelsInput::doParse() {
     out_.beginStep();
-    if (readRules() && readSymbols() && readCompute("B+", true) && readCompute("B-", false) && readExtra()) {
+    if (readRules() && readSymbols() && readCompute() && readExtra()) {
         out_.endStep();
         return true;
     }
@@ -217,7 +200,7 @@ bool SmodelsInput::readRules() {
             case ClaspReleaseExt:
                 require(opts_.claspExt, "unrecognized rule type");
                 if (rt == ClaspAssignExt) {
-                    Atom_t rHead = matchAtom();
+                    auto rHead = matchAtom();
                     out_.external(rHead, static_cast<Value_t>((matchPos(2, "0..2 expected") ^ 3) - 1));
                 }
                 else {
@@ -310,19 +293,21 @@ bool SmodelsInput::readSymbols() {
     return true;
 }
 
-bool SmodelsInput::readCompute(const char* comp, bool val) {
-    require(match(comp) && stream()->get() == '\n', "compute statement expected");
-    for (Lit_t x; (x = (Lit_t) matchPos()) != 0;) {
-        if (val) {
-            x = neg(x);
+bool SmodelsInput::readCompute() {
+    for (auto [part, pos] : {std::pair{"B+"sv, true}, std::pair{"B-"sv, false}}) {
+        require(match(part) && stream()->get() == '\n', "compute statement expected");
+        for (Lit_t x; (x = (Lit_t) matchPos()) != 0;) {
+            if (pos) {
+                x = neg(x);
+            }
+            out_.rule(Head_t::Disjunctive, {}, {&x, 1});
         }
-        out_.rule(Head_t::Disjunctive, {}, {&x, 1});
     }
     return true;
 }
 
 bool SmodelsInput::readExtra() {
-    if (match("E")) {
+    if (match("E"sv)) {
         for (Atom_t atom; (atom = matchPos()) != 0;) { out_.external(atom, Value_t::Free); }
     }
     matchPos("number of models expected");

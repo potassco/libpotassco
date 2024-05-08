@@ -90,8 +90,8 @@ protected:
     virtual bool readRules();
     //! Reads the current smodels symbol table block.
     virtual bool readSymbols();
-    //! Reads the current part of the compute statement.
-    virtual bool readCompute(const char* sec, bool val);
+    //! Reads the current compute statement.
+    virtual bool readCompute();
     //! Reads an optional external block and the number of models.
     virtual bool readExtra();
 

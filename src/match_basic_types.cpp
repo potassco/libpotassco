@@ -30,6 +30,7 @@
 #include <potassco/error.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <istream>
@@ -116,17 +117,16 @@ bool BufferedStream::unget(char c) {
     }
     return true;
 }
-bool BufferedStream::match(const char* w) {
-    auto wLen = std::strlen(w);
-    if (auto bLen = BUF_SIZE - rpos_; bLen < wLen) {
-        POTASSCO_ASSERT(wLen <= BUF_SIZE, "Token too long - Increase BUF_SIZE!");
+bool BufferedStream::match(std::string_view w) {
+    if (auto bLen = BUF_SIZE - rpos_; bLen < w.length()) {
+        POTASSCO_ASSERT(w.length() <= BUF_SIZE, "Token too long - Increase BUF_SIZE!");
         std::memcpy(buf_, buf_ + rpos_, bLen);
         rpos_ = bLen;
         underflow(false);
         rpos_ = 0;
     }
-    if (std::strncmp(w, buf_ + rpos_, wLen) == 0) {
-        if (not buf_[rpos_ += wLen]) {
+    if (std::strncmp(w.data(), buf_ + rpos_, w.length()) == 0) {
+        if (not buf_[rpos_ += w.length()]) {
             underflow();
         }
         return true;
@@ -389,10 +389,42 @@ void DynamicBuffer::append(const void* what, std::size_t n) {
     if (n)
         std::memcpy(alloc(n).data(), what, n);
 }
-std::unique_ptr<char[]> toCString(std::string_view in) {
-    auto str                                    = std::make_unique<char[]>(in.size() + 1);
-    *std::copy(in.begin(), in.end(), str.get()) = 0;
-    return str;
+/////////////////////////////////////////////////////////////////////////////////////////
+// FixedString
+/////////////////////////////////////////////////////////////////////////////////////////
+FixedString::FixedString(std::string_view n, CreateMode cm) {
+    if (n.size() > c_maxSmall) {
+        storage_[c_maxSmall] = c_largeTag + cm;
+        auto* buf            = new char[(cm == Shared ? sizeof(std::atomic<int32_t>) : 0) + n.size() + 1];
+        if (cm == Shared) {
+            new (buf) std::atomic<int32_t>(1);
+            buf += sizeof(std::atomic<int32_t>);
+        }
+        *std::copy(n.begin(), n.end(), buf) = 0;
+        new (storage_) Large{.str = buf, .size = n.size()};
+    }
+    else {
+        *std::copy(n.begin(), n.end(), storage_) = 0;
+        storage_[c_maxSmall]                     = c_maxSmall - n.size();
+    }
+    POTASSCO_DEBUG_ASSERT(static_cast<std::string_view>(*this) == n);
 }
-
+FixedString::FixedString(const FixedString& o) : FixedString(not o.shareable() ? o.view() : std::string_view{}) {
+    if (o.shareable()) {
+        POTASSCO_DEBUG_ASSERT(not o.small());
+        storage_[c_maxSmall] = o.storage_[c_maxSmall];
+        new (storage_) Large{*o.large()};
+        addRef(1);
+    }
+}
+void FixedString::release() {
+    if (not shareable() || addRef(-1) == 0) {
+        delete[] (large()->str - (shareable() * sizeof(std::atomic<int32_t>)));
+    }
+}
+int32_t FixedString::addRef(int32_t x) {
+    POTASSCO_DEBUG_ASSERT(shareable());
+    auto& r   = *reinterpret_cast<std::atomic<int32_t>*>(large()->str - sizeof(std::atomic<int32_t>));
+    return r += x;
+}
 } // namespace Potassco

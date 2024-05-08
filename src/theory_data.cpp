@@ -45,6 +45,7 @@ static constexpr std::size_t computeExtraBytes(const T& arg [[maybe_unused]]) {
         return 0;
     }
 }
+
 struct TheoryTerm::FuncData {
     FuncData(int32_t b, const IdSpan& a) : base(b), size(static_cast<uint32_t>(a.size())) {
         std::ranges::copy(a, args);
@@ -148,6 +149,11 @@ struct TheoryData::Data {
         auto bytes = (sizeof(T) + ... + computeExtraBytes(args));
         return new (::operator new(bytes)) T(std::forward<Args>(args)...);
     }
+    static char* allocCString(std::string_view in) {
+        auto str                              = new char[in.size() + 1];
+        *std::copy(in.begin(), in.end(), str) = 0;
+        return str;
+    }
     amc::vector<TheoryAtom*>    atoms;
     amc::vector<TheoryElement*> elems;
     amc::vector<TheoryTerm>     terms;
@@ -166,7 +172,7 @@ void TheoryData::addTerm(Id_t termId, int number) {
 }
 void TheoryData::addTerm(Id_t termId, const std::string_view& name) {
     auto& term = setTerm(termId);
-    term       = assertPtr(toCString(name).release(), uint32_t(Theory_t::Symbol));
+    term       = assertPtr(Data::allocCString(name), uint32_t(Theory_t::Symbol));
     POTASSCO_DEBUG_ASSERT(getTerm(termId).symbol() == name);
 }
 void TheoryData::addTerm(Id_t termId, const char* name) {

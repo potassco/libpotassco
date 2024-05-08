@@ -250,6 +250,99 @@ TEST_CASE("Test DynamicBuffer", "[rule]") {
         }
     }
 }
+TEST_CASE("Test FixedString", "[rule]") {
+    SECTION("empty") {
+        static_assert(sizeof(FixedString) == 24);
+        FixedString s;
+        REQUIRE(s.size() == 0);
+        REQUIRE(s.c_str() != nullptr);
+        REQUIRE_FALSE(*s.c_str());
+    }
+    SECTION("small to large") {
+        std::string v;
+        for (unsigned i = 0;; ++i) {
+            v.assign(i, 'x');
+            FixedString s(v);
+            REQUIRE(v.size() == i);
+            REQUIRE(s.size() == v.size());
+            REQUIRE(std::strcmp(s.c_str(), v.c_str()) == 0);
+            REQUIRE(static_cast<std::string_view>(s) == v);
+            if (not s.small())
+                break;
+        }
+        REQUIRE(v.size() == 24);
+    }
+    SECTION("deep copy") {
+        std::string_view sv("small");
+        FixedString      s(sv);
+        FixedString      s2(s);
+        REQUIRE(s == sv);
+        REQUIRE_FALSE(s.shareable());
+        REQUIRE(s2 == sv);
+        REQUIRE((void*) s.c_str() != (void*) s2.c_str());
+        std::string large(32, 'x');
+        FixedString s3(large);
+        FixedString s4(s3);
+        REQUIRE_FALSE(s.shareable());
+        REQUIRE(s3 == std::string_view{large});
+        REQUIRE(s4 == std::string_view{large});
+        REQUIRE((void*) s3.c_str() != (void*) s4.c_str());
+    }
+    SECTION("shallow copy") {
+        std::string_view sv("small");
+        FixedString      s(sv, FixedString::Shared);
+        FixedString      s2(s);
+        REQUIRE(s == sv);
+        REQUIRE_FALSE(s.shareable());
+        REQUIRE(s2 == sv);
+        REQUIRE((void*) s.c_str() != (void*) s2.c_str());
+        std::string large(32, 'x');
+        FixedString s3(large, FixedString::Shared);
+        FixedString s4(s3);
+        REQUIRE(s3.shareable());
+        REQUIRE(s4.shareable());
+        REQUIRE(s3 == std::string_view{large});
+        REQUIRE(s4 == std::string_view{large});
+        REQUIRE((void*) s3.c_str() == (void*) s4.c_str());
+    }
+    SECTION("move") {
+        std::string_view sv("small");
+        FixedString      s(sv);
+        FixedString      s2(std::move(s));
+        REQUIRE(s == std::string_view{});
+        REQUIRE(s2 == sv);
+        std::string large(32, 'x');
+        FixedString s3(large);
+        auto        old = (void*) s3.c_str();
+        FixedString s4(std::move(s3));
+        REQUIRE(s3 == std::string_view{});
+        REQUIRE(s4 == std::string_view(large));
+        REQUIRE((void*) s4.c_str() == old);
+    }
+    SECTION("compare") {
+        FixedString s("one");
+        FixedString t("two");
+        REQUIRE(s == s);
+        REQUIRE(s != t);
+        REQUIRE(s < t);
+        REQUIRE(t > s);
+        REQUIRE_FALSE(s < s);
+        REQUIRE_FALSE(s > s);
+        REQUIRE(s <= s);
+        REQUIRE(s >= s);
+
+        auto sv = s.view();
+        auto tv = t.view();
+        REQUIRE(s == sv);
+        REQUIRE(s != tv);
+        REQUIRE(s < tv);
+        REQUIRE(tv > s);
+        REQUIRE_FALSE(s < sv);
+        REQUIRE_FALSE(sv > s);
+        REQUIRE(sv <= s);
+        REQUIRE(s >= sv);
+    }
+}
 template <typename T, typename U>
 static bool spanEq(const T& lhs, const U& rhs) {
     if (std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end())) {

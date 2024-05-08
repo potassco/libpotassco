@@ -37,6 +37,7 @@
 #include <potassco/enum.h>
 #include <potassco/platform.h>
 
+#include <cstring>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -216,9 +217,6 @@ constexpr auto operator==(Lit_t lhs, const WeightLit_t& rhs) { return rhs == lhs
 constexpr auto operator<=>(const WeightLit_t& lhs, Lit_t rhs) { return lhs <=> WeightLit_t{.lit = rhs, .weight = 1}; }
 constexpr auto operator<=>(Lit_t lhs, const WeightLit_t& rhs) { return WeightLit_t{.lit = lhs, .weight = 1} <=> rhs; }
 
-//! Copies the given string_view to a null-terminated character array.
-std::unique_ptr<char[]> toCString(std::string_view in);
-
 ///@}
 
 //! A (dynamically-sized) buffer of raw memory.
@@ -285,6 +283,91 @@ private:
 inline void swap(DynamicBuffer& lhs, DynamicBuffer& rhs) { lhs.swap(rhs); }
 
 class RuleBuilder;
+
+//! A trivially relocatable immutable string type with small buffer optimization.
+/*!
+ * Not all std::string implementations are trivially relocatable. E.g. the SSO implemented in gcc (libstdc++) relies on
+ * a pointer referencing a buffer internal to the string, making relocation non-trivial.
+ * In contrast, this class uses a SSO implementation that is more similar to the one from libc++.
+ */
+class FixedString {
+public:
+    using trivially_relocatable = std::true_type;
+    //! Supported creation modes.
+    enum CreateMode { Unique, Shared };
+    //! Creates an empty string.
+    constexpr FixedString() {
+        if (std::is_constant_evaluated()) {
+            std::fill(std::begin(storage_) + 1, std::end(storage_), char(0));
+        }
+        storage_[0]          = 0;
+        storage_[c_maxSmall] = static_cast<char>(c_maxSmall);
+    }
+    //! Creates a string by coping `n`.
+    /*!
+     * The creation mode determines how further copies are handled. If `n` exceeds the SSO limit and `m` is set to
+     * "Shared", further copies only increase an internal reference count.
+     */
+    FixedString(std::string_view n, CreateMode m = Unique);
+    //! Creates a copy of `o`.
+    FixedString(const FixedString& o);
+    //! "Steals" the content of `o`.
+    constexpr FixedString(FixedString&& o) noexcept {
+        if (o.small()) {
+            if (std::is_constant_evaluated()) {
+                std::copy(std::begin(o.storage_), std::end(o.storage_), storage_);
+            }
+            else {
+                std::memmove(storage_, o.storage_, o.size() + 1);
+                storage_[c_maxSmall] = o.storage_[c_maxSmall];
+            }
+        }
+        else {
+            new (storage_) Large{*o.large()};
+            storage_[c_maxSmall] = o.storage_[c_maxSmall];
+        }
+        o.storage_[0]          = 0;
+        o.storage_[c_maxSmall] = static_cast<char>(c_maxSmall);
+    }
+    constexpr ~FixedString() {
+        if (not small()) {
+            release();
+        }
+    }
+    FixedString& operator=(const FixedString&) = delete;
+    FixedString& operator=(FixedString&&)      = delete;
+
+    //! Converts this string to a string_view.
+    [[nodiscard]] constexpr explicit operator std::string_view() const { return {c_str(), size()}; }
+    //! Returns this string as a null-terminated C string.
+    [[nodiscard]] constexpr const char* c_str() const { return small() ? storage_ : large()->str; }
+    //! Converts this string to a string_view.
+    [[nodiscard]] constexpr std::string_view view() const { return static_cast<std::string_view>(*this); }
+    //! Returns the length of this string.
+    [[nodiscard]] constexpr std::size_t size() const {
+        return small() ? c_maxSmall - static_cast<std::size_t>(storage_[c_maxSmall]) : large()->size;
+    }
+    //! Returns the character at the given position, which shall be < size().
+    [[nodiscard]] constexpr char operator[](std::size_t pos) const { return c_str()[pos]; }
+
+    [[nodiscard]] constexpr bool small() const { return storage_[c_maxSmall] < c_largeTag; }
+    [[nodiscard]] constexpr bool shareable() const { return storage_[c_maxSmall] == c_largeTag + Shared; }
+
+    friend bool operator==(const FixedString& lhs, const FixedString& rhs) { return lhs.view() == rhs.view(); }
+    friend auto operator<=>(const FixedString& lhs, const FixedString& rhs) { return lhs.view() <=> rhs.view(); }
+
+private:
+    static constexpr auto c_maxSmall = 23;
+    static constexpr auto c_largeTag = c_maxSmall + 1;
+    struct Large {
+        char*       str;
+        std::size_t size;
+    };
+    [[nodiscard]] const Large* large() const { return reinterpret_cast<const Large*>(storage_); }
+    int32_t                    addRef(int32_t x);
+    void                       release();
+    alignas(Large) char storage_[c_maxSmall + 1];
+};
 
 ///@}
 

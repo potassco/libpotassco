@@ -62,9 +62,9 @@ public:
     //! Attempts to extract the given string from the input stream.
     /*!
      * If the function returns false, no characters were extracted from the stream.
-     * \pre std::strlen(tok) <= BUF_SIZE
+     * \pre tok.length() <= BUF_SIZE
      */
-    bool match(const char* tok);
+    bool match(std::string_view tok);
     //! Extracts initial whitespace from the input stream.
     void skipWs();
     //! Extracts up to max characters from the input stream and copies them into bufferOut.
@@ -105,7 +105,7 @@ private:
  */
 ///@{
 //! Attempts to extract the given string from the stream optionally skipping leading whitespace first.
-inline bool match(BufferedStream& str, const char* word, bool skipWs) {
+inline bool match(BufferedStream& str, const std::string_view& word, bool skipWs) {
     if (skipWs)
         str.skipWs();
     return str.match(word);
@@ -217,7 +217,7 @@ protected:
     //! Unconditionally throws an std::exception with the current line and given message.
     void error(const char* msg) const;
     //! Attempts to match the given string.
-    bool match(const char* word, bool skipWs = true) { return Potassco::match(*stream(), word, skipWs); }
+    bool match(const std::string_view& word, bool skipWs = true) { return Potassco::match(*stream(), word, skipWs); }
     //! Extracts an int in the given range or fails with an std::exception.
     int matchInt(int min = INT_MIN, int max = INT_MAX, const char* err = "integer expected") {
         return Potassco::matchInt(*stream(), min, max, err);

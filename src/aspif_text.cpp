@@ -57,7 +57,7 @@ bool AspifTextInput::doAttach(bool& inc) {
             skipLine();
             n = peek(true);
         }
-        if (inc = matchOpt("#incremental"); inc)
+        if (inc = matchOpt("#incremental"sv); inc)
             matchDelim('.');
         out_->initProgram(inc);
         return true;
@@ -98,14 +98,14 @@ void AspifTextInput::matchRule(char c) {
     if (c == '{') {
         matchDelim('{');
         data_->rule.start(Head_t::Choice);
-        matchAtoms(";,");
+        matchAtoms(";,"sv);
         matchDelim('}');
     }
     else {
         data_->rule.start();
-        matchAtoms(";|");
+        matchAtoms(";|"sv);
     }
-    if (matchOpt(":-")) {
+    if (matchOpt(":-"sv)) {
         c = peek(true);
         if (not StreamType::isDigit(c) && c != '-') {
             data_->rule.startBody();
@@ -121,91 +121,92 @@ void AspifTextInput::matchRule(char c) {
 }
 
 bool AspifTextInput::matchDirective() {
-    if (matchOpt("#minimize")) {
+    if (matchOpt("#minimize"sv)) {
         data_->rule.startMinimize(0);
         matchAgg();
-        Weight_t prio = matchOpt("@") ? matchInt() : 0;
+        Weight_t prio = matchOpt("@"sv) ? matchInt() : 0;
         matchDelim('.');
         data_->rule.setBound(prio);
         data_->rule.end(out_);
     }
-    else if (matchOpt("#project")) {
+    else if (matchOpt("#project"sv)) {
         data_->rule.start();
-        if (matchOpt("{")) {
-            matchAtoms(",");
+        if (matchOpt("{"sv)) {
+            matchAtoms(","sv);
             matchDelim('}');
         }
         matchDelim('.');
         out_->project(data_->atoms());
     }
-    else if (matchOpt("#output")) {
+    else if (matchOpt("#output"sv)) {
         matchTerm();
         matchCondition();
         matchDelim('.');
         out_->output(data_->symbol.view(), data_->lits());
     }
-    else if (matchOpt("#external")) {
+    else if (matchOpt("#external"sv)) {
         auto a = matchId();
         auto v = Value_t::False;
         matchDelim('.');
-        if (matchOpt("[")) {
-            if (matchOpt("true")) {
+        if (matchOpt("["sv)) {
+            if (matchOpt("true"sv)) {
                 v = Value_t::True;
             }
-            else if (matchOpt("free")) {
+            else if (matchOpt("free"sv)) {
                 v = Value_t::Free;
             }
-            else if (matchOpt("release")) {
+            else if (matchOpt("release"sv)) {
                 v = Value_t::Release;
             }
             else {
-                require(matchOpt("false"), "<value> expected");
+                require(matchOpt("false"sv), "<value> expected");
             }
             matchDelim(']');
         }
         out_->external(a, v);
     }
-    else if (matchOpt("#assume")) {
+    else if (matchOpt("#assume"sv)) {
         data_->rule.startBody();
-        if (matchOpt("{")) {
+        if (matchOpt("{"sv)) {
             matchLits();
             matchDelim('}');
         }
         matchDelim('.');
         out_->assume(data_->lits());
     }
-    else if (matchOpt("#heuristic")) {
+    else if (matchOpt("#heuristic"sv)) {
         auto a = matchId();
         matchCondition();
         matchDelim('.');
         matchDelim('[');
         auto v = matchInt();
         auto p = 0;
-        if (matchOpt("@")) {
+        if (matchOpt("@"sv)) {
             p = matchInt();
             require(p >= 0, "positive priority expected");
         }
         matchDelim(',');
-        const auto* w = matchWord();
+        matchWord();
         Heuristic_t ht;
+        const auto* w = data_->symbol.data();
         require(Potassco::match(w, ht), "unrecognized heuristic modification");
         skipws();
         matchDelim(']');
         out_->heuristic(a, ht, v, static_cast<unsigned>(p), data_->lits());
     }
-    else if (matchOpt("#edge")) {
+    else if (matchOpt("#edge"sv)) {
         int s, t;
         matchDelim('('), s = matchInt(), matchDelim(','), t = matchInt(), matchDelim(')');
         matchCondition();
         matchDelim('.');
         out_->acycEdge(s, t, data_->lits());
     }
-    else if (matchOpt("#step")) {
+    else if (matchOpt("#step"sv)) {
         require(incremental(), "#step requires incremental program");
         matchDelim('.');
         return false;
     }
-    else if (matchOpt("#incremental")) {
+    else if (matchOpt("#incremental"sv)) {
         matchDelim('.');
     }
     else {
@@ -215,7 +216,7 @@ bool AspifTextInput::matchDirective() {
 }
 
 void AspifTextInput::skipws() { stream()->skipWs(); }
-bool AspifTextInput::matchOpt(const char* term) {
+bool AspifTextInput::matchOpt(std::string_view term) {
     if (ProgramReader::match(term, false)) {
         skipws();
         return true;
@@ -232,42 +233,42 @@ void AspifTextInput::matchDelim(char c) {
     error(msg);
 }
 
-void AspifTextInput::matchAtoms(const char* seps) {
+void AspifTextInput::matchAtoms(std::string_view seps) {
     if (std::islower(static_cast<unsigned char>(peek(true))) != 0) {
         do {
             auto x = matchLit();
             require(x > 0, "positive atom expected");
             data_->rule.addHead(static_cast<Atom_t>(x));
-        } while (std::strchr(seps, stream()->peek()) && stream()->get() && (skipws(), true));
+        } while (seps.find(stream()->peek()) != std::string_view::npos && stream()->get() && (skipws(), true));
     }
 }
 void AspifTextInput::matchLits() {
     if (std::islower(static_cast<unsigned char>(peek(true))) != 0) {
-        do { data_->rule.addGoal(matchLit()); } while (matchOpt(","));
+        do { data_->rule.addGoal(matchLit()); } while (matchOpt(","sv));
     }
 }
 void AspifTextInput::matchCondition() {
     data_->rule.startBody();
-    if (matchOpt(":")) {
+    if (matchOpt(":"sv)) {
         matchLits();
     }
 }
 void AspifTextInput::matchAgg() {
     matchDelim('{');
-    if (not matchOpt("}")) {
+    if (not matchOpt("}"sv)) {
         do {
             auto wl = WeightLit_t{matchLit(), 1};
-            if (matchOpt("=")) {
+            if (matchOpt("="sv)) {
                 wl.weight = matchInt();
             }
             data_->rule.addGoal(wl);
-        } while (matchOpt(","));
+        } while (matchOpt(","sv));
         matchDelim('}');
     }
 }
 
 Lit_t AspifTextInput::matchLit() {
-    int s = matchOpt("not ") ? -1 : 1;
+    int s = matchOpt("not "sv) ? -1 : 1;
     return static_cast<Lit_t>(matchId()) * s;
 }
 
@@ -303,11 +304,11 @@ void AspifTextInput::matchTerm() {
             push(stream()->get());
         } while (std::isalnum(static_cast<unsigned char>(c = stream()->peek())) != 0 || c == '_');
         skipws();
-        if (matchOpt("(")) {
+        if (matchOpt("("sv)) {
             push('(');
             for (;;) {
                 matchAtomArg();
-                if (not matchOpt(","))
+                if (not matchOpt(","sv))
                     break;
                 push(',');
             }
@@ -351,44 +352,16 @@ void AspifTextInput::matchStr() {
     push('"');
 }
 
-const char* AspifTextInput::matchWord() {
+void AspifTextInput::matchWord() {
     data_->symbol.clear();
     for (char c; (c = stream()->peek()) != 0 && std::isalnum(static_cast<unsigned char>(c));) { push(stream()->get()); }
     push(0);
-    return data_->symbol.data();
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // AspifTextOutput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifTextOutput::Data {
-    struct FixedString {
-        using trivially_relocatable      = std::true_type;
-        static constexpr auto c_maxSmall = 31;
-        FixedString(FixedString&&)       = delete;
-        FixedString(std::string_view view) {
-            sso[c_maxSmall] = view.size() > c_maxSmall;
-            if (not small()) {
-                str = toCString(view).release();
-            }
-            else {
-                *std::copy(view.begin(), view.end(), sso) = 0;
-            }
-            assert(c_str() == view);
-        }
-        ~FixedString() {
-            if (not small()) {
-                delete[] str;
-            }
-        }
-        [[nodiscard]] bool        small() const { return sso[c_maxSmall] == 0; }
-        [[nodiscard]] const char* c_str() const { return small() ? sso : str; }
-        union {
-            char        sso[c_maxSmall + 1];
-            const char* str;
-        };
-    };
     static_assert(amc::is_trivially_relocatable_v<FixedString>, "should be relocatable");
-
     using StringVec = amc::SmallVector<FixedString, 64>;
     using AtomMap   = amc::SmallVector<Id_t, 64>;
     using LitVec    = amc::SmallVector<Lit_t, 64>;
@@ -415,14 +388,17 @@ struct AspifTextOutput::Data {
         return id;
     }
 
-    [[nodiscard]] const char* string(uint32_t idx) const { return strings.at(idx).c_str(); }
+    [[nodiscard]] const FixedString& string(uint32_t idx) const { return strings.at(idx); }
 
     void addAtom(Atom_t atom, const std::string_view& name) {
         atoms.resize(std::max<std::size_t>(atoms.size(), atom + 1), idMax);
         atoms[atom] = addString(name);
     }
 
-    [[nodiscard]] auto getAtomIndex(Atom_t atom) const -> Id_t { return atom < atoms.size() ? atoms[atom] : idMax; }
+    [[nodiscard]] auto getAtomName(Atom_t atom) const -> const FixedString* {
+        auto idx = atom < atoms.size() ? atoms[atom] : idMax;
+        return idx != idMax ? &string(idx) : nullptr;
+    }
 
     template <typename T>
     requires(std::is_integral_v<T> || std::is_enum_v<T>)
@@ -464,8 +440,8 @@ std::ostream& AspifTextOutput::printName(std::ostream& os, Lit_t lit) const {
         os << "not ";
     }
     auto id = Potassco::atom(lit);
-    if (auto idx = data_->getAtomIndex(id); idx != idMax) {
-        os << data_->string(idx);
+    if (const auto* name = data_->getAtomName(id); name) {
+        os << name->view();
     }
     else {
         os << "x_" << id;
@@ -613,7 +589,7 @@ void AspifTextOutput::writeDirectives() {
             case Directive_t::Output:
                 sep  = " : ";
                 term = ".";
-                os_ << "#show " << data_->string(next(pos));
+                os_ << "#show " << data_->string(next(pos)).view();
                 for (auto n = next(pos); n--; sep = ", ") { printName(os_ << sep, next<Lit_t>(pos)); }
                 break;
             case Directive_t::External:
@@ -662,9 +638,8 @@ void AspifTextOutput::visitTheoryAtoms() {
             printTheoryAtom(os_, **it) << ".\n";
         }
         else {
-            POTASSCO_CHECK_PRE(data_->getAtomIndex(atom) == idMax,
-                               "Redefinition: theory atom '%u' already shown as '%s'", atom,
-                               data_->string(data_->getAtomIndex(atom)));
+            POTASSCO_CHECK_PRE(not data_->getAtomName(atom), "Redefinition: theory atom '%u' already shown as '%s'",
+                               atom, data_->getAtomName(atom)->c_str());
             std::ostringstream str;
             printTheoryAtom(str, **it);
             data_->addAtom(atom, std::move(str).str());
