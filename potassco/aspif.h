@@ -61,12 +61,12 @@ private:
     struct Extra;
     void matchAtoms();
     void matchLits();
-    void matchWLits(int32_t minW);
+    void matchWLits(bool positive);
     void matchString();
     void matchIds();
     template <typename EnumT>
     EnumT matchType(const char* err) {
-        return static_cast<EnumT>(matchPos(enum_count<EnumT>() - 1, err));
+        return static_cast<EnumT>(matchUint(0u, enum_count<EnumT>() - 1, err));
     }
     AbstractProgram& out_;
     Extra*           data_;

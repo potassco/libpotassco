@@ -43,6 +43,10 @@ namespace Potassco {
 class BufferedStream {
 public:
     static constexpr auto BUF_SIZE = std::streamsize(4096);
+    //! Returns whether the given character is a decimal digit.
+    static constexpr bool isDigit(char c) { return c >= '0' && c <= '9'; }
+    //! Converts the given character to a decimal digit.
+    static constexpr int toDigit(char c) { return static_cast<int>(c - '0'); }
 
     //! Creates a new object wrapping the given stream.
     explicit BufferedStream(std::istream& str);
@@ -57,34 +61,23 @@ public:
     char get();
     //! Attempts to put back the given character into the read buffer.
     bool unget(char c);
-    //! Attempts to read an integer from the input stream optionally skipping initial whitespace.
-    bool match(int64_t& i, bool noSkipWs = false);
+    //! Attempts to read a signed integer from the input stream skipping initial whitespace.
+    bool readInt(int64_t&);
     //! Attempts to extract the given string from the input stream.
     /*!
      * If the function returns false, no characters were extracted from the stream.
      * \pre tok.length() <= BUF_SIZE
      */
     bool match(std::string_view tok);
-    //! Extracts initial whitespace from the input stream.
+    //! Discards leading whitespace from the input stream.
     void skipWs();
-    //! Extracts up to max characters from the input stream and copies them into bufferOut.
+    //! Extracts up to `bufferOut.size()` characters from the input stream and copies them into the given buffer.
     /*!
-     * \return The number of characters copied to bufferOut.
+     * \return The number of characters copied to the given buffer.
      */
-    std::size_t copy(std::span<char> bufferOut);
+    std::size_t read(std::span<char> bufferOut);
     //! Returns the current line number in the input stream, i.e. the number of '\n' characters extracted so far.
     [[nodiscard]] unsigned line() const;
-    //! Returns whether the given character is a decimal digit.
-    static constexpr bool isDigit(char c) { return c >= '0' && c <= '9'; }
-    //! Converts the given character to a decimal digit.
-    static constexpr int toDigit(char c) { return static_cast<int>(c - '0'); }
-    static void          fail(unsigned line, const char* error);
-
-    void require(bool cnd, const char* error) const {
-        if (not cnd) {
-            fail(line(), error);
-        }
-    }
 
 private:
     static constexpr auto ALLOC_SIZE = BUF_SIZE + 1;
@@ -98,69 +91,6 @@ private:
     std::size_t   rpos_;
     unsigned      line_;
 };
-
-/*!
- * \name Match
- * Match functions for extracting tokens from a stream/string.
- */
-///@{
-//! Attempts to extract the given string from the stream optionally skipping leading whitespace first.
-inline bool match(BufferedStream& str, const std::string_view& word, bool skipWs) {
-    if (skipWs)
-        str.skipWs();
-    return str.match(word);
-}
-//! Extracts an int in the given range or fails with an std::exception.
-inline int matchInt(BufferedStream& str, int min = INT_MIN, int max = INT_MAX, const char* err = "integer expected") {
-    int64_t x;
-    str.require(str.match(x) && x >= min && x <= max, err);
-    return static_cast<int>(x);
-}
-//! Extracts a positive integer in the range [0;max] or fails with an std::exception.
-inline unsigned matchPos(BufferedStream& str, unsigned max, const char* err) {
-    int64_t x;
-    str.require(str.match(x) && x >= 0 && static_cast<uint64_t>(x) <= max, err);
-    return static_cast<unsigned>(x);
-}
-//! Extracts a positive integer or fails with an std::exception.
-inline unsigned matchPos(BufferedStream& str, const char* err = "non-negative integer expected") {
-    return matchPos(str, static_cast<unsigned>(-1), err);
-}
-//! Extracts an atom (i.e. a positive integer > 0) or fails with an std::exception.
-inline Atom_t matchAtom(BufferedStream& str, unsigned aMax = atomMax, const char* err = "atom expected") {
-    int64_t x;
-    auto    max = static_cast<int64_t>(aMax);
-    str.require(str.match(x) && x >= atomMin && x <= max, err);
-    return static_cast<Atom_t>(x);
-}
-//! Extracts a literal (i.e. a signed integer != 0) or fails with an std::exception.
-inline Lit_t matchLit(BufferedStream& str, unsigned aMax = atomMax, const char* err = "literal expected") {
-    int64_t x;
-    auto    max = static_cast<int64_t>(aMax);
-    str.require(str.match(x) && x != 0 && x >= -max && x <= max, err);
-    return static_cast<Lit_t>(x);
-}
-//! Extracts a weight literal (i.e. a literal followed by an integer) or fails with an std::exception.
-inline WeightLit_t matchWLit(BufferedStream& str, unsigned aMax = atomMax, Weight_t minW = 0,
-                             const char* err = "weight literal expected") {
-    return {.lit = matchLit(str, aMax, err), .weight = matchInt(str, minW, INT_MAX, "invalid weight literal weight")};
-}
-//! Returns whether input starts with word and if so sets input to input + word.length().
-bool match(const char*& input, std::string_view word);
-//! Returns whether input starts with a string representation of a heuristic modifier and if so extracts it.
-bool match(const char*& input, Heuristic_t& heuType);
-//! Attempts to extract the next argument of a predicate.
-bool matchAtomArg(const char*& input, std::string_view& arg);
-//! Attempts to extract an integer from input and sets input to the first character after the integer.
-bool match(const char*& input, int& out);
-//! Tries to match potassco's special _heuristic/3 or _heuristic/4 predicate.
-/*!
- * \return > 1 on match, 0 if in does not start with _heuristic, < 0 if in has wrong arity or parameters.
- */
-int matchDomHeuPred(const char*& in, std::string_view& atom, Heuristic_t& type, int& bias, unsigned& prio);
-//! Tries to match an _edge/2 or _acyc_/0 predicate.
-int matchEdgePred(const char*& in, std::string_view& n0, std::string_view& n1);
-///@}
 
 //! Base class for input parsers.
 class ProgramReader {
@@ -191,10 +121,12 @@ public:
     //! Sets the largest possible variable number.
     /*!
      * The given value is used when matching atoms or literals.
-     * If a larger value is found in the input stream, an std::exception
-     * is raised.
+     * If a larger value is found in the input stream, an std::exception is raised.
      */
-    void setMaxVar(unsigned v) { varMax_ = v; }
+    void setMaxVar(Atom_t v) { varMax_ = v; }
+
+    //! Unconditionally throws an std::exception with the current line and given message.
+    void error(const char* msg) const;
 
 protected:
     using StreamType = BufferedStream;
@@ -210,42 +142,67 @@ protected:
     virtual void doReset();
     //! Returns the associated input stream.
     [[nodiscard]] StreamType* stream() const;
-    //! Returns the next character in the input stream, without extracting it.
-    [[nodiscard]] char peek(bool skipws) const;
-    //! Throws an std::exception with the current line and given message if cnd is false.
-    bool require(bool cnd, const char* msg) const;
-    //! Unconditionally throws an std::exception with the current line and given message.
-    void error(const char* msg) const;
-    //! Attempts to match the given string.
-    bool match(const std::string_view& word, bool skipWs = true) { return Potassco::match(*stream(), word, skipWs); }
-    //! Extracts an int in the given range or fails with an std::exception.
-    int matchInt(int min = INT_MIN, int max = INT_MAX, const char* err = "integer expected") {
-        return Potassco::matchInt(*stream(), min, max, err);
-    }
-    //! Extracts a positive integer in the range [0;max] or fails with an std::exception.
-    unsigned matchPos(unsigned max = static_cast<unsigned>(-1), const char* err = "unsigned integer expected") {
-        return Potassco::matchPos(*stream(), max, err);
-    }
-
-    //! Extracts a positive integer or fails with an std::exception.
-    unsigned matchPos(const char* err) { return matchPos(static_cast<unsigned>(-1), err); }
-    //! Extracts an atom (i.e. a positive integer > 0) or fails with an std::exception.
-    /*!
-     * \see setMaxVar(unsigned)
-     */
-    Atom_t matchAtom(const char* err = "atom expected") { return Potassco::matchAtom(*stream(), varMax_, err); }
-    //! Extracts a literal (i.e. a signed integer != 0) or fails with an std::exception.
-    Lit_t matchLit(const char* err = "literal expected") { return Potassco::matchLit(*stream(), varMax_, err); }
-    //! Extracts a weight literal (i.e. a literal followed by an integer) or fails with an std::exception.
-    WLit_t matchWLit(int min, const char* err = "weight literal expected") {
-        return Potassco::matchWLit(*stream(), varMax_, min, err);
-    }
     //! Extracts and discards characters up to and including the next newline.
     void skipLine();
+    //! Extracts and discards any leading whitespace and then returns peek().
+    char skipWs();
+    //! Returns the next character in the input stream, without extracting it.
+    [[nodiscard]] char peek() const;
+    //! Returns the next character in the input stream.
+    char get();
+    //! Throws an std::exception with the current line and given message if cnd is false.
+    bool require(bool cnd, const char* msg) const { return cnd || (error(msg), false); }
+    //! Attempts to match the given string.
+    bool match(const std::string_view& word) { return stream()->match(word); }
+    //! Extracts the given character or fails with an std::exception.
+    void matchChar(char c);
+    //! Extracts an atom (i.e. a positive integer > 0) or fails with an std::exception.
+    Atom_t matchAtom(const char* error = "atom expected") {
+        return static_cast<Atom_t>(matchUint(atomMin, varMax_, error));
+    }
+    //! Extracts an atom or zero or fails with an std::exception.
+    Atom_t matchAtomOrZero(const char* error = "atom or zero expected") {
+        return static_cast<Atom_t>(matchUint(0u, varMax_, error));
+    }
+    //! Extracts an id or fails with an std::exception.
+    Id_t matchId(const char* error = "id expected") { return static_cast<Id_t>(matchUint(0u, idMax, error)); }
+    //! Extracts a literal (i.e. positive or negative atom) or fails with an std::exception.
+    Lit_t matchLit(const char* error = "literal expected") {
+        auto res = matchInt(-static_cast<Lit_t>(varMax_), static_cast<Lit_t>(varMax_));
+        require(res != 0, error);
+        return static_cast<Lit_t>(res);
+    }
+    //! Extracts a weight or fails with an std::exception.
+    Weight_t matchWeight(bool requirePositive = false, const char* error = "weight expected") {
+        return static_cast<Weight_t>(matchInt(requirePositive ? 0 : INT_MIN, INT_MAX, error));
+    }
+    //! Extracts a weight literal or fails with an std::exception.
+    WLit_t matchWLit(bool requirePositive = false, const char* error = "weight literal expected") {
+        return {.lit = matchLit(error), .weight = matchWeight(requirePositive, error)};
+    }
+    //! Extracts an unsigned integer or fails with an std::exception.
+    unsigned matchUint(const char* error = "non-negative integer expected") { return matchUint(0u, UINT_MAX, error); }
+    //! Extracts a signed integer or fails with an std::exception.
+    int matchInt(const char* err = "integer expected") { return matchInt(INT_MIN, INT_MAX, err); }
+
+    //! Extracts an unsigned integer in the range [minV, maxV] or fails with an std::exception.
+    unsigned matchUint(unsigned minV, unsigned maxV, const char* error = "non-negative integer expected") {
+        return static_cast<unsigned>(matchNum(minV, maxV, error));
+    }
+    //! Extracts a signed integer in the range [minV, maxV] or fails with an std::exception.
+    int matchInt(int minV, int maxV, const char* error = "integer expected") {
+        return static_cast<int>(matchNum(minV, maxV, error));
+    }
 
 private:
+    template <std::integral T>
+    [[nodiscard]] int64_t matchNum(T min, T max, const char* err) {
+        int64_t n;
+        require(stream()->readInt(n) && n >= static_cast<int64_t>(min) && n <= static_cast<int64_t>(max), err);
+        return n;
+    }
     StreamType* str_    = nullptr;
-    unsigned    varMax_ = atomMax;
+    Atom_t      varMax_ = atomMax;
     bool        inc_    = false;
 };
 

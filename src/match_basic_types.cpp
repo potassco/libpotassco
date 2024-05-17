@@ -31,7 +31,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cstdio>
 #include <cstring>
 #include <istream>
 #include <utility>
@@ -133,10 +132,8 @@ bool BufferedStream::match(std::string_view w) {
     }
     return false;
 }
-bool BufferedStream::match(int64_t& res, bool noSkipWs) {
-    if (not noSkipWs) {
-        skipWs();
-    }
+bool BufferedStream::readInt(int64_t& res) {
+    skipWs();
     auto s = peek();
     if (s == '+' || s == '-') {
         pop();
@@ -153,12 +150,12 @@ bool BufferedStream::match(int64_t& res, bool noSkipWs) {
     }
     return true;
 }
-std::size_t BufferedStream::copy(std::span<char> outBuf) {
+std::size_t BufferedStream::read(std::span<char> outBuf) {
     std::size_t os = 0;
     for (auto n = outBuf.size(); n && peek();) {
         auto  b   = (ALLOC_SIZE - rpos_) - 1;
         auto  m   = std::min(n, b);
-        char* out = outBuf.data() + os;
+        auto* out = outBuf.data() + os;
         std::copy(buf_ + rpos_, buf_ + rpos_ + m, out);
         n     -= m;
         os    += m;
@@ -170,9 +167,6 @@ std::size_t BufferedStream::copy(std::span<char> outBuf) {
     return os;
 }
 unsigned BufferedStream::line() const { return line_; }
-void     BufferedStream::fail(unsigned line, const char* err) {
-    POTASSCO_FAIL(std::errc::operation_not_supported, "parse error in line %u: %s", line, err);
-}
 /////////////////////////////////////////////////////////////////////////////////////////
 // ProgramReader
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -181,6 +175,7 @@ bool ProgramReader::accept(std::istream& str) {
     reset();
     str_ = new StreamType(str);
     inc_ = false;
+    skipWs();
     return doAttach(inc_);
 }
 bool ProgramReader::incremental() const { return inc_; }
@@ -190,7 +185,7 @@ bool ProgramReader::parse(ReadMode m) {
         if (not doParse()) {
             return false;
         }
-        stream()->skipWs();
+        skipWs();
         require(not more() || incremental(), "invalid extra input");
     } while (m == Complete && more());
     return true;
@@ -204,130 +199,22 @@ void ProgramReader::reset() {
 void            ProgramReader::doReset() {}
 unsigned        ProgramReader::line() const { return str_ ? str_->line() : 1; }
 BufferedStream* ProgramReader::stream() const { return str_; }
-bool            ProgramReader::require(bool cnd, const char* msg) const {
-    str_->require(cnd, msg);
-    return true;
+void            ProgramReader::error(const char* msg) const {
+    POTASSCO_FAIL(std::errc::operation_not_supported, "parse error in line %u: %s", str_->line(), msg);
 }
-void ProgramReader::error(const char* msg) const { BufferedStream::fail(str_->line(), msg); }
-char ProgramReader::peek(bool skipws) const {
-    if (skipws)
-        str_->skipWs();
-    return str_->peek();
-}
+char ProgramReader::get() { return str_->get(); }
+char ProgramReader::peek() const { return str_->peek(); }
 void ProgramReader::skipLine() {
     while (str_->peek() && str_->get() != '\n') {}
 }
+char ProgramReader::skipWs() { return str_->skipWs(), str_->peek(); }
+void ProgramReader::matchChar(char c) {
+    POTASSCO_CHECK(str_->get() == c, std::errc::operation_not_supported, "parse error in line %u: '%c' expected",
+                   str_->line(), c);
+}
 int readProgram(std::istream& str, ProgramReader& reader) {
     if (not reader.accept(str) || not reader.parse(ProgramReader::Complete)) {
-        BufferedStream::fail(reader.line(), "invalid input format");
-    }
-    return 0;
-}
-/////////////////////////////////////////////////////////////////////////////////////////
-// String matching
-/////////////////////////////////////////////////////////////////////////////////////////
-static constexpr std::string_view heuristicPred = "_heuristic(";
-using namespace std::literals;
-
-bool match(const char*& input, std::string_view word) {
-    if (std::strncmp(input, word.data(), word.length()) == 0) {
-        input += word.length();
-        return true;
-    }
-    return false;
-}
-bool matchAtomArg(const char*& input, std::string_view& arg) {
-    const char* scan = input;
-    for (auto p = 0; *scan; ++scan) {
-        if (*scan == '(') {
-            ++p;
-        }
-        else if (*scan == ')') {
-            if (--p < 0) {
-                break;
-            }
-        }
-        else if (*scan == ',') {
-            if (p == 0) {
-                break;
-            }
-        }
-        else if (*scan == '"') {
-            auto quoted = false;
-            for (++scan; *scan && (*scan != '\"' || quoted); ++scan) { quoted = not quoted && *scan == '\\'; }
-            if (!*scan) {
-                return false;
-            }
-        }
-    }
-    arg   = {input, static_cast<std::size_t>(scan - input)};
-    input = scan;
-    return not arg.empty();
-}
-
-bool match(const char*& input, Heuristic_t& heuType) {
-    for (const auto& [k, n] : enum_entries<Heuristic_t>()) {
-        if (not n.empty() && *input == n.front() && match(input, n)) {
-            heuType = static_cast<Heuristic_t>(k);
-            return true;
-        }
-    }
-    return false;
-}
-
-bool match(const char*& input, int& out) {
-    char* eptr;
-    auto  t = std::strtol(input, &eptr, 10);
-    if (eptr == input || t < INT_MIN || t > INT_MAX) {
-        return false;
-    }
-    out   = static_cast<int>(t);
-    input = eptr;
-    return true;
-}
-
-int matchDomHeuPred(const char*& in, std::string_view& atom, Heuristic_t& type, int& bias, unsigned& prio) {
-    if (not match(in, heuristicPred)) {
-        return 0;
-    }
-    if (not matchAtomArg(in, atom) || not match(in, ","sv)) {
-        return -1;
-    }
-    if (not match(in, type) || not match(in, ","sv)) {
-        return -2;
-    }
-    if (not match(in, bias)) {
-        return -3;
-    }
-    prio = static_cast<unsigned>(bias < 0 ? -bias : bias);
-    if (not match(in, ","sv)) {
-        return match(in, ")"sv) ? 1 : -3;
-    }
-    int p;
-    if (not match(in, p) || p < 0) {
-        return -4;
-    }
-    prio = static_cast<unsigned>(p);
-    return match(in, ")"sv) ? 1 : -4;
-}
-
-int matchEdgePred(const char*& in, std::string_view& n0, std::string_view& n1) {
-    int sPos, tPos, ePos = -1;
-    if (sscanf(in, "_acyc_%*d_%n%*d_%n%*d%n", &sPos, &tPos, &ePos) == 0 && ePos > 0) {
-        POTASSCO_CHECK(tPos >= sPos && ePos >= tPos, Errc::invalid_argument);
-        n0  = {in + sPos, std::size_t(tPos - sPos) - 1};
-        n1  = {in + tPos, std::size_t(ePos - tPos)};
-        in += ePos;
-        return not n0.empty() && not n1.empty() ? 1 : -1;
-    }
-    else if (match(in, "_edge("sv)) {
-        if (not matchAtomArg(in, n0) || not match(in, ","sv)) {
-            return -1;
-        }
-        if (not matchAtomArg(in, n1) || not match(in, ")"sv)) {
-            return -2;
-        }
-        return 1;
+        reader.error("invalid input format");
     }
     return 0;
 }
@@ -378,12 +265,12 @@ void DynamicBuffer::reserve(std::size_t n) {
         void* t = std::realloc(beg_, newCap);
         POTASSCO_CHECK(t, Errc::bad_alloc);
         beg_ = t;
-        cap_ = newCap;
+        cap_ = static_cast<uint32_t>(newCap);
     }
 }
 std::span<char> DynamicBuffer::alloc(std::size_t n) {
     reserve(size() + n);
-    return {data(std::exchange(size_, size_ + n)), n};
+    return {data(std::exchange(size_, static_cast<uint32_t>(size_ + n))), n};
 }
 void DynamicBuffer::append(const void* what, std::size_t n) {
     if (n)
@@ -394,7 +281,7 @@ void DynamicBuffer::append(const void* what, std::size_t n) {
 /////////////////////////////////////////////////////////////////////////////////////////
 FixedString::FixedString(std::string_view n, CreateMode cm) {
     if (n.size() > c_maxSmall) {
-        storage_[c_maxSmall] = c_largeTag + cm;
+        storage_[c_maxSmall] = static_cast<char>(c_largeTag + cm);
         auto* buf            = new char[(cm == Shared ? sizeof(std::atomic<int32_t>) : 0) + n.size() + 1];
         if (cm == Shared) {
             new (buf) std::atomic<int32_t>(1);
@@ -405,7 +292,7 @@ FixedString::FixedString(std::string_view n, CreateMode cm) {
     }
     else {
         *std::copy(n.begin(), n.end(), storage_) = 0;
-        storage_[c_maxSmall]                     = c_maxSmall - n.size();
+        storage_[c_maxSmall]                     = static_cast<char>(c_maxSmall - n.size());
     }
     POTASSCO_DEBUG_ASSERT(static_cast<std::string_view>(*this) == n);
 }

@@ -26,13 +26,14 @@
 #include <potassco/error.h>
 #include <potassco/rule_utils.h>
 
+#include <charconv>
 #include <cstring>
 #include <ostream>
 #include <unordered_map>
 
 namespace Potassco {
 using namespace std::literals;
-enum SmodelsRule {
+enum SmodelsRule : int {
     End             = 0,
     Basic           = 1,
     Cardinality     = 2,
@@ -91,7 +92,7 @@ struct SmodelsInput::StringTab {
         }
         return orVal;
     }
-    [[nodiscard]] uint32_t size() const noexcept { return map.size(); }
+    [[nodiscard]] uint32_t size() const noexcept { return static_cast<uint32_t>(map.size()); }
     using StringMap = std::unordered_map<FixedString, Id_t, Hash, std::equal_to<>>;
     StringMap map;
 };
@@ -111,8 +112,7 @@ SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts, AtomLookup
 SmodelsInput::~SmodelsInput() = default;
 void SmodelsInput::doReset() {}
 bool SmodelsInput::doAttach(bool& inc) {
-    auto n = stream()->peek();
-    if (BufferedStream::isDigit(n) && ((inc = (n == '9')) == false || opts_.claspExt)) {
+    if (auto n = peek(); BufferedStream::isDigit(n) && ((inc = (n == '9')) == false || opts_.claspExt)) {
         out_.initProgram(inc);
         return true;
     }
@@ -129,8 +129,8 @@ bool SmodelsInput::doParse() {
 }
 
 void SmodelsInput::matchBody(RuleBuilder& rule) {
-    auto len = matchPos();
-    auto neg = matchPos();
+    auto len = matchUint();
+    auto neg = matchUint();
     for (rule.startBody(); len--;) {
         Lit_t p = lit(matchAtom());
         if (neg) {
@@ -142,9 +142,9 @@ void SmodelsInput::matchBody(RuleBuilder& rule) {
 }
 
 void SmodelsInput::matchSum(RuleBuilder& rule, bool weights) {
-    auto bnd = matchPos();
-    auto len = matchPos();
-    auto neg = matchPos();
+    auto bnd = matchUint();
+    auto len = matchUint();
+    auto neg = matchUint();
     if (not weights) {
         std::swap(len, bnd);
         std::swap(bnd, neg);
@@ -160,7 +160,7 @@ void SmodelsInput::matchSum(RuleBuilder& rule, bool weights) {
     }
     if (weights) {
         for (auto *x = rule.wlits_begin(), *end = x + len; x != end; ++x) {
-            x->weight = (Weight_t) matchPos("non-negative weight expected");
+            x->weight = matchWeight(true, "non-negative weight expected");
         }
     }
 }
@@ -168,7 +168,7 @@ void SmodelsInput::matchSum(RuleBuilder& rule, bool weights) {
 bool SmodelsInput::readRules() {
     RuleBuilder rule;
     Weight_t    minPrio = 0;
-    for (unsigned rt; (rt = matchPos("rule type expected")) != 0;) {
+    for (unsigned rt; (rt = matchId("rule type expected")) != 0;) {
         rule.clear();
         switch (rt) {
             default: error("unrecognized rule type"); return false;
@@ -195,13 +195,13 @@ bool SmodelsInput::readRules() {
                 matchSum(rule, true);
                 rule.end(&out_);
                 break;
-            case ClaspIncrement: require(opts_.claspExt && matchPos() == 0, "unrecognized rule type"); break;
+            case ClaspIncrement: require(opts_.claspExt && matchId() == 0, "unrecognized rule type"); break;
             case ClaspAssignExt:
             case ClaspReleaseExt:
                 require(opts_.claspExt, "unrecognized rule type");
                 if (rt == ClaspAssignExt) {
                     auto rHead = matchAtom();
-                    out_.external(rHead, static_cast<Value_t>((matchPos(2, "0..2 expected") ^ 3) - 1));
+                    out_.external(rHead, static_cast<Value_t>((matchUint(0u, 2u, "0..2 expected") ^ 3) - 1));
                 }
                 else {
                     out_.external(matchAtom(), Value_t::Release);
@@ -231,24 +231,23 @@ bool SmodelsInput::readSymbols() {
     static_assert(c_defSize == 16);
     DynamicBuffer deferredDom;
 
-    for (Lit_t atom; (atom = (Lit_t) matchPos()) != 0;) {
+    for (Lit_t atom; (atom = (Lit_t) matchAtomOrZero()) != 0;) {
         scratch.clear();
-        stream()->get();
-        for (char c; (c = stream()->get()) != '\n';) {
+        matchChar(' ');
+        for (char c; (c = get()) != '\n';) {
             require(c != 0, "atom name expected!");
             scratch.push(c);
         }
         scratch.push(0);
-        auto        name   = scratch.view(0, scratch.size() - 1);
-        const auto* n      = scratch.data();
-        auto        filter = false;
-        if (opts_.cEdge && matchEdgePred(n, n0, n1) > 0) {
+        auto name   = scratch.view(0, scratch.size() - 1);
+        auto filter = false;
+        if (opts_.cEdge && matchEdgePred(name, n0, n1)) {
             auto s = (int) nodes_->tryAdd(n0, nodes_->size());
             auto t = (int) nodes_->tryAdd(n1, nodes_->size());
             out_.acycEdge(s, t, {&atom, 1});
             filter = opts_.filter;
         }
-        else if (opts_.cHeuristic && matchDomHeuPred(n, n0, heuType, bias, prio) > 0) {
+        else if (opts_.cHeuristic && matchDomHeuPred(name, n0, heuType, bias, prio)) {
             auto type = static_cast<uint32_t>(heuType);
             auto def  = Deferred{.cond = atom, .bias = bias, .prio = prio, .type = type, .atom = 0, .sizeOrId = 0};
             if (def.setAtom(lookup_(n0))) {
@@ -295,8 +294,9 @@ bool SmodelsInput::readSymbols() {
 
 bool SmodelsInput::readCompute() {
     for (auto [part, pos] : {std::pair{"B+"sv, true}, std::pair{"B-"sv, false}}) {
-        require(match(part) && stream()->get() == '\n', "compute statement expected");
-        for (Lit_t x; (x = (Lit_t) matchPos()) != 0;) {
+        require(skipWs() && match(part), "compute statement expected");
+        matchChar('\n');
+        for (Lit_t x; (x = (Lit_t) matchAtomOrZero()) != 0;) {
             if (pos) {
                 x = neg(x);
             }
@@ -307,16 +307,109 @@ bool SmodelsInput::readCompute() {
 }
 
 bool SmodelsInput::readExtra() {
-    if (match("E"sv)) {
-        for (Atom_t atom; (atom = matchPos()) != 0;) { out_.external(atom, Value_t::Free); }
+    if (skipWs() && match("E"sv)) {
+        for (Atom_t atom; (atom = matchAtomOrZero()) != 0;) { out_.external(atom, Value_t::Free); }
     }
-    matchPos("number of models expected");
+    matchUint("number of models expected");
     return true;
 }
 
 int readSmodels(std::istream& in, AbstractProgram& out, const SmodelsInput::Options& opts) {
     SmodelsInput reader(out, opts);
     return readProgram(in, reader);
+}
+/////////////////////////////////////////////////////////////////////////////////////////
+// String matching
+/////////////////////////////////////////////////////////////////////////////////////////
+static constexpr auto heuristicPred = "_heuristic("sv;
+static constexpr auto edgePred      = "_edge("sv;
+static constexpr auto acycPred      = "_acyc_"sv;
+static constexpr bool match(std::string_view& in, std::string_view word) {
+    if (in.starts_with(word)) {
+        in.remove_prefix(word.size());
+        return true;
+    }
+    return false;
+}
+static constexpr bool match(std::string_view& in, char sep) { return match(in, {&sep, 1}); }
+
+static bool matchAtom(std::string_view& input, std::string_view& arg) {
+    auto        scan = input;
+    std::size_t pos  = 0;
+    for (std::size_t end = scan.size(), paren = 0; pos != end; ++pos) {
+        if (auto c = scan[pos]; c == '(') {
+            ++paren;
+        }
+        else if (c == ')') {
+            if (paren-- == 0) {
+                break;
+            }
+        }
+        else if (c == '"') {
+            for (auto quoted = false; ++pos != end && ((c = scan[pos]) != '\"' || quoted);) {
+                quoted = not quoted && c == '\\';
+            }
+            if (pos == end) {
+                break;
+            }
+        }
+        else if (paren == 0 && c == ',') {
+            break;
+        }
+    }
+    arg   = input.substr(0, pos);
+    input = scan.substr(pos);
+    return not arg.empty();
+}
+
+static bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr) {
+    int  n;
+    auto r  = std::from_chars(in.data(), in.data() + in.size(), nOut ? *nOut : n);
+    auto sz = static_cast<std::size_t>(r.ptr - in.data());
+    if (r.ec != std::errc{} || sz == 0)
+        return false;
+    if (sOut)
+        *sOut = in.substr(0, sz);
+    in.remove_prefix(sz);
+    return true;
+}
+
+static bool match(std::string_view& input, Heuristic_t& heuType) {
+    for (const auto& [k, n] : enum_entries<Heuristic_t>()) {
+        if (not n.empty() && match(input, n)) {
+            heuType = static_cast<Heuristic_t>(k);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool matchEdgePred(std::string_view in, std::string_view& n0, std::string_view& n1) {
+    if (match(in, acycPred)) { // _acyc_<ignore>_<n0>_<n1>
+        return matchNum(in, nullptr) && match(in, '_') && matchNum(in, &n0) && match(in, '_') && matchNum(in, &n1) &&
+               in.empty();
+    }
+    else if (match(in, edgePred)) { // _edge(<n0>,<n1>)
+        return matchAtom(in, n0) && match(in, ',') && matchAtom(in, n1) && match(in, ')') && in.empty();
+    }
+    return false;
+}
+bool matchDomHeuPred(std::string_view in, std::string_view& atom, Heuristic_t& type, int& bias, unsigned& prio) {
+    // _heuristic(<atom>,<type>,<bias>[,<prio>])
+    if (match(in, heuristicPred) && matchAtom(in, atom) && match(in, ',') && match(in, type) && match(in, ',') &&
+        matchNum(in, nullptr, &bias)) {
+        prio = bias < 0 ? static_cast<unsigned>(~bias) + 1u : static_cast<unsigned>(bias);
+        if (match(in, ',')) {
+            if (int p; not matchNum(in, nullptr, &p) || p < 0) {
+                return false;
+            }
+            else {
+                prio = static_cast<unsigned>(p);
+            }
+        }
+        return match(in, ')') && in.empty();
+    }
+    return false;
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsOutput
@@ -400,7 +493,7 @@ SmodelsOutput& SmodelsOutput::add(Weight_t bnd, const WeightLitSpan& lits, bool 
     return *this;
 }
 SmodelsOutput& SmodelsOutput::endRule() {
-    os_ << "\n";
+    os_ << '\n';
     return *this;
 }
 void SmodelsOutput::initProgram(bool b) {
@@ -439,7 +532,7 @@ void SmodelsOutput::output(const std::string_view& str, const LitSpan& cond) {
     }
     os_ << unsigned(cond[0]) << " ";
     os_.write(str.data(), std::ssize(str));
-    os_ << "\n";
+    os_ << '\n';
 }
 void SmodelsOutput::external(Atom_t a, Value_t t) {
     POTASSCO_CHECK_PRE(ext_, "external directive not supported in smodels format");
@@ -459,17 +552,17 @@ void SmodelsOutput::assume(const LitSpan& lits) {
     os_ << "B+\n";
     for (auto x : lits) {
         if (lit(x) > 0) {
-            os_ << atom(x) << "\n";
+            os_ << atom(x) << '\n';
         }
     }
     os_ << "0\nB-\n";
     for (auto x : lits) {
         if (lit(x) < 0) {
-            os_ << atom(x) << "\n";
+            os_ << atom(x) << '\n';
         }
     }
     if (fHead_ && false_) {
-        os_ << false_ << "\n";
+        os_ << false_ << '\n';
     }
     os_ << "0\n";
 }

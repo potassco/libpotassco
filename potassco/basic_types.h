@@ -262,7 +262,7 @@ public:
     char& back() { return data()[size() - 1]; }
 
     //! Reduces the number of used bytes in this region by @c n.
-    void pop(size_t n) { size_ = n <= size_ ? size_ - n : 0; }
+    void pop(std::size_t n) { size_ -= n <= size_ ? static_cast<uint32_t>(n) : size_; }
     //! Reduces the number of used bytes in this region to 0.
     void clear() { size_ = 0; }
 

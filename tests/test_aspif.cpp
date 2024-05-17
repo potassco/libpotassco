@@ -405,7 +405,7 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
 
     SECTION("simple rule") {
         rb.start().addHead(1).addGoal(2).addGoal(-3).end();
-        REQUIRE(spanEq(rb.head(), std::vector{1}));
+        REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
         REQUIRE(rb.bodyType() == Body_t::Normal);
         REQUIRE(spanEq(rb.body(), std::vector{2, -3}));
         REQUIRE(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
@@ -428,7 +428,7 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
     }
     SECTION("simple weight rule") {
         rb.start().addHead(1).startSum(2).addGoal(2, 1).addGoal(-3, 1).addGoal(4, 2).end();
-        REQUIRE(spanEq(rb.head(), std::vector{1}));
+        REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
         REQUIRE(rb.bodyType() == Body_t::Sum);
         REQUIRE(rb.bound() == 2);
         REQUIRE(spanEq(rb.sum().lits, std::vector<WeightLit_t>{{2, 1}, {-3, 1}, {4, 2}}));
@@ -448,7 +448,7 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
     }
     SECTION("weakean to cardinality rule") {
         rb.start().addHead(1).startSum(2).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).weaken(Body_t::Count).end();
-        REQUIRE(spanEq(rb.head(), std::vector{1}));
+        REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
         REQUIRE(rb.bodyType() == Body_t::Count);
         REQUIRE(rb.bound() == 1);
         REQUIRE(spanEq(rb.sum().lits, std::vector<WeightLit_t>{{2, 1}, {-3, 1}, {4, 1}}));
@@ -456,14 +456,14 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
     }
     SECTION("weaken to normal rule") {
         rb.start().addHead(1).startSum(3).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).weaken(Body_t::Normal).end();
-        REQUIRE(spanEq(rb.head(), std::vector{1}));
+        REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
         REQUIRE(rb.bodyType() == Body_t::Normal);
         REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{2, -3, 4}));
         REQUIRE(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
     }
     SECTION("weak to normal rule - inverse order") {
         rb.startSum(3).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).start().addHead(1).weaken(Body_t::Normal).end();
-        REQUIRE(spanEq(rb.head(), std::vector{1}));
+        REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
         REQUIRE(rb.bodyType() == Body_t::Normal);
         REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{2, -3, 4}));
         REQUIRE(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
@@ -471,7 +471,7 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
     SECTION("minimize rule") {
         SECTION("implicit body") {
             rb.startMinimize(1).addGoal(-3, 2).addGoal(4, 1).addGoal(5).end();
-            REQUIRE(spanEq(rb.head(), std::vector<Lit_t>{}));
+            REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{}));
             REQUIRE(rb.isMinimize());
             REQUIRE(rb.bodyType() == Body_t::Sum);
             REQUIRE(rb.bound() == 1);
@@ -590,7 +590,7 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
             REQUIRE(rb.body().size() == 0);
 
             rb.start().addHead(1).addGoal(2).addGoal(-3).end();
-            REQUIRE(spanEq(rb.head(), std::vector{1}));
+            REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
             REQUIRE(rb.bodyType() == Body_t::Normal);
             REQUIRE(spanEq(rb.body(), std::vector{2, -3}));
             REQUIRE(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));

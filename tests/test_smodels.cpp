@@ -385,36 +385,95 @@ TEST_CASE("Match heuristic predicate", "[smodels]") {
     int              bias;
     unsigned         prio;
     SECTION("do not match invalid predicate name") {
-        REQUIRE(0 == matchDomHeuPred(in = "heuristic()", atom, type, bias, prio));
-        REQUIRE(0 == matchDomHeuPred(in = "_heu()", atom, type, bias, prio));
+        REQUIRE_FALSE(matchDomHeuPred(in = "heuristic()", atom, type, bias, prio));
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heu()", atom, type, bias, prio));
     }
     SECTION("do not match predicate with wrong arity") {
-        REQUIRE(-1 == matchDomHeuPred(in = "_heuristic(x)", atom, type, bias, prio));
-        REQUIRE(-2 == matchDomHeuPred(in = "_heuristic(x,sign)", atom, type, bias, prio));
-        REQUIRE(-4 == matchDomHeuPred(in = "_heuristic(x,sign,1,2,3)", atom, type, bias, prio));
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heuristic(x)", atom, type, bias, prio));
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heuristic(x,sign)", atom, type, bias, prio));
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heuristic(x,sign,1,2,3)", atom, type, bias, prio));
     }
     SECTION("do not match predicate with invalid parameter") {
-        REQUIRE(-2 == matchDomHeuPred(in = "_heuristic(x,invalid,1)", atom, type, bias, prio));
-        REQUIRE(-3 == matchDomHeuPred(in = "_heuristic(x,sign,foo)", atom, type, bias, prio));
-        REQUIRE(-4 == matchDomHeuPred(in = "_heuristic(x,sign,1,-10)", atom, type, bias, prio));
-        REQUIRE(-3 == matchDomHeuPred(in = "_heuristic(x,sign,1a,-10)", atom, type, bias, prio));
-        REQUIRE(-2 == matchDomHeuPred(in = "_heuristic(x,sign(),1)", atom, type, bias, prio));
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heuristic(x,invalid,1)", atom, type, bias, prio));
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heuristic(x,sign,foo)", atom, type, bias, prio));
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heuristic(x,sign,1,-10)", atom, type, bias, prio));
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heuristic(x,sign,1a,-10)", atom, type, bias, prio));
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heuristic(x,sign(),1)", atom, type, bias, prio));
     }
     SECTION("match _heuristic/3 and assign implicit priority") {
-        REQUIRE(1 == matchDomHeuPred(in = "_heuristic(x,level,-10)", atom, type, bias, prio));
+        REQUIRE(matchDomHeuPred(in = "_heuristic(x,level,-10)", atom, type, bias, prio));
         REQUIRE(prio == 10);
-        REQUIRE(1 == matchDomHeuPred(in = "_heuristic(x,sign,-2147483648)", atom, type, bias, prio));
-        REQUIRE(prio == static_cast<unsigned>(2147483647) + 1);
+        REQUIRE(matchDomHeuPred(in = "_heuristic(x,sign,-2147483648)", atom, type, bias, prio));
         REQUIRE(bias == std::numeric_limits<int32_t>::min());
+        REQUIRE(prio == static_cast<unsigned>(2147483647) + 1);
+        REQUIRE(matchDomHeuPred(in = "_heuristic(x,sign,-3)", atom, type, bias, prio));
+        REQUIRE(bias == -3);
+        REQUIRE(prio == static_cast<unsigned>(3));
     }
     SECTION("match _heuristic/4") {
-        REQUIRE(1 == matchDomHeuPred(in = "_heuristic(x,level,-10,123)", atom, type, bias, prio));
+        REQUIRE(matchDomHeuPred(in = "_heuristic(x,level,-10,123)", atom, type, bias, prio));
         REQUIRE(bias == -10);
         REQUIRE(prio == 123);
     }
     SECTION("match complex atom name") {
-        REQUIRE(1 == matchDomHeuPred(in = "_heuristic(_heuristic(x,y,z),init,1)", atom, type, bias, prio));
+        REQUIRE(matchDomHeuPred(in = "_heuristic(_heuristic(x,y,z),init,1)", atom, type, bias, prio));
         REQUIRE(type == Heuristic_t::Init);
+
+        REQUIRE(matchDomHeuPred(in = "_heuristic(a(\"foo\"),init,1)", atom, type, bias, prio));
+        REQUIRE(type == Heuristic_t::Init);
+        REQUIRE(atom == R"(a("foo"))");
+
+        REQUIRE(matchDomHeuPred(in = "_heuristic(a(\"fo\\\"o\"),init,1)", atom, type, bias, prio));
+        REQUIRE(type == Heuristic_t::Init);
+        REQUIRE(atom == "a(\"fo\\\"o\")");
+    }
+    SECTION("do not match out of bounds") {
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heuristic(x,sign,-2147483649)", atom, type, bias, prio));
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heuristic(x,sign,2147483648)", atom, type, bias, prio));
+    }
+    SECTION("handle unterminated") {
+        REQUIRE_FALSE(matchDomHeuPred(in = "_heuristic(a(\"foo,init,1)", atom, type, bias, prio));
+    }
+}
+
+TEST_CASE("Match edge predicate", "[smodels]") {
+    const char*      in;
+    std::string_view v0;
+    std::string_view v1;
+    SECTION("do not match invalid predicate name") {
+        REQUIRE_FALSE(matchEdgePred(in = "edge()", v0, v1));
+        REQUIRE_FALSE(matchEdgePred(in = "_acyc()", v0, v1));
+    }
+    SECTION("do not match predicate with wrong arity") {
+        REQUIRE_FALSE(matchEdgePred(in = "_edge(1)", v0, v1));
+        REQUIRE_FALSE(matchEdgePred(in = "_edge(1,2,3)", v0, v1));
+
+        REQUIRE_FALSE(matchEdgePred(in = "_acyc_1_2", v0, v1));
+        REQUIRE_FALSE(matchEdgePred(in = "_acyc_1_2_3_4", v0, v1));
+    }
+
+    SECTION("do not match predicate with invalid parameter") {
+        REQUIRE_FALSE(matchEdgePred(in = "_acyc_1_foo_bar", v0, v1));
+        REQUIRE_FALSE(matchEdgePred(in = "_acyc_foo_1_2", v0, v1));
+        REQUIRE_FALSE(matchEdgePred(in = "_acyc_1_1d_2y", v0, v1));
+    }
+
+    SECTION("match _acyc_/0") {
+        REQUIRE(matchEdgePred(in = "_acyc_1_99_100", v0, v1));
+        REQUIRE(v0 == "99");
+        REQUIRE(v1 == "100");
+        REQUIRE(matchEdgePred(in = "_acyc_1_-12_13", v0, v1));
+        REQUIRE(v0 == "-12");
+        REQUIRE(v1 == "13");
+    }
+
+    SECTION("match _edge/2") {
+        REQUIRE(matchEdgePred(in = "_edge(x,y)", v0, v1));
+        REQUIRE(v0 == "x");
+        REQUIRE(v1 == "y");
+        REQUIRE(matchEdgePred(in = "_edge(x(\"Foo,bar\"),bar)", v0, v1));
+        REQUIRE(v0 == "x(\"Foo,bar\")");
+        REQUIRE(v1 == "bar");
     }
 }
 

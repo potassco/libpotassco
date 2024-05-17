@@ -134,7 +134,7 @@ bool     RuleBuilder::isMinimize() const { return headType() == static_cast<Head
 /////////////////////////////////////////////////////////////////////////////////////////
 // RuleBuilder - Body management
 /////////////////////////////////////////////////////////////////////////////////////////
-static constexpr auto boundPos(uint32_t pos) { return pos - sizeof(Weight_t); }
+static constexpr auto boundPos(uint32_t pos) { return static_cast<uint32_t>(pos - sizeof(Weight_t)); }
 RuleBuilder&          RuleBuilder::startBody() {
     start(body_, static_cast<uint32_t>(Body_t::Normal));
     return *this;
@@ -179,7 +179,7 @@ RuleBuilder& RuleBuilder::weaken(Body_t to, bool resetWeights) {
             auto drop = (s.lits.size() * sizeof(Weight_t)) + sizeof(Weight_t);
             if (body_.start() > head_.start())
                 mem_.pop(drop);
-            body_.end_flag -= drop;
+            body_.end_flag -= static_cast<uint32_t>(drop);
         }
         else if (not s.lits.empty() && resetWeights && to == Body_t::Count) { // set weight of all lits to 1
             auto minW = s.lits[0].weight;

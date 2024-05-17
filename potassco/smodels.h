@@ -106,6 +106,10 @@ private:
     std::unique_ptr<StringTab> nodes_;
     Options                    opts_;
 };
+//! Tries to extract a heuristic modification from a given _heuristic/3 or _heuristic/4 predicate.
+bool matchDomHeuPred(std::string_view pred, std::string_view& atom, Heuristic_t& type, int& bias, unsigned& prio);
+//! Tries to extract source and target from a given _edge/2 or _acyc_/0 predicate.
+bool matchEdgePred(std::string_view pred, std::string_view& n0, std::string_view& n1);
 
 /*!
  * Parses the given program in smodels format and calls out on each parsed element.
@@ -119,6 +123,7 @@ int readSmodels(std::istream& prg, AbstractProgram& out, const SmodelsInput::Opt
  */
 ///@{
 
+enum SmodelsRule : int;
 //! Returns a non-zero value if head can be represented in smodels format.
 int isSmodelsHead(Head_t ht, const AtomSpan& head, bool allowConstraint = false);
 //! Returns a non-zero value if rule can be represented in smodels format.

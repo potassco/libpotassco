@@ -51,11 +51,11 @@ struct AspifTextInput::Data {
 AspifTextInput::AspifTextInput(AbstractProgram* out) : out_(out), data_(nullptr) {}
 void AspifTextInput::setOutput(AbstractProgram& out) { out_ = &out; }
 bool AspifTextInput::doAttach(bool& inc) {
-    auto n = peek(true);
+    auto n = peek();
     if (out_ && (not n || std::islower(static_cast<unsigned char>(n)) || std::strchr(".#%{:", n))) {
         while (n == '%') {
             skipLine();
-            n = peek(true);
+            n = skipWs();
         }
         if (inc = matchOpt("#incremental"sv); inc)
             matchDelim('.');
@@ -77,7 +77,7 @@ void AspifTextInput::parseStatements() {
     Data data;
     POTASSCO_SCOPE_EXIT({ data_ = nullptr; });
     data_ = &data;
-    for (char c; (c = peek(true)) != 0; data.clear()) {
+    for (char c; (c = skipWs()) != 0; data.clear()) {
         if (c == '.') {
             matchDelim('.');
         }
@@ -106,7 +106,7 @@ void AspifTextInput::matchRule(char c) {
         matchAtoms(";|"sv);
     }
     if (matchOpt(":-"sv)) {
-        c = peek(true);
+        c = skipWs();
         if (not StreamType::isDigit(c) && c != '-') {
             data_->rule.startBody();
             matchLits();
@@ -186,11 +186,7 @@ bool AspifTextInput::matchDirective() {
             require(p >= 0, "positive priority expected");
         }
         matchDelim(',');
-        matchWord();
-        Heuristic_t ht;
-        const auto* w = data_->symbol.data();
-        require(Potassco::match(w, ht), "unrecognized heuristic modification");
-        skipws();
+        auto ht = matchHeuMod();
         matchDelim(']');
         out_->heuristic(a, ht, v, static_cast<unsigned>(p), data_->lits());
     }
@@ -214,36 +210,30 @@ bool AspifTextInput::matchDirective() {
     }
     return true;
 }
-
-void AspifTextInput::skipws() { stream()->skipWs(); }
 bool AspifTextInput::matchOpt(std::string_view term) {
-    if (ProgramReader::match(term, false)) {
-        skipws();
+    if (match(term)) {
+        skipWs();
         return true;
     }
     return false;
 }
 
 void AspifTextInput::matchDelim(char c) {
-    if (stream()->get() == c)
-        return skipws();
-
-    char msg[] = "'x' expected";
-    msg[1]     = c;
-    error(msg);
+    matchChar(c);
+    skipWs();
 }
 
 void AspifTextInput::matchAtoms(std::string_view seps) {
-    if (std::islower(static_cast<unsigned char>(peek(true))) != 0) {
+    if (std::islower(static_cast<unsigned char>(skipWs())) != 0) {
         do {
             auto x = matchLit();
             require(x > 0, "positive atom expected");
             data_->rule.addHead(static_cast<Atom_t>(x));
-        } while (seps.find(stream()->peek()) != std::string_view::npos && stream()->get() && (skipws(), true));
+        } while (seps.find(peek()) != std::string_view::npos && get() && (skipWs(), true));
     }
 }
 void AspifTextInput::matchLits() {
-    if (std::islower(static_cast<unsigned char>(peek(true))) != 0) {
+    if (std::islower(static_cast<unsigned char>(skipWs())) != 0) {
         do { data_->rule.addGoal(matchLit()); } while (matchOpt(","sv));
     }
 }
@@ -274,36 +264,34 @@ Lit_t AspifTextInput::matchLit() {
 
 int AspifTextInput::matchInt() {
     auto i = ProgramReader::matchInt();
-    skipws();
+    skipWs();
     return i;
 }
 Atom_t AspifTextInput::matchId() {
-    auto c = stream()->get();
-    auto n = stream()->peek();
+    auto c = get();
+    auto n = peek();
     require(std::islower(static_cast<unsigned char>(c)) != 0, "<id> expected");
     require(std::islower(static_cast<unsigned char>(n)) == 0, "<pos-integer> expected");
     if (c == 'x' && (BufferedStream::isDigit(n) || n == '_')) {
         if (n == '_') {
-            stream()->get();
+            get();
         }
         auto i = matchInt();
         require(i > 0, "<pos-integer> expected");
         return static_cast<Atom_t>(i);
     }
     else {
-        skipws();
+        skipWs();
         return static_cast<Atom_t>(c - 'a') + 1;
     }
 }
 void AspifTextInput::push(char c) { data_->symbol.push(c); }
 
 void AspifTextInput::matchTerm() {
-    auto c = stream()->peek();
+    auto c = peek();
     if (std::islower(static_cast<unsigned char>(c)) != 0 || c == '_') {
-        do {
-            push(stream()->get());
-        } while (std::isalnum(static_cast<unsigned char>(c = stream()->peek())) != 0 || c == '_');
-        skipws();
+        do { push(get()); } while (std::isalnum(static_cast<unsigned char>(c = peek())) != 0 || c == '_');
+        skipWs();
         if (matchOpt("("sv)) {
             push('(');
             for (;;) {
@@ -322,11 +310,11 @@ void AspifTextInput::matchTerm() {
     else {
         error("<term> expected");
     }
-    skipws();
+    skipWs();
 }
 void AspifTextInput::matchAtomArg() {
     char c;
-    for (int p = 0; (c = stream()->peek()) != 0;) {
+    for (int p = 0; (c = peek()) != 0;) {
         if (c == '"') {
             matchStr();
         }
@@ -335,8 +323,8 @@ void AspifTextInput::matchAtomArg() {
                 break;
             }
             p += int(c == '(');
-            push(stream()->get());
-            skipws();
+            push(get());
+            skipWs();
         }
     }
 }
@@ -344,18 +332,24 @@ void AspifTextInput::matchStr() {
     matchDelim('"');
     push('"');
     auto quoted = false;
-    for (char c; (c = stream()->peek()) != 0 && (c != '\"' || quoted);) {
+    for (char c; (c = peek()) != 0 && (c != '\"' || quoted);) {
         quoted = not quoted && c == '\\';
-        push(stream()->get());
+        push(get());
     }
     matchDelim('"');
     push('"');
 }
 
-void AspifTextInput::matchWord() {
-    data_->symbol.clear();
-    for (char c; (c = stream()->peek()) != 0 && std::isalnum(static_cast<unsigned char>(c));) { push(stream()->get()); }
-    push(0);
+Heuristic_t AspifTextInput::matchHeuMod() {
+    auto first = peek();
+    for (const auto& [k, n] : enum_entries<Heuristic_t>()) {
+        if (not n.empty() && n[0] == first && ProgramReader::match(n)) {
+            skipWs();
+            return k;
+        }
+    }
+    error("unrecognized heuristic modification");
+    return {};
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // AspifTextOutput
@@ -391,7 +385,7 @@ struct AspifTextOutput::Data {
     [[nodiscard]] const FixedString& string(uint32_t idx) const { return strings.at(idx); }
 
     void addAtom(Atom_t atom, const std::string_view& name) {
-        atoms.resize(std::max<std::size_t>(atoms.size(), atom + 1), idMax);
+        atoms.resize(std::max(atoms.size(), static_cast<AtomMap::size_type>(atom + 1)), idMax);
         atoms[atom] = addString(name);
     }
 
@@ -412,11 +406,11 @@ struct AspifTextOutput::Data {
         directives.append(span.begin(), span.end());
     }
     void push(const WeightLitSpan& span) {
-        directives.reserve(directives.size() + (2 * span.size()) + 1);
+        directives.reserve(static_cast<RawVec::size_type>(directives.size() + (2 * span.size()) + 1));
         push(span.size());
         for (const auto& wl : span) {
-            directives.push_back(static_cast<uint32_t>(wl.lit));
-            directives.push_back(static_cast<uint32_t>(wl.weight));
+            push(wl.lit);
+            push(wl.weight);
         }
     }
 
@@ -628,7 +622,7 @@ void AspifTextOutput::writeDirectives() {
                 for (auto n = next(pos); n--; sep = ", ") { printName(os_ << sep, next<Lit_t>(pos)); }
                 break;
         }
-        os_ << term << "\n";
+        os_ << term << '\n';
         POTASSCO_ASSERT(pos <= end);
     }
 }
