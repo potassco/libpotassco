@@ -209,6 +209,11 @@ TEST_CASE("Text writer ", "[text]") {
 		read(prg, input);
 		REQUIRE(output.str() == "{foo;x_2}.\n");
 	}
+	SECTION("empty choice") {
+		input << "{}.";
+		read(prg, input);
+		REQUIRE(output.str() == "{}.\n");
+	}
 	SECTION("integrity constraint") {
 		input << ":- x1,x2.\n#output foo : x1.";
 		read(prg, input);
@@ -218,6 +223,27 @@ TEST_CASE("Text writer ", "[text]") {
 		input << ":-.";
 		read(prg, input);
 		REQUIRE(output.str() == ":- .\n");
+	}
+	SECTION("classical negation") {
+		Atom_t head(1);
+		Lit_t cond(1);
+		out.beginStep();
+		out.rule(Head_t::Choice, toSpan(&head, 1), {});
+		out.output(toSpan("-a"), toSpan(&cond, 1));
+		out.output(toSpan("-8"), toSpan(&cond, 1));
+		out.endStep();
+		REQUIRE(output.str() == "{-a}.\n#show -8 : -a.\n");
+	}
+	SECTION("classical negation tricky") {
+		std::vector<Atom_t> head{1,2};
+		Lit_t cond1(1);
+		Lit_t cond2(2);
+		out.beginStep();
+		out.rule(Head_t::Choice, toSpan(head), {});
+		out.output(toSpan("-a"), toSpan(&cond1, 1));
+		out.output(toSpan("x_1"), toSpan(&cond2, 1));
+		out.endStep();
+		REQUIRE(output.str() == "{-a;x_1}.\n");
 	}
 	SECTION("basic rule") {
 		input << "x1 :- x2, not x3, x4.\n#output foo : x1.\n#output bar : x3.";

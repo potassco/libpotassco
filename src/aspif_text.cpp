@@ -384,9 +384,17 @@ void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, cons
 void AspifTextOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
 	push(Directive_t::Minimize).push(lits).push(prio);
 }
+static bool isAtom(const StringSpan& s) {
+	std::size_t sz = size(s);
+	char first = sz > 0 ? s[0] : char(0);
+	if (first == '-' && sz > 1) {
+		first = s[1];
+	}
+	return std::islower(static_cast<unsigned char>(first)) || first == '_';
+}
+
 void AspifTextOutput::output(const StringSpan& str, const LitSpan& cond) {
-	bool isAtom = size(str) > 0 && (std::islower(static_cast<unsigned char>(*begin(str))) || *begin(str) == '_');
-	if (size(cond) == 1 && lit(*begin(cond)) > 0 && isAtom) {
+	if (size(cond) == 1 && lit(*begin(cond)) > 0 && isAtom(str)) {
 		addAtom(Potassco::atom(*begin(cond)), str);
 	}
 	else {
@@ -462,8 +470,8 @@ void AspifTextOutput::writeDirectives() {
 			case Directive_t::Rule:
 				if (get<uint32_t>() != 0) { os_ << "{"; term = "}"; }
 				for (uint32_t n = get<uint32_t>(); n--; sep = !*term ? "|" : ";") { printName(os_ << sep, get<Atom_t>()); }
-				if (*sep) { os_ << term; sep = " :- "; }
-				else      { os_ << ":- "; }
+				if (*sep || *term) { os_ << term; sep = " :- "; }
+				else               { os_ << ":- "; }
 				term = ".";
 				switch (uint32_t bt = get<uint32_t>()) {
 					case Body_t::Normal:
