@@ -37,6 +37,8 @@ POTASSCO_WARNING_END_RELAXED
 
 namespace Potassco {
 using namespace std::literals;
+static bool isLower(char c) { return std::islower(static_cast<unsigned char>(c)); }
+static bool isAlnum(char c) { return std::isalnum(static_cast<unsigned char>(c)); }
 struct AspifTextInput::Data {
     void clear() {
         rule.clear();
@@ -52,7 +54,7 @@ AspifTextInput::AspifTextInput(AbstractProgram* out) : out_(out), data_(nullptr)
 void AspifTextInput::setOutput(AbstractProgram& out) { out_ = &out; }
 bool AspifTextInput::doAttach(bool& inc) {
     auto n = peek();
-    if (out_ && (not n || std::islower(static_cast<unsigned char>(n)) || std::strchr(".#%{:", n))) {
+    if (out_ && (not n || isLower(n) || std::strchr(".#%{:", n))) {
         while (n == '%') {
             skipLine();
             n = skipWs();
@@ -224,7 +226,7 @@ void AspifTextInput::matchDelim(char c) {
 }
 
 void AspifTextInput::matchAtoms(std::string_view seps) {
-    if (std::islower(static_cast<unsigned char>(skipWs())) != 0) {
+    if (isLower(skipWs())) {
         do {
             auto x = matchLit();
             require(x > 0, "positive atom expected");
@@ -233,7 +235,7 @@ void AspifTextInput::matchAtoms(std::string_view seps) {
     }
 }
 void AspifTextInput::matchLits() {
-    if (std::islower(static_cast<unsigned char>(skipWs())) != 0) {
+    if (isLower(skipWs())) {
         do { data_->rule.addGoal(matchLit()); } while (matchOpt(","sv));
     }
 }
@@ -270,8 +272,8 @@ int AspifTextInput::matchInt() {
 Atom_t AspifTextInput::matchId() {
     auto c = get();
     auto n = peek();
-    require(std::islower(static_cast<unsigned char>(c)) != 0, "<id> expected");
-    require(std::islower(static_cast<unsigned char>(n)) == 0, "<pos-integer> expected");
+    require(isLower(c), "<id> expected");
+    require(not isLower(n), "<pos-integer> expected");
     if (c == 'x' && (BufferedStream::isDigit(n) || n == '_')) {
         if (n == '_') {
             get();
@@ -289,8 +291,8 @@ void AspifTextInput::push(char c) { data_->symbol.push(c); }
 
 void AspifTextInput::matchTerm() {
     auto c = peek();
-    if (std::islower(static_cast<unsigned char>(c)) != 0 || c == '_') {
-        do { push(get()); } while (std::isalnum(static_cast<unsigned char>(c = peek())) != 0 || c == '_');
+    if (isLower(c) || c == '_') {
+        do { push(get()); } while (isAlnum(c = peek()) != 0 || c == '_');
         skipWs();
         if (matchOpt("("sv)) {
             push('(');
@@ -426,8 +428,8 @@ struct AspifTextOutput::Data {
     AtomMap   atoms; // maps into strings
     LitVec    conditions;
 };
-AspifTextOutput::AspifTextOutput(std::ostream& os) : os_(os), step_(-1) { data_ = new Data(); }
-AspifTextOutput::~AspifTextOutput() { delete data_; }
+AspifTextOutput::AspifTextOutput(std::ostream& os) : os_(os), data_(std::make_unique<Data>()), step_(-1) {}
+AspifTextOutput::~AspifTextOutput() = default;
 void          AspifTextOutput::addAtom(Atom_t id, const std::string_view& str) { data_->addAtom(id, str); }
 std::ostream& AspifTextOutput::printName(std::ostream& os, Lit_t lit) const {
     if (lit < 0) {
@@ -480,8 +482,13 @@ void AspifTextOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
     push(Directive_t::Minimize).push(lits).push(prio);
 }
 void AspifTextOutput::output(const std::string_view& str, const LitSpan& cond) {
-    auto isAtom = not str.empty() && (std::islower(static_cast<unsigned char>(str.front())) || str.front() == '_');
-    if (cond.size() == 1 && lit(cond.front()) > 0 && isAtom) {
+    constexpr auto isAtom = [](const std::string_view& name) {
+        auto first = not name.empty() ? name.front() : char(0);
+        if (first == '-' && name.size() > 1)
+            first = name[1];
+        return isLower(first) || first == '_';
+    };
+    if (cond.size() == 1 && lit(cond.front()) > 0 && isAtom(str)) {
         addAtom(Potassco::atom(cond.front()), str);
     }
     else {
@@ -528,6 +535,21 @@ static constexpr T next(const uint32_t*& pos) {
     return static_cast<T>(*pos++);
 }
 
+std::ostream& AspifTextOutput::printCondition(std::ostream& os, const uint32_t*& pos, const char* init, Body_t type) {
+    const auto* sep     = init;
+    const auto* sepNext = type == Body_t::Normal ? ", " : "; ";
+    if (auto n = next(pos); type != Body_t::Sum) {
+        for (; n--; sep = sepNext) { printName(os << sep, next<Lit_t>(pos)); }
+    }
+    else {
+        for (; n--; sep = sepNext) {
+            printName(os << sep, next<Lit_t>(pos));
+            os << "=" << next<Weight_t>(pos);
+        }
+    }
+    return os;
+}
+
 void AspifTextOutput::writeDirectives() {
     for (const auto *pos = data_->directives.data(), *end = pos + data_->directives.size(); pos != end;) {
         const auto *sep = "", *term = "";
@@ -539,7 +561,7 @@ void AspifTextOutput::writeDirectives() {
                     term = "}";
                 }
                 for (auto n = next(pos); n--; sep = !*term ? "|" : ";") { printName(os_ << sep, next<Atom_t>(pos)); }
-                if (*sep) {
+                if (*sep || *term) {
                     os_ << term;
                     sep = " :- ";
                 }
@@ -548,48 +570,31 @@ void AspifTextOutput::writeDirectives() {
                 }
                 term = ".";
                 switch (auto bt = next<Body_t>(pos)) {
-                    case Body_t::Normal:
-                        for (auto n = next(pos); n--; sep = ", ") { printName(os_ << sep, next<Lit_t>(pos)); }
-                        break;
+                    case Body_t::Normal: printCondition(os_, pos, sep); break;
                     case Body_t::Count: // fall through
                     case Body_t::Sum:
                         os_ << sep << next<Weight_t>(pos);
-                        sep = "{";
-                        for (auto n = next(pos); n--; sep = "; ") {
-                            printName(os_ << sep, next<Lit_t>(pos));
-                            if (bt == Body_t::Sum) {
-                                os_ << "=" << next<Weight_t>(pos);
-                            }
-                        }
-                        os_ << "}";
+                        printCondition(os_, pos, "{", bt) << "}";
                         break;
                     default: break;
                 }
                 break;
             case Directive_t::Minimize:
-                sep  = "#minimize{";
                 term = ".";
-                for (auto n = next(pos); n--; sep = "; ") {
-                    printName(os_ << sep, next<Lit_t>(pos));
-                    os_ << "=" << next<Weight_t>(pos);
-                }
-                os_ << "}@" << next<Weight_t>(pos);
+                printCondition(os_, pos, "#minimize{", Body_t::Sum) << "}@" << next<Weight_t>(pos);
                 break;
             case Directive_t::Project:
-                sep  = "#project{";
                 term = "}.";
-                for (auto n = next(pos); n--; sep = ", ") { printName(os_ << sep, next<Lit_t>(pos)); }
+                printCondition(os_, pos, "#project{");
                 break;
             case Directive_t::Output:
-                sep  = " : ";
                 term = ".";
                 os_ << "#show " << data_->string(next(pos)).view();
-                for (auto n = next(pos); n--; sep = ", ") { printName(os_ << sep, next<Lit_t>(pos)); }
+                printCondition(os_, pos, " : ");
                 break;
             case Directive_t::External:
-                sep  = "#external ";
                 term = ".";
-                printName(os_ << sep, next<Atom_t>(pos));
+                printName(os_ << "#external ", next<Atom_t>(pos));
                 switch (next<Value_t>(pos)) {
                     default              : break;
                     case Value_t::Free   : term = ". [free]"; break;
@@ -598,28 +603,24 @@ void AspifTextOutput::writeDirectives() {
                 }
                 break;
             case Directive_t::Assume:
-                sep  = "#assume{";
                 term = "}.";
-                for (auto n = next(pos); n--; sep = ", ") { printName(os_ << sep, next<Lit_t>(pos)); }
+                printCondition(os_, pos, "#assume{");
                 break;
             case Directive_t::Heuristic:
-                sep  = " : ";
                 term = "";
                 os_ << "#heuristic ";
                 printName(os_, next<Atom_t>(pos));
-                for (auto n = next(pos); n--; sep = ", ") { printName(os_ << sep, next<Lit_t>(pos)); }
-                os_ << ". [" << next<int32_t>(pos);
+                printCondition(os_, pos, " : ") << ". [" << next<int32_t>(pos);
                 if (auto p = next(pos)) {
                     os_ << "@" << p;
                 }
                 os_ << ", " << Potassco::enum_name(next<Heuristic_t>(pos)) << "]";
                 break;
             case Directive_t::Edge:
-                sep  = " : ";
                 term = ".";
                 os_ << "#edge(" << next<int32_t>(pos) << ",";
                 os_ << next<int32_t>(pos) << ")";
-                for (auto n = next(pos); n--; sep = ", ") { printName(os_ << sep, next<Lit_t>(pos)); }
+                printCondition(os_, pos, " : ");
                 break;
         }
         os_ << term << '\n';

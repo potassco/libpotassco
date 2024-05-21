@@ -26,6 +26,7 @@
 #include <potassco/theory_data.h>
 
 #include <cstring>
+#include <memory>
 
 namespace Potassco {
 //! Class for parsing logic programs in ground text format.
@@ -111,6 +112,7 @@ private:
     std::ostream& printName(std::ostream& os, Atom_t at) const { return printName(os, lit(at)); }
     std::ostream& printTheoryAtom(std::ostream&, const TheoryAtom&) const;
     std::ostream& appendTerm(std::ostream&, Id_t term) const;
+    std::ostream& printCondition(std::ostream&, const uint32_t*& pos, const char* init, Body_t t = Body_t::Normal);
     void          writeDirectives();
     void          visitTheoryAtoms();
     template <typename T>
@@ -118,9 +120,9 @@ private:
 
     std::ostream& os_;
     struct Data;
-    TheoryData theory_;
-    Data*      data_;
-    int        step_;
+    TheoryData            theory_;
+    std::unique_ptr<Data> data_;
+    int                   step_;
 };
 
 } // namespace Potassco
