@@ -112,7 +112,9 @@ private:
     std::ostream& printName(std::ostream& os, Atom_t at) const { return printName(os, lit(at)); }
     std::ostream& printTheoryAtom(std::ostream&, const TheoryAtom&) const;
     std::ostream& appendTerm(std::ostream&, Id_t term) const;
-    std::ostream& printCondition(std::ostream&, const uint32_t*& pos, const char* init, Body_t t = Body_t::Normal);
+    std::ostream& printCondition(std::ostream&, const uint32_t*& pos, const char* init = "");
+    std::ostream& printMinimize(std::ostream&, const uint32_t*& pos);
+    std::ostream& printAggregate(std::ostream&, const uint32_t*& pos, bool weights);
     void          writeDirectives();
     void          visitTheoryAtoms();
     template <typename T>
