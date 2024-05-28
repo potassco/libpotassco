@@ -31,9 +31,11 @@ POTASSCO_WARNING_END_RELAXED
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstring>
 #include <ostream>
 #include <sstream>
+#include <unordered_map>
 
 namespace Potassco {
 using namespace std::literals;
@@ -358,14 +360,18 @@ Heuristic_t AspifTextInput::matchHeuMod() {
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifTextOutput::Data {
     static_assert(amc::is_trivially_relocatable_v<FixedString>, "should be relocatable");
-    using StringVec = amc::SmallVector<FixedString, 64>;
-    using AtomMap   = amc::SmallVector<Id_t, 64>;
+    using StringMap = std::unordered_map<FixedString, Atom_t>;
+    using AtomMap   = amc::SmallVector<StringMap::const_pointer, 64>;
     using LitVec    = amc::SmallVector<Lit_t, 64>;
     using RawVec    = amc::SmallVector<uint32_t, 4096>;
-    [[nodiscard]] LitSpan getCondition(Id_t id) const {
-        return {&conditions[id + 1], static_cast<size_t>(conditions[id])};
+    using OutVec    = amc::vector<StringMap::const_pointer>;
+
+    static constexpr auto c_genName = StringMap::value_type{FixedString(), 0};
+
+    [[nodiscard]] LitSpan theoryCondition(Id_t id) const {
+        return {conditions.data() + id + 1, static_cast<size_t>(conditions[id])};
     }
-    Id_t addCondition(const LitSpan& cond) {
+    Id_t addTheoryCondition(const LitSpan& cond) {
         if (conditions.empty()) {
             conditions.push_back(0);
         }
@@ -378,75 +384,131 @@ struct AspifTextOutput::Data {
         return id;
     }
 
-    Id_t addString(const std::string_view& view) {
-        auto id = static_cast<Id_t>(strings.size());
-        strings.emplace_back(view);
-        return id;
+    [[nodiscard]] static bool isValidAtomName(std::string_view name) {
+        if (name.starts_with('-')) { // accept classical negation
+            name.remove_prefix(1);
+        }
+        if (name.starts_with('_')) {
+            name.remove_prefix(std::min(name.find_first_not_of('_', 1), name.size()));
+        }
+        return not name.empty() && isLower(name[0]);
     }
 
-    [[nodiscard]] const FixedString& string(uint32_t idx) const { return strings.at(idx); }
+    void addOutput(const std::string_view& str, const LitSpan& cond) {
+        out.push_back(&*strings.try_emplace(str, idMax).first);
+        push(Directive_t::Output).push(static_cast<Id_t>(out.size() - 1)).push(cond);
+    }
 
-    void addAtom(Atom_t atom, const std::string_view& name) {
-        atoms.resize(std::max(atoms.size(), static_cast<AtomMap::size_type>(atom + 1)), idMax);
-        atoms[atom] = addString(name);
+    void convertToOutput(StringMap::const_pointer node) {
+        if (node->second && node->second < atoms.size()) {
+            POTASSCO_CHECK_PRE(node->first[0] != '&', "Redefinition: theory atom '%u' already defined as '%s'",
+                               node->second, node->first.c_str());
+            atoms[node->second] = &c_genName;
+            out.push_back(node);
+            push(Directive_t::Output).push(static_cast<Id_t>(out.size() - 1)).push(1).push(node->second);
+            const_cast<StringMap::pointer>(node)->second = 0;
+        }
+    }
+
+    bool assignAtomName(Atom_t atom, const std::string_view& name) {
+        POTASSCO_DEBUG_ASSERT(not name.empty());
+        if (atom <= maxAtom) {
+            return false;
+        }
+        bool theory = name[0] == '&';
+        if (atom >= atoms.size()) {
+            atoms.resize(atom + 1, nullptr);
+        }
+        if (auto* node = atoms[atom]; node) { // atom already has a tentative name
+            if (node->second == atom && node->first == name) {
+                return true; // identical name, ignore duplicate
+            }
+            convertToOutput(node); // drop assignment
+            if (!theory) {
+                return false;
+            }
+        }
+        if (name.size() > 2 && name.starts_with("x_") && BufferedStream::isDigit(name[2])) {
+            auto id = 0u;
+            auto r  = std::from_chars(name.data() + 2, name.data() + name.size(), id);
+            if (r.ec == std::errc{} && r.ptr == name.data() + name.size() && id > 0 && id <= atomMax) {
+                atoms[atom] = &c_genName;
+                return false;
+            }
+        }
+        auto* node = &*strings.try_emplace(name, atom).first;
+        if (node->second == atom || node->second == idMax) { // assign tentative name to atom
+            node->second = atom;
+            atoms[atom]  = node;
+            return true;
+        }
+        // name already used: drop previous (tentative) assigment and prevent further assignments
+        if (node->second > maxAtom) {
+            convertToOutput(node);
+        }
+        atoms[atom] = &c_genName;
+        return false;
+    }
+    void assignTheoryAtomName(Atom_t atom, const std::string_view& name) {
+        POTASSCO_CHECK_PRE(atom > maxAtom, "Redefinition: theory atom '%u:%*s' already defined in a previous step",
+                           atom, (int) name.size(), name.data());
+        assignAtomName(atom, name);
     }
 
     [[nodiscard]] auto getAtomName(Atom_t atom) const -> const FixedString* {
-        auto idx = atom < atoms.size() ? atoms[atom] : idMax;
-        return idx != idMax ? &string(idx) : nullptr;
+        if (atom >= atoms.size() || not atoms[atom] || atoms[atom] == &c_genName) {
+            return nullptr;
+        }
+        POTASSCO_DEBUG_ASSERT(atoms[atom]->second == atom);
+        return &atoms[atom]->first;
     }
 
     template <typename T>
     requires(std::is_integral_v<T> || std::is_enum_v<T>)
-    void push(T x) {
+    Data& push(T x) {
         directives.push_back(static_cast<uint32_t>(x));
+        return *this;
     }
     template <std::integral T>
     requires(sizeof(T) == sizeof(uint32_t))
-    void push(const std::span<T>& span) {
+    Data& push(const std::span<T>& span) {
         push(span.size());
         directives.append(span.begin(), span.end());
+        return *this;
     }
-    void push(const WeightLitSpan& span) {
+    Data& push(const WeightLitSpan& span) {
         directives.reserve(static_cast<RawVec::size_type>(directives.size() + (2 * span.size()) + 1));
         push(span.size());
         for (const auto& wl : span) {
             push(wl.lit);
             push(wl.weight);
         }
+        return *this;
     }
-
-    void reset() {
-        directives.clear();
-        strings.clear();
-        atoms.clear();
-        conditions.clear();
+    void          endStep(std::ostream&, Atom_t startAtom, bool more);
+    std::ostream& printName(std::ostream& os, Lit_t lit);
+    std::ostream& printName(std::ostream& os, Atom_t at) { return printName(os, lit(at)); }
+    std::ostream& printCondition(std::ostream&, const uint32_t*& pos, const char* init = "");
+    std::ostream& printMinimize(std::ostream&, const uint32_t*& pos);
+    std::ostream& printAggregate(std::ostream&, const uint32_t*& pos, bool weights);
+    template <typename T = uint32_t>
+    static constexpr T next(const uint32_t*& pos) {
+        return static_cast<T>(*pos++);
     }
 
     RawVec    directives;
-    StringVec strings;
+    StringMap strings;
     AtomMap   atoms; // maps into strings
+    OutVec    out;
     LitVec    conditions;
+    Atom_t    maxAtom   = 0;
+    int       showAtoms = 0;
 };
 AspifTextOutput::AspifTextOutput(std::ostream& os) : os_(os), data_(std::make_unique<Data>()), step_(-1) {}
 AspifTextOutput::~AspifTextOutput() = default;
-void          AspifTextOutput::addAtom(Atom_t id, const std::string_view& str) { data_->addAtom(id, str); }
-std::ostream& AspifTextOutput::printName(std::ostream& os, Lit_t lit) const {
-    if (lit < 0) {
-        os << "not ";
-    }
-    auto id = Potassco::atom(lit);
-    if (const auto* name = data_->getAtomName(id); name) {
-        os << name->view();
-    }
-    else {
-        os << "x_" << id;
-    }
-    return os;
-}
 void AspifTextOutput::initProgram(bool incremental) {
     step_ = incremental ? 0 : -1;
-    data_->reset();
+    std::exchange(*data_, {});
 }
 void AspifTextOutput::beginStep() {
     if (step_ >= 0) {
@@ -461,50 +523,42 @@ void AspifTextOutput::beginStep() {
     }
 }
 void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
-    push(Directive_t::Rule).push(ht).push(head).push(Body_t::Normal).push(body);
+    data_->push(Directive_t::Rule).push(ht).push(head).push(Body_t::Normal).push(body);
 }
 void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) {
     if (lits.empty()) {
         AspifTextOutput::rule(ht, head, {});
     }
-    push(Directive_t::Rule).push(static_cast<uint32_t>(ht)).push(head);
+    data_->push(Directive_t::Rule).push(static_cast<uint32_t>(ht)).push(head);
     if (std::adjacent_find(lits.begin(), lits.end(),
                            [](const auto& lhs, const auto& rhs) { return lhs.weight != rhs.weight; }) != lits.end()) {
-        push(Body_t::Sum).push(bound).push(lits);
+        data_->push(Body_t::Sum).push(bound).push(lits);
     }
     else {
         bound = (bound + lits[0].weight - 1) / lits[0].weight;
-        push(Body_t::Count).push(bound).push(static_cast<uint32_t>(size(lits)));
-        for (const auto& wl : lits) { push(Potassco::lit(wl)); }
+        data_->push(Body_t::Count).push(bound).push(static_cast<uint32_t>(size(lits)));
+        for (const auto& wl : lits) { data_->push(Potassco::lit(wl)); }
     }
 }
 void AspifTextOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
-    push(Directive_t::Minimize).push(prio).push(lits);
+    data_->push(Directive_t::Minimize).push(prio).push(lits);
 }
 void AspifTextOutput::output(const std::string_view& str, const LitSpan& cond) {
-    constexpr auto isAtom = [](const std::string_view& name) {
-        auto first = not name.empty() ? name.front() : char(0);
-        if (first == '-' && name.size() > 1)
-            first = name[1];
-        return isLower(first) || first == '_';
-    };
-    if (cond.size() == 1 && lit(cond.front()) > 0 && isAtom(str)) {
-        addAtom(Potassco::atom(cond.front()), str);
-    }
-    else {
-        push(Directive_t::Output).push(data_->addString(str)).push(cond);
+    auto atom = cond.size() == 1 && cond.front() > 0 ? Potassco::atom(cond.front()) : 0;
+    if (atom == 0 || not Data::isValidAtomName(str) || not data_->assignAtomName(atom, str)) {
+        data_->addOutput(str, cond);
     }
 }
 void AspifTextOutput::external(Atom_t a, Value_t v) {
-    push(Directive_t::External).push(a).push(static_cast<uint32_t>(v));
+    data_->push(Directive_t::External).push(a).push(static_cast<uint32_t>(v));
 }
-void AspifTextOutput::assume(const LitSpan& lits) { push(Directive_t::Assume).push(lits); }
-void AspifTextOutput::project(const AtomSpan& atoms) { push(Directive_t::Project).push(atoms); }
+void AspifTextOutput::assume(const LitSpan& lits) { data_->push(Directive_t::Assume).push(lits); }
+void AspifTextOutput::project(const AtomSpan& atoms) { data_->push(Directive_t::Project).push(atoms); }
 void AspifTextOutput::acycEdge(int s, int t, const LitSpan& condition) {
-    push(Directive_t::Edge).push(s).push(t).push(condition);
+    data_->push(Directive_t::Edge).push(s).push(t).push(condition);
 }
 void AspifTextOutput::heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) {
-    push(Directive_t::Heuristic).push(a).push(condition).push(bias).push(prio).push(static_cast<uint32_t>(t));
+    data_->push(Directive_t::Heuristic).push(a).push(condition).push(bias).push(prio).push(static_cast<uint32_t>(t));
 }
 void AspifTextOutput::theoryTerm(Id_t termId, int number) { theory_.addTerm(termId, number); }
 void AspifTextOutput::theoryTerm(Id_t termId, const std::string_view& name) { theory_.addTerm(termId, name); }
@@ -515,7 +569,7 @@ void AspifTextOutput::theoryTerm(Id_t termId, int compound, const IdSpan& args) 
         theory_.addTerm(termId, Potassco::enum_cast<Tuple_t>(compound).value(), args);
 }
 void AspifTextOutput::theoryElement(Id_t id, const IdSpan& terms, const LitSpan& cond) {
-    theory_.addElement(id, terms, data_->addCondition(cond));
+    theory_.addElement(id, terms, data_->addTheoryCondition(cond));
 }
 void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) {
     theory_.addAtom(atomOrZero, termId, elements);
@@ -523,126 +577,15 @@ void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& ele
 void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) {
     theory_.addAtom(atomOrZero, termId, elements, op, rhs);
 }
-
-template <typename T>
-AspifTextOutput& AspifTextOutput::push(T&& x) {
-    data_->push(std::forward<T>(x));
-    return *this;
-}
-
-template <typename T = uint32_t>
-static constexpr T next(const uint32_t*& pos) {
-    return static_cast<T>(*pos++);
-}
-
-std::ostream& AspifTextOutput::printCondition(std::ostream& os, const uint32_t*& pos, const char* init) {
-    const auto* sep     = init;
-    const auto* sepNext = ", ";
-    for (auto n = next(pos); n--; sep = sepNext) { printName(os << sep, next<Lit_t>(pos)); }
-    return os;
-}
-
-std::ostream& AspifTextOutput::printAggregate(std::ostream& os, const uint32_t*& pos, bool weights) {
-    os << next<Weight_t>(pos) << " #" << (weights ? "sum" : "count") << '{';
-    const auto* sep = "";
-    for (auto n = next(pos), i = decltype(n)(0); n--; sep = "; ") {
-        auto lit = next<Lit_t>(pos);
-        os << sep;
-        if (weights) {
-            os << next<Weight_t>(pos) << ",";
-        }
-        os << ++i;
-        printName(os << " : ", lit);
-    }
-    return os << "}";
-}
-std::ostream& AspifTextOutput::printMinimize(std::ostream& os, const uint32_t*& pos) {
-    auto prio = next<Weight_t>(pos);
-    os << "#minimize{";
-    const auto* sep = "";
-    for (auto n = next(pos), i = decltype(n)(0); n--; sep = "; ") {
-        auto lit    = next<Lit_t>(pos);
-        auto weight = next<Weight_t>(pos);
-        os << sep << weight << '@' << prio << ',' << ++i;
-        printName(os << " : ", lit);
-    }
-    return os << '}';
-}
-
-void AspifTextOutput::writeDirectives() {
-    for (const auto *pos = data_->directives.data(), *end = pos + data_->directives.size(); pos != end;) {
-        const auto *sep = "", *term = ".";
-        switch (next<Directive_t>(pos)) {
-            default: POTASSCO_ASSERT_NOT_REACHED("unexpected directive");
-            case Directive_t::Rule:
-                term = "";
-                if (next<Head_t>(pos) == Head_t::Choice) {
-                    os_ << "{";
-                    term = "}";
-                }
-                for (auto n = next(pos); n--; sep = !*term ? "|" : ";") { printName(os_ << sep, next<Atom_t>(pos)); }
-                if (*sep || *term) {
-                    os_ << term;
-                    sep = " :- ";
-                }
-                else {
-                    os_ << ":- ";
-                }
-                term = ".";
-                switch (auto bt = next<Body_t>(pos)) {
-                    case Body_t::Normal: printCondition(os_, pos, sep); break;
-                    case Body_t::Count : // fall through
-                    case Body_t::Sum   : printAggregate(os_ << sep, pos, bt == Body_t::Sum); break;
-                    default            : break;
-                }
-                break;
-            case Directive_t::Minimize: printMinimize(os_, pos); break;
-            case Directive_t::Project : printCondition(os_ << "#project{", pos) << '}'; break;
-            case Directive_t::Output:
-                os_ << "#show " << data_->string(next(pos)).view();
-                printCondition(os_, pos, " : ");
-                break;
-            case Directive_t::External:
-                printName(os_ << "#external ", next<Atom_t>(pos));
-                switch (next<Value_t>(pos)) {
-                    default              : break;
-                    case Value_t::Free   : term = ". [free]"; break;
-                    case Value_t::True   : term = ". [true]"; break;
-                    case Value_t::Release: term = ". [release]"; break;
-                }
-                break;
-            case Directive_t::Assume: printCondition(os_ << "#assume{", pos) << '}'; break;
-            case Directive_t::Heuristic:
-                term = "";
-                os_ << "#heuristic ";
-                printName(os_, next<Atom_t>(pos));
-                printCondition(os_, pos, " : ") << ". [" << next<int32_t>(pos);
-                if (auto p = next(pos)) {
-                    os_ << "@" << p;
-                }
-                os_ << ", " << Potassco::enum_name(next<Heuristic_t>(pos)) << "]";
-                break;
-            case Directive_t::Edge:
-                os_ << "#edge(" << next<int32_t>(pos) << ",";
-                os_ << next<int32_t>(pos) << ")";
-                printCondition(os_, pos, " : ");
-                break;
-        }
-        os_ << term << '\n';
-        POTASSCO_ASSERT(pos <= end);
-    }
-}
 void AspifTextOutput::visitTheoryAtoms() {
     for (auto it = theory_.currBegin(), end = theory_.end(); it != end; ++it) {
         if (auto atom = (*it)->atom(); not atom) {
             printTheoryAtom(os_, **it) << ".\n";
         }
         else {
-            POTASSCO_CHECK_PRE(not data_->getAtomName(atom), "Redefinition: theory atom '%u' already shown as '%s'",
-                               atom, data_->getAtomName(atom)->c_str());
             std::ostringstream str;
             printTheoryAtom(str, **it);
-            data_->addAtom(atom, std::move(str).str());
+            data_->assignTheoryAtomName(atom, std::move(str).str());
         }
     }
 }
@@ -686,12 +629,12 @@ std::ostream& AspifTextOutput::printTheoryAtom(std::ostream& os, const TheoryAto
         for (auto term : elem) { appendTerm(os << std::exchange(sep, ", "sv), term); }
         if (auto cId = elem.condition(); cId) {
             sep = " : "sv;
-            for (auto lit : data_->getCondition(cId)) {
+            for (auto lit : data_->theoryCondition(cId)) {
                 os << std::exchange(sep, ", "sv);
                 if (lit < 0) {
                     os << "not "sv;
                 }
-                printName(os, Potassco::atom(lit));
+                data_->printName(os, Potassco::atom(lit));
             }
         }
         sep = "; "sv;
@@ -705,10 +648,140 @@ std::ostream& AspifTextOutput::printTheoryAtom(std::ostream& os, const TheoryAto
     }
     return os;
 }
+
+std::ostream& AspifTextOutput::Data::printName(std::ostream& os, Lit_t lit) {
+    if (lit < 0) {
+        os << "not ";
+    }
+    auto id = Potassco::atom(lit);
+    if (const auto* name = getAtomName(id); name) {
+        os << name->view();
+    }
+    else {
+        os << "x_" << id;
+        if (not showAtoms) {
+            showAtoms = 1;
+        }
+    }
+    maxAtom = std::max(maxAtom, id);
+    return os;
+}
+
+std::ostream& AspifTextOutput::Data::printCondition(std::ostream& os, const uint32_t*& pos, const char* init) {
+    const auto* sep     = init;
+    const auto* sepNext = ", ";
+    for (auto n = next(pos); n--; sep = sepNext) { printName(os << sep, next<Lit_t>(pos)); }
+    return os;
+}
+std::ostream& AspifTextOutput::Data::printAggregate(std::ostream& os, const uint32_t*& pos, bool weights) {
+    os << next<Weight_t>(pos) << " #" << (weights ? "sum" : "count") << '{';
+    const auto* sep = "";
+    for (auto n = next(pos), i = decltype(n)(0); n--; sep = "; ") {
+        auto lit = next<Lit_t>(pos);
+        os << sep;
+        if (weights) {
+            os << next<Weight_t>(pos) << ",";
+        }
+        os << ++i;
+        printName(os << " : ", lit);
+    }
+    return os << "}";
+}
+std::ostream& AspifTextOutput::Data::printMinimize(std::ostream& os, const uint32_t*& pos) {
+    auto prio = next<Weight_t>(pos);
+    os << "#minimize{";
+    const auto* sep = "";
+    for (auto n = next(pos), i = decltype(n)(0); n--; sep = "; ") {
+        auto lit    = next<Lit_t>(pos);
+        auto weight = next<Weight_t>(pos);
+        os << sep << weight << '@' << prio << ',' << ++i;
+        printName(os << " : ", lit);
+    }
+    return os << '}';
+}
+void AspifTextOutput::Data::endStep(std::ostream& os, Atom_t startAtom, bool more) {
+    for (const auto *pos = directives.data(), *end = pos + directives.size(); pos != end;) {
+        const auto *sep = "", *term = ".";
+        switch (next<Directive_t>(pos)) {
+            default: POTASSCO_ASSERT_NOT_REACHED("unexpected directive");
+            case Directive_t::Rule:
+                term = "";
+                if (next<Head_t>(pos) == Head_t::Choice) {
+                    os << "{";
+                    term = "}";
+                }
+                for (auto n = next(pos); n--; sep = !*term ? "|" : ";") { printName(os << sep, next<Atom_t>(pos)); }
+                if (*sep || *term) {
+                    os << term;
+                    sep = " :- ";
+                }
+                else {
+                    os << ":- ";
+                }
+                term = ".";
+                switch (auto bt = next<Body_t>(pos)) {
+                    case Body_t::Normal: printCondition(os, pos, sep); break;
+                    case Body_t::Count : // fall through
+                    case Body_t::Sum   : printAggregate(os << sep, pos, bt == Body_t::Sum); break;
+                    default            : break;
+                }
+                break;
+            case Directive_t::Minimize: printMinimize(os, pos); break;
+            case Directive_t::Project : printCondition(os << "#project{", pos) << '}'; break;
+            case Directive_t::Output:
+                printCondition(os << "#show " << out.at(next(pos))->first.view(), pos, " : ");
+                break;
+            case Directive_t::External:
+                printName(os << "#external ", next<Atom_t>(pos));
+                switch (next<Value_t>(pos)) {
+                    default              : break;
+                    case Value_t::Free   : term = ". [free]"; break;
+                    case Value_t::True   : term = ". [true]"; break;
+                    case Value_t::Release: term = ". [release]"; break;
+                }
+                break;
+            case Directive_t::Assume: printCondition(os << "#assume{", pos) << '}'; break;
+            case Directive_t::Heuristic:
+                term = "";
+                os << "#heuristic ";
+                printName(os, next<Atom_t>(pos));
+                printCondition(os, pos, " : ") << ". [" << next<int32_t>(pos);
+                if (auto p = next(pos)) {
+                    os << "@" << p;
+                }
+                os << ", " << Potassco::enum_name(next<Heuristic_t>(pos)) << "]";
+                break;
+            case Directive_t::Edge:
+                os << "#edge(" << next<int32_t>(pos) << ",";
+                os << next<int32_t>(pos) << ")";
+                printCondition(os, pos, " : ");
+                break;
+        }
+        os << term << '\n';
+        POTASSCO_ASSERT(pos <= end);
+    }
+    if (showAtoms) {
+        if (showAtoms == 1) {
+            os << "#show.\n";
+            showAtoms = 2;
+        }
+        for (auto a = startAtom; a <= maxAtom; ++a) {
+            if (const auto* name = getAtomName(a); name && *name->c_str() != '&') {
+                os << "#show " << name->view() << " : " << name->view() << ".\n";
+            }
+        }
+    }
+    os << std::flush;
+    std::exchange(directives, {});
+    std::erase_if(strings, [](const auto& e) { return e.second < atomMin || e.second > atomMax; });
+    if (not more) {
+        std::exchange(conditions, {});
+    }
+}
 void AspifTextOutput::endStep() {
+    auto maxAtoms = data_->maxAtom;
     visitTheoryAtoms();
-    writeDirectives();
-    Data::RawVec().swap(data_->directives);
+    data_->endStep(os_, maxAtoms + 1, step_ >= 0);
     if (step_ < 0) {
         theory_.reset();
     }

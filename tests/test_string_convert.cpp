@@ -238,7 +238,7 @@ TEST_CASE("String conversion", "[string]") {
     SECTION("double parsing stops at invalid pos") {
         double      d;
         std::string what;
-        char        next;
+        char        next(0);
         double      expected = 1233.22;
         SECTION("sep") {
             what = "1233.22,foo";

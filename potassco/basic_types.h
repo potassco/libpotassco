@@ -372,3 +372,9 @@ private:
 ///@}
 
 } // namespace Potassco
+template <>
+struct std::hash<Potassco::FixedString> : std::hash<std::string_view> {
+    using is_transparent = void;
+    using std::hash<std::string_view>::operator();
+    std::size_t operator()(const Potassco::FixedString& str) const noexcept { return (*this)(str.view()); }
+};

@@ -105,23 +105,13 @@ public:
     void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) override;
     void endStep() override;
 
-    void addAtom(Atom_t id, const std::string_view& str);
-
 private:
-    std::ostream& printName(std::ostream& os, Lit_t lit) const;
-    std::ostream& printName(std::ostream& os, Atom_t at) const { return printName(os, lit(at)); }
+    struct Data;
     std::ostream& printTheoryAtom(std::ostream&, const TheoryAtom&) const;
     std::ostream& appendTerm(std::ostream&, Id_t term) const;
-    std::ostream& printCondition(std::ostream&, const uint32_t*& pos, const char* init = "");
-    std::ostream& printMinimize(std::ostream&, const uint32_t*& pos);
-    std::ostream& printAggregate(std::ostream&, const uint32_t*& pos, bool weights);
-    void          writeDirectives();
     void          visitTheoryAtoms();
-    template <typename T>
-    AspifTextOutput& push(T&& x);
 
-    std::ostream& os_;
-    struct Data;
+    std::ostream&         os_;
     TheoryData            theory_;
     std::unique_ptr<Data> data_;
     int                   step_;

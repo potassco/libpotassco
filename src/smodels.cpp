@@ -73,14 +73,6 @@ int isSmodelsRule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLi
 // SmodelsInput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct SmodelsInput::StringTab {
-    struct Hash {
-        using is_transparent = void;
-        template <typename S>
-        std::size_t operator()(const S& s) const noexcept {
-            return std::hash<std::string_view>()(
-                static_cast<std::conditional_t<std::is_same_v<S, std::string_view>, const S&, std::string_view>>(s));
-        }
-    };
     bool addUnique(const std::string_view& name, Id_t id) { return map.try_emplace(name, id).second; }
     Id_t tryAdd(const std::string_view& name, Id_t id) {
         auto it = map.find(name);
@@ -93,7 +85,7 @@ struct SmodelsInput::StringTab {
         return orVal;
     }
     [[nodiscard]] uint32_t size() const noexcept { return static_cast<uint32_t>(map.size()); }
-    using StringMap = std::unordered_map<FixedString, Id_t, Hash, std::equal_to<>>;
+    using StringMap = std::unordered_map<FixedString, Id_t, std::hash<FixedString>, std::equal_to<>>;
     StringMap map;
 };
 
