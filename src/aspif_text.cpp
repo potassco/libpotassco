@@ -382,7 +382,7 @@ void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, cons
 	}
 }
 void AspifTextOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
-	push(Directive_t::Minimize).push(lits).push(prio);
+	push(Directive_t::Minimize).push(prio).push(lits);
 }
 static bool isAtom(const StringSpan& s) {
 	std::size_t sz = size(s);
@@ -479,26 +479,29 @@ void AspifTextOutput::writeDirectives() {
 						break;
 					case Body_t::Count: // fall through
 					case Body_t::Sum:
-						os_ << sep << get<Weight_t>();
-						sep = "{";
-						for (uint32_t n = get<uint32_t>(); n--; sep = "; ") {
-							printName(os_ << sep, get<Lit_t>());
-							if (bt == Body_t::Sum) { os_ << "=" << get<Weight_t>(); }
+						os_ << sep << get<Weight_t>() << ' ';
+						sep = bt == Body_t::Count ? "#count{" : "#sum{";
+						for (uint32_t n = get<uint32_t>(), i = 1; n--; sep = "; ") {
+							os_ << sep;
+							Lit_t lit = get<Lit_t>();
+							if (bt == Body_t::Sum) { os_ << get<Weight_t>() << ','; }
+							printName(os_ << i++ << " : ", lit);
 						}
 						os_ << "}";
 						break;
 				}
 				break;
 			case Directive_t::Minimize:
-				sep = "#minimize{"; term = ".";
-				for (uint32_t n = get<uint32_t>(); n--; sep = "; ") {
-					printName(os_ << sep, get<Lit_t>());
-					os_ << "=" << get<Weight_t>();
+				term = "}.";
+				os_ << "#minimize{";
+				for (uint32_t prio = get<uint32_t>(), n = get<uint32_t>(), i = 1; n--; sep = "; ") {
+					Lit_t lit = get<Lit_t>();
+					printName(os_ << sep << get<Weight_t>() << '@' << static_cast<Weight_t>(prio) << ',' << i++ << " : ", lit);
 				}
-				os_ << "}@" << get<Weight_t>();
 				break;
 			case Directive_t::Project:
-				sep = "#project{"; term = "}.";
+				sep = ""; term = "}.";
+				os_ << "#project{";
 				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
 				break;
 			case Directive_t::Output:
@@ -519,7 +522,8 @@ void AspifTextOutput::writeDirectives() {
 				}
 				break;
 			case Directive_t::Assume:
-				sep = "#assume{"; term = "}.";
+				sep = ""; term = "}.";
+				os_ << "#assume{";
 				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
 				break;
 			case Directive_t::Heuristic:

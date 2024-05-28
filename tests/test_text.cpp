@@ -263,22 +263,24 @@ TEST_CASE("Text writer ", "[text]") {
 	SECTION("cardinality rule") {
 		input << "x1;x2 :- 1{not x3, x4}.\n#output foo : x1.\n#output bar : x3.";
 		read(prg, input);
-		REQUIRE(output.str() == "foo|x_2 :- 1{not bar; x_4}.\n");
+		REQUIRE(output.str() == "foo|x_2 :- 1 #count{1 : not bar; 2 : x_4}.\n");
 	}
 	SECTION("sum rule") {
 		input << "x1;x2 :- 3{not x3=2, x4, x5=1,x6=2}.\n#output foo : x1.\n#output bar : x3.";
 		read(prg, input);
-		REQUIRE(output.str() == "foo|x_2 :- 3{not bar=2; x_4=1; x_5=1; x_6=2}.\n");
+		REQUIRE(output.str() == "foo|x_2 :- 3 #sum{2,1 : not bar; 1,2 : x_4; 1,3 : x_5; 2,4 : x_6}.\n");
 	}
 	SECTION("convert sum rule to cardinality rule") {
 		input << "x1;x2 :- 3{not x3=2, x4=2, x5=2,x6=2}.\n#output foo : x1.\n#output bar : x3.";
 		read(prg, input);
-		REQUIRE(output.str() == "foo|x_2 :- 2{not bar; x_4; x_5; x_6}.\n");
+		REQUIRE(output.str() == "foo|x_2 :- 2 #count{1 : not bar; 2 : x_4; 3 : x_5; 4 : x_6}.\n");
 	}
 	SECTION("minimize rule") {
 		input << "#minimize{x1,x2=2,x3}.\n#minimize{not x1=3,not x2,not x3}@1.";
 		read(prg, input);
-		REQUIRE(output.str() == "#minimize{x_1=1; x_2=2; x_3=1}@0.\n#minimize{not x_1=3; not x_2=1; not x_3=1}@1.\n");
+		REQUIRE(output.str() ==
+		        "#minimize{1@0,1 : x_1; 2@0,2 : x_2; 1@0,3 : x_3}.\n#minimize{3@1,1 : not x_1; 1@1,2 : not "
+		        "x_2; 1@1,3 : not x_3}.\n");
 	}
 	SECTION("output statements") {
 		input << "{x1;x2}.\n#output foo.\n#output bar : x1.\n#output \"Hello World\" : x2, not x1.";
@@ -304,10 +306,20 @@ TEST_CASE("Text writer ", "[text]") {
 			REQUIRE(output.str() == "#external x_1. [true]\n#external x_2. [free]\n#external x_3. [release]\n");
 		}
 	}
+	SECTION("empty assumption directive") {
+		input << "#assume{}.";
+		read(prg, input);
+		REQUIRE(output.str() == "#assume{}.\n");
+	}
 	SECTION("assumption directive") {
 		input << "#assume{x1,not x2,x3}.";
 		read(prg, input);
 		REQUIRE(output.str() == "#assume{x_1, not x_2, x_3}.\n");
+	}
+	SECTION("empty projection directive") {
+		input << "#project{}.";
+		read(prg, input);
+		REQUIRE(output.str() == "#project{}.\n");
 	}
 	SECTION("projection directive") {
 		input << "#project{x1,x2,x3}.";
