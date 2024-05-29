@@ -24,12 +24,15 @@
 #include <potassco/aspif_text.h>
 #include <potassco/string_convert.h>
 #include <potassco/rule_utils.h>
+#include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <cstring>
 #include <ostream>
 #include <string>
 #include <vector>
-#include <cassert>
+#include POTASSCO_EXT_INCLUDE(unordered_map)
+
 namespace Potassco {
 struct AspifTextInput::Data {
 	void clear() { rule.clear(); symbol.clear(); }
@@ -297,10 +300,14 @@ void AspifTextInput::matchStr() {
 // AspifTextOutput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifTextOutput::Data {
-	typedef std::vector<std::string> StringVec;
-	typedef std::vector<Id_t> AtomMap;
 	typedef std::vector<Lit_t> LitVec;
 	typedef std::vector<uint32_t> RawVec;
+	typedef POTASSCO_EXT_NS::unordered_map<std::string, Potassco::Atom_t> StringMap;
+	typedef StringMap::pointer StringMapNode;
+	typedef StringMap::value_type StringMapVal;
+	typedef std::vector<StringMapNode> AtomMap;
+	typedef std::vector<StringMapNode> OutOrder;
+
 	LitSpan getCondition(Id_t id) const {
 		return toSpan(&conditions[id + 1], static_cast<size_t>(conditions[id]));
 	}
@@ -312,41 +319,102 @@ struct AspifTextOutput::Data {
 		conditions.insert(conditions.end(), begin(cond), end(cond));
 		return id;
 	}
-	Id_t addString(const StringSpan& str) {
-		Id_t id = static_cast<Id_t>(strings.size());
-		strings.push_back(std::string(Potassco::begin(str), Potassco::end(str)));
-		return id;
+	Id_t addOutputString(const StringSpan& str) {
+		out.push_back(&*strings.insert(StringMapVal(std::string(Potassco::begin(str), Potassco::end(str)), idMax)).first);
+		return static_cast<Id_t>(out.size() - 1);
 	}
-	RawVec    directives;
-	StringVec strings;
-	AtomMap   atoms; // maps into strings
-	LitVec    conditions;
-	uint32_t  readPos;
-	void reset() { directives.clear();  strings.clear(); atoms.clear(); conditions.clear(); readPos = 0; }
+	void convertToOutput(StringMapNode node) {
+		if (node->second && node->second < atoms.size()) {
+			POTASSCO_REQUIRE(node->first[0] != '&', "Redefinition: theory atom '%u' already defined as '%s'", node->second, node->first.c_str());
+			setGenName(node->second);
+			uint32_t data[4] = {static_cast<uint32_t>(Directive_t::Output), static_cast<uint32_t>(out.size()), 1, node->second};
+			node->second = 0;
+			out.push_back(node);
+			directives.insert(directives.end(), data, data + 4);
+		}
+	}
+	const std::string* getAtomName(Atom_t atom) const {
+		StringMapNode node = atom < atoms.size() ? atoms[atom] : 0;
+		return node && node->second == atom ? &node->first : 0;
+	}
+	void setGenName(Atom_t atom) {
+		if (!genName) genName = &*strings.insert(StringMapVal(std::string(), 0)).first;
+		atoms.at(atom) = genName;
+	}
+
+	RawVec        directives;
+	StringMap     strings;
+	AtomMap       atoms; // maps into strings
+	OutOrder      out;
+	LitVec        conditions;
+	StringMapNode genName;
+	uint32_t      readPos;
+	void reset() { directives.clear();  strings.clear(); atoms.clear(); conditions.clear(); out.clear(); genName = 0; readPos = 0; }
 };
-AspifTextOutput::AspifTextOutput(std::ostream& os) : os_(os), step_(-1) {
+AspifTextOutput::AspifTextOutput(std::ostream& os) : os_(os), step_(-1), showAtoms_(0), startAtom_(0), maxAtom_(0) {
 	data_ = new Data();
 }
 AspifTextOutput::~AspifTextOutput() {
 	delete data_;
 }
-void AspifTextOutput::addAtom(Atom_t id, const StringSpan& str) {
-	if (id >= data_->atoms.size()) { data_->atoms.resize(id + 1, idMax); }
-	data_->atoms[id] = data_->addString(str);
+// Try to set `str` as the unique name for `atom`.
+bool AspifTextOutput::assignAtomName(Atom_t atom, const std::string& str) {
+	if (atom <= maxAtom_) {
+		return false;
+	}
+	assert(!str.empty());
+	bool theory = str[0] == '&';
+	if (atom >= data_->atoms.size()) { data_->atoms.resize(atom + 1, 0); }
+	if (Data::StringMapNode node = data_->atoms[atom]) { // atom already has a tentative name
+		if (node->second == atom && node->first == str) {
+			return true; // identical name, ignore duplicate
+		}
+		data_->convertToOutput(node); // drop assignment
+		if (!theory) {
+			return false;
+		}
+	}
+	if (str.size() > 2 && str[0] == 'x' && str[1] == '_') {
+		const char* x = str.c_str() + 2;
+		while (BufferedStream::isDigit(*x)) { ++x; }
+		if (!*x) {
+			data_->setGenName(atom);
+			return false;
+		}
+	}
+	Data::StringMapNode node = &*data_->strings.insert(Data::StringMapVal(str, atom)).first;
+	if (node->second == atom || node->second == idMax) { // assign tentative name to atom
+		node->second       = atom;
+		data_->atoms[atom] = node;
+		return true;
+	}
+	// name already used: drop previous (tentative) assigment and prevent further assignments
+	if (node->second > maxAtom_) {
+		data_->convertToOutput(node);
+	}
+	data_->setGenName(atom);
+	return false;
 }
-std::ostream& AspifTextOutput::printName(std::ostream& os, Lit_t lit) const {
+std::ostream& AspifTextOutput::printName(std::ostream& os, Lit_t lit) {
 	if (lit < 0) { os << "not "; }
 	Atom_t id = Potassco::atom(lit);
-	if (id < data_->atoms.size() && data_->atoms[id] < data_->strings.size()) {
-		os << data_->strings[data_->atoms[id]];
+	if (const std::string* name = data_->getAtomName(id)) {
+		os << *name;
 	}
 	else {
 		os << "x_" << id;
+		if (showAtoms_ == 0) {
+			showAtoms_ = 1;
+		}
 	}
+	maxAtom_ = std::max(maxAtom_, id);
 	return os;
 }
 void AspifTextOutput::initProgram(bool incremental) {
-	step_ = incremental ? 0 : -1;
+	step_      = incremental ? 0 : -1;
+	showAtoms_ = 0;
+	startAtom_ = 0;
+	maxAtom_   = 0;
 	data_->reset();
 }
 void AspifTextOutput::beginStep() {
@@ -384,22 +452,26 @@ void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, cons
 void AspifTextOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
 	push(Directive_t::Minimize).push(prio).push(lits);
 }
+
 static bool isAtom(const StringSpan& s) {
 	std::size_t sz = size(s);
-	char first = sz > 0 ? s[0] : char(0);
-	if (first == '-' && sz > 1) {
-		first = s[1];
+	const char* p  = s.first;
+	if (sz > 1 && *p == '-') {
+		++p; // accept classical negation
+		--sz;
 	}
-	return std::islower(static_cast<unsigned char>(first)) || first == '_';
+	while (sz && *p == '_') {
+		++p;
+		--sz;
+	}
+	return sz && std::islower(static_cast<unsigned char>(*p));
 }
 
 void AspifTextOutput::output(const StringSpan& str, const LitSpan& cond) {
-	if (size(cond) == 1 && lit(*begin(cond)) > 0 && isAtom(str)) {
-		addAtom(Potassco::atom(*begin(cond)), str);
+	if (size(cond) == 1 && isAtom(str) && assignAtomName(atom(*begin(cond)), std::string(begin(str), end(str)))) {
+		return;
 	}
-	else {
-		push(Directive_t::Output).push(data_->addString(str)).push(cond);
-	}
+	push(Directive_t::Output).push(data_->addOutputString(str)).push(cond);
 }
 void AspifTextOutput::external(Atom_t a, Value_t v) {
 	push(Directive_t::External).push(a).push(static_cast<uint32_t>(v));
@@ -506,7 +578,7 @@ void AspifTextOutput::writeDirectives() {
 				break;
 			case Directive_t::Output:
 				sep = " : "; term = ".";
-				os_ << "#show " << data_->strings[get<uint32_t>()];
+				os_ << "#show " << data_->out[get<uint32_t>()]->first;
 				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") {
 					printName(os_ << sep, get<Lit_t>());
 				}
@@ -545,6 +617,21 @@ void AspifTextOutput::writeDirectives() {
 		}
 		os_ << term << "\n";
 	}
+	if (showAtoms_) {
+		if (showAtoms_ == 1) {
+			os_ << "#show.\n";
+			showAtoms_ = 2;
+		}
+		for (Atom_t a = startAtom_; a < data_->atoms.size(); ++a) {
+			if (const std::string* n = data_->getAtomName(a)) {
+				if (*n->c_str() != '&') {
+					os_ << "#show " << *n << " : " << *n << ".\n";
+				}
+			}
+		}
+		startAtom_ = data_->atoms.size();
+	}
+	os_ << std::flush;
 }
 void AspifTextOutput::visitTheories() {
 	struct BuildStr : public TheoryAtomStringBuilder {
@@ -553,8 +640,8 @@ void AspifTextOutput::visitTheories() {
 			return self->data_->getCondition(condId);
 		}
 		virtual std::string getName(Atom_t id) const {
-			if (id < self->data_->atoms.size() && self->data_->atoms[id] < self->data_->strings.size()) {
-				return self->data_->strings[self->data_->atoms[id]];
+			if (const std::string* name = self->data_->getAtomName(id)) {
+				return *name;
 			}
 			return std::string("x_").append(Potassco::toString(id));
 		}
@@ -567,9 +654,8 @@ void AspifTextOutput::visitTheories() {
 			os_ << name << ".\n";
 		}
 		else {
-			POTASSCO_REQUIRE(atom >= data_->atoms.size() || data_->atoms[atom] == idMax,
-				"Redefinition: theory atom '%u' already shown as '%s'", atom, data_->strings[data_->atoms[atom]].c_str());
-			addAtom(atom, toSpan(name));
+			POTASSCO_REQUIRE(atom > maxAtom_, "Redefinition: theory atom '%u:%s' already defined in a previous step", atom, name.c_str());
+			assignAtomName(atom, name);
 		}
 	}
 }
@@ -578,7 +664,8 @@ void AspifTextOutput::endStep() {
 	push(Directive_t::End);
 	writeDirectives();
 	Data::RawVec().swap(data_->directives);
-	if (step_ < 0) { theory_.reset(); }
+	Data::OutOrder().swap(data_->out);
+	if (step_ < 0) { theory_.reset();  }
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // TheoryAtomStringBuilder
