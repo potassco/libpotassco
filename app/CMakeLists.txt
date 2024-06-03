@@ -1,6 +1,12 @@
 add_executable(lpconvert lpconvert.cpp)
 target_link_libraries(lpconvert libpotassco)
 set_target_properties(lpconvert PROPERTIES FOLDER exe)
+if (LIB_POTASSCO_BUILD_STATIC)
+	if (NOT MSVC)
+		target_link_options(lpconvert PRIVATE -static-libgcc -static-libstdc++ -static)
+	endif()
+endif()
+
 if (NOT CMAKE_INSTALL_BINDIR)
 	message(STATUS "BINDIR not set - using bin")
 	set(CMAKE_INSTALL_BINDIR "bin")

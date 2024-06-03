@@ -40,7 +40,7 @@ using namespace Potassco::ProgramOptions;
 class LpConvert : public Potassco::Application {
 public:
     [[nodiscard]] const char* getName() const override { return "lpconvert"; }
-    [[nodiscard]] const char* getVersion() const override { return "1.0.0"; }
+    [[nodiscard]] const char* getVersion() const override { return "2.0.0-banane"; }
     [[nodiscard]] const char* getPositional(const std::string&) const override { return "input"; }
     [[nodiscard]] const char* getUsage() const override {
         return "[options] [<file>]\n"
