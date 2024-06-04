@@ -388,9 +388,7 @@ struct AspifTextOutput::Data {
         if (name.starts_with('-')) { // accept classical negation
             name.remove_prefix(1);
         }
-        if (name.starts_with('_')) {
-            name.remove_prefix(std::min(name.find_first_not_of('_', 1), name.size()));
-        }
+        name.remove_prefix(std::min(name.find_first_not_of('_'), name.size()));
         return not name.empty() && isLower(name[0]);
     }
 
@@ -412,7 +410,7 @@ struct AspifTextOutput::Data {
 
     bool assignAtomName(Atom_t atom, const std::string_view& name) {
         POTASSCO_DEBUG_ASSERT(not name.empty());
-        if (atom <= maxAtom) {
+        if (atom < startAtom) {
             return false;
         }
         bool theory = name[0] == '&';
@@ -443,14 +441,14 @@ struct AspifTextOutput::Data {
             return true;
         }
         // name already used: drop previous (tentative) assigment and prevent further assignments
-        if (node->second > maxAtom) {
+        if (node->second >= startAtom) {
             convertToOutput(node);
         }
         atoms[atom] = &c_genName;
         return false;
     }
     void assignTheoryAtomName(Atom_t atom, const std::string_view& name) {
-        POTASSCO_CHECK_PRE(atom > maxAtom, "Redefinition: theory atom '%u:%*s' already defined in a previous step",
+        POTASSCO_CHECK_PRE(atom >= startAtom, "Redefinition: theory atom '%u:%*s' already defined in a previous step",
                            atom, (int) name.size(), name.data());
         assignAtomName(atom, name);
     }
@@ -485,12 +483,19 @@ struct AspifTextOutput::Data {
         }
         return *this;
     }
-    void          endStep(std::ostream&, Atom_t startAtom, bool more);
+    void          endStep(std::ostream&, bool more);
     std::ostream& printName(std::ostream& os, Lit_t lit);
     std::ostream& printName(std::ostream& os, Atom_t at) { return printName(os, lit(at)); }
     std::ostream& printCondition(std::ostream&, const uint32_t*& pos, const char* init = "");
     std::ostream& printMinimize(std::ostream&, const uint32_t*& pos);
     std::ostream& printAggregate(std::ostream&, const uint32_t*& pos, bool weights);
+    std::ostream& printHide(std::ostream& os) {
+        if (not atoms.empty() && atoms[0] == &c_genName) {
+            os << "#show.\n";
+            atoms[0] = nullptr;
+        }
+        return os;
+    }
     template <typename T = uint32_t>
     static constexpr T next(const uint32_t*& pos) {
         return static_cast<T>(*pos++);
@@ -501,8 +506,8 @@ struct AspifTextOutput::Data {
     AtomMap   atoms; // maps into strings
     OutVec    out;
     LitVec    conditions;
-    Atom_t    maxAtom   = 0;
-    int       showAtoms = 0;
+    Atom_t    startAtom  = 1;
+    Atom_t    maxGenAtom = 0;
 };
 AspifTextOutput::AspifTextOutput(std::ostream& os) : os_(os), data_(std::make_unique<Data>()), step_(-1) {}
 AspifTextOutput::~AspifTextOutput() = default;
@@ -520,6 +525,7 @@ void AspifTextOutput::beginStep() {
             os_ << "% #program base.\n";
         }
         ++step_;
+        data_->startAtom = std::max(static_cast<Atom_t>(data_->atoms.size()), data_->maxGenAtom + 1);
     }
 }
 void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
@@ -631,10 +637,7 @@ std::ostream& AspifTextOutput::printTheoryAtom(std::ostream& os, const TheoryAto
             sep = " : "sv;
             for (auto lit : data_->theoryCondition(cId)) {
                 os << std::exchange(sep, ", "sv);
-                if (lit < 0) {
-                    os << "not "sv;
-                }
-                data_->printName(os, Potassco::atom(lit));
+                data_->printName(os, lit);
             }
         }
         sep = "; "sv;
@@ -659,11 +662,12 @@ std::ostream& AspifTextOutput::Data::printName(std::ostream& os, Lit_t lit) {
     }
     else {
         os << "x_" << id;
-        if (not showAtoms) {
-            showAtoms = 1;
+        if (not maxGenAtom) {
+            atoms.resize(std::max(atoms.size(), static_cast<AtomMap::size_type>(1)));
+            atoms[0] = &c_genName;
         }
+        maxGenAtom = std::max(maxGenAtom, id);
     }
-    maxAtom = std::max(maxAtom, id);
     return os;
 }
 
@@ -699,7 +703,7 @@ std::ostream& AspifTextOutput::Data::printMinimize(std::ostream& os, const uint3
     }
     return os << '}';
 }
-void AspifTextOutput::Data::endStep(std::ostream& os, Atom_t startAtom, bool more) {
+void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
     for (const auto *pos = directives.data(), *end = pos + directives.size(); pos != end;) {
         const auto *sep = "", *term = ".";
         switch (next<Directive_t>(pos)) {
@@ -729,6 +733,7 @@ void AspifTextOutput::Data::endStep(std::ostream& os, Atom_t startAtom, bool mor
             case Directive_t::Minimize: printMinimize(os, pos); break;
             case Directive_t::Project : printCondition(os << "#project{", pos) << '}'; break;
             case Directive_t::Output:
+                printHide(os);
                 printCondition(os << "#show " << out.at(next(pos))->first.view(), pos, " : ");
                 break;
             case Directive_t::External:
@@ -760,12 +765,9 @@ void AspifTextOutput::Data::endStep(std::ostream& os, Atom_t startAtom, bool mor
         os << term << '\n';
         POTASSCO_ASSERT(pos <= end);
     }
-    if (showAtoms) {
-        if (showAtoms == 1) {
-            os << "#show.\n";
-            showAtoms = 2;
-        }
-        for (auto a = startAtom; a <= maxAtom; ++a) {
+    if (maxGenAtom) {
+        printHide(os);
+        for (auto a = startAtom; a < atoms.size(); ++a) {
             if (const auto* name = getAtomName(a); name && *name->c_str() != '&') {
                 os << "#show " << name->view() << " : " << name->view() << ".\n";
             }
@@ -779,9 +781,8 @@ void AspifTextOutput::Data::endStep(std::ostream& os, Atom_t startAtom, bool mor
     }
 }
 void AspifTextOutput::endStep() {
-    auto maxAtoms = data_->maxAtom;
     visitTheoryAtoms();
-    data_->endStep(os_, maxAtoms + 1, step_ >= 0);
+    data_->endStep(os_, step_ >= 0);
     if (step_ < 0) {
         theory_.reset();
     }

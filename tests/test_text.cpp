@@ -241,6 +241,17 @@ TEST_CASE("Text writer ", "[text]") {
         out.endStep();
         REQUIRE(output.str() == "{-a}.\n#show -8 : -a.\n");
     }
+    SECTION("classical negation tricky") {
+        std::vector<Atom_t> head{1, 2};
+        Lit_t               cond1(1);
+        Lit_t               cond2(2);
+        out.beginStep();
+        out.rule(Head_t::Choice, head, {});
+        out.output("-a", {&cond1, 1});
+        out.output("x_1", {&cond2, 1});
+        out.endStep();
+        REQUIRE(output.str() == "{-a;x_2}.\n#show.\n#show x_1 : x_2.\n#show -a : -a.\n");
+    }
     SECTION("basic rule") {
         input << "x1 :- x2, not x3, x4.\n#output foo : x1.\n#output bar : x3.";
         read(prg, input);
@@ -284,13 +295,13 @@ TEST_CASE("Text writer ", "[text]") {
     SECTION("output statements") {
         input << "{x1;x2}.\n#output foo.\n#output bar : x1.\n#output \"Hello World\" : x2, not x1.";
         read(prg, input);
-        REQUIRE(output.str() == "{bar;x_2}.\n#show foo.\n#show \"Hello World\" : x_2, not bar.\n#show.\n"
+        REQUIRE(output.str() == "{bar;x_2}.\n#show.\n#show foo.\n#show \"Hello World\" : x_2, not bar.\n"
                                 "#show bar : bar.\n");
     }
     SECTION("duplicate output condition") {
         input << "{a}.\n#output x:a.\n#output y:a.\n";
         read(prg, input);
-        REQUIRE(output.str() == "{x_1}.\n#show x : x_1.\n#show y : x_1.\n#show.\n");
+        REQUIRE(output.str() == "{x_1}.\n#show.\n#show x : x_1.\n#show y : x_1.\n");
     }
     SECTION("bogus duplicate output condition") {
         input << "{a}.\n#output x:a.\n#output x:a.\n";
@@ -302,28 +313,28 @@ TEST_CASE("Text writer ", "[text]") {
         SECTION("simple") {
             input << "#output a:x1.\n#output a:x2.\n";
             read(prg, input);
-            REQUIRE(output.str() == "{x_1;x_2}.\n#show a : x_1.\n#show a : x_2.\n#show.\n");
+            REQUIRE(output.str() == "{x_1;x_2}.\n#show.\n#show a : x_1.\n#show a : x_2.\n");
         }
         SECTION("complex") {
             input << "#output a:x1.\n#output a:x1,x2.\n";
             read(prg, input);
-            REQUIRE(output.str() == "{a;x_2}.\n#show a : a, x_2.\n#show.\n#show a : a.\n");
+            REQUIRE(output.str() == "{a;x_2}.\n#show.\n#show a : a, x_2.\n#show a : a.\n");
         }
         SECTION("complex reversed") {
             input << "#output a:x1,x2.\n#output a:x1.\n";
             read(prg, input);
-            REQUIRE(output.str() == "{a;x_2}.\n#show a : a, x_2.\n#show.\n#show a : a.\n");
+            REQUIRE(output.str() == "{a;x_2}.\n#show.\n#show a : a, x_2.\n#show a : a.\n");
         }
         SECTION("duplicate condition first") {
             input << "#output a:x1.\n#output b:x1.\n#output a:x2.\n";
             read(prg, input);
-            REQUIRE(output.str() == "{x_1;x_2}.\n#show a : x_1.\n#show b : x_1.\n#show a : x_2.\n#show.\n");
+            REQUIRE(output.str() == "{x_1;x_2}.\n#show.\n#show a : x_1.\n#show b : x_1.\n#show a : x_2.\n");
         }
         SECTION("duplicate condition all") {
             input << "#output a:x1.\n#output b:x1.\n#output a:x2.\n#output f:x2.\n";
             read(prg, input);
             REQUIRE(output.str() ==
-                    "{x_1;x_2}.\n#show a : x_1.\n#show b : x_1.\n#show a : x_2.\n#show f : x_2.\n#show.\n");
+                    "{x_1;x_2}.\n#show.\n#show a : x_1.\n#show b : x_1.\n#show a : x_2.\n#show f : x_2.\n");
         }
     }
     SECTION("implicit show") {
@@ -345,17 +356,17 @@ TEST_CASE("Text writer ", "[text]") {
         SECTION("duplicate one") {
             input << "#output a:b.\n#output b:b.\n";
             read(prg, input);
-            REQUIRE(output.str() == "{x_1;x_2}.\n#show a : x_2.\n#show b : x_2.\n#show.\n");
+            REQUIRE(output.str() == "{x_1;x_2}.\n#show.\n#show a : x_2.\n#show b : x_2.\n");
         }
         SECTION("duplicate two") {
             input << "#output b:b.\n#output a:b.\n";
             read(prg, input);
-            REQUIRE(output.str() == "{x_1;x_2}.\n#show b : x_2.\n#show a : x_2.\n#show.\n");
+            REQUIRE(output.str() == "{x_1;x_2}.\n#show.\n#show b : x_2.\n#show a : x_2.\n");
         }
         SECTION("duplicate three") {
             input << "#output a:a.\n#output b:b.\n#output c:b.\n";
             read(prg, input);
-            REQUIRE(output.str() == "{a;x_2}.\n#show b : x_2.\n#show c : x_2.\n#show.\n#show a : a.\n");
+            REQUIRE(output.str() == "{a;x_2}.\n#show.\n#show b : x_2.\n#show c : x_2.\n#show a : a.\n");
         }
     }
     SECTION("output reserved name") {
@@ -364,24 +375,24 @@ TEST_CASE("Text writer ", "[text]") {
             SECTION("match") {
                 input << "#output x_2:b.\n#output x_1:a.";
                 read(prg, input);
-                REQUIRE(output.str() == "{x_1;x_2}.\n#show x_2 : x_2.\n#show x_1 : x_1.\n#show.\n");
+                REQUIRE(output.str() == "{x_1;x_2}.\n#show.\n#show x_2 : x_2.\n#show x_1 : x_1.\n");
             }
             SECTION("mismatch") {
                 input << "#output x_2:a.\n#output x_1:b.";
                 read(prg, input);
-                REQUIRE(output.str() == "{x_1;x_2}.\n#show x_2 : x_1.\n#show x_1 : x_2.\n#show.\n");
+                REQUIRE(output.str() == "{x_1;x_2}.\n#show.\n#show x_2 : x_1.\n#show x_1 : x_2.\n");
             }
         }
         SECTION("some") {
             SECTION("match") {
                 input << "#output x_2:b.";
                 read(prg, input);
-                REQUIRE(output.str() == "{x_1;x_2}.\n#show x_2 : x_2.\n#show.\n");
+                REQUIRE(output.str() == "{x_1;x_2}.\n#show.\n#show x_2 : x_2.\n");
             }
             SECTION("mismatch") {
                 input << "#output x_2:a.";
                 read(prg, input);
-                REQUIRE(output.str() == "{x_1;x_2}.\n#show x_2 : x_1.\n#show.\n");
+                REQUIRE(output.str() == "{x_1;x_2}.\n#show.\n#show x_2 : x_1.\n");
             }
         }
         SECTION("incremental handled as some") {
@@ -395,9 +406,9 @@ TEST_CASE("Text writer ", "[text]") {
             out.endStep();
             REQUIRE(output.str() == "% #program base.\n"
                                     "{x_1;x_2}.\n"
+                                    "#show.\n"
                                     "#show x_3 : x_1.\n"
-                                    "#show x_2 : x_2.\n"
-                                    "#show.\n");
+                                    "#show x_2 : x_2.\n");
             output.str("");
             out.beginStep();
             out.rule(Head_t::Choice, head = {3}, cond = {1, 2}); // {3} :- 1, 2.
@@ -416,12 +427,12 @@ TEST_CASE("Text writer ", "[text]") {
         out.output("a", {&al, 1});             // #show a : x_1.
         SECTION("unique alternative") {
             out.endStep();
-            REQUIRE(output.str() == "{x_1}.\n#show x_1 : x_1.\n#show a : x_1.\n#show.\n");
+            REQUIRE(output.str() == "{x_1}.\n#show.\n#show x_1 : x_1.\n#show a : x_1.\n");
         }
         SECTION("two alternatives") {
             out.output("b", {&al, 1}); // #show b : x_1.
             out.endStep();
-            REQUIRE(output.str() == "{x_1}.\n#show x_1 : x_1.\n#show a : x_1.\n#show b : x_1.\n#show.\n");
+            REQUIRE(output.str() == "{x_1}.\n#show.\n#show x_1 : x_1.\n#show a : x_1.\n#show b : x_1.\n");
         }
     }
     SECTION("write external - ") {
@@ -665,15 +676,15 @@ TEST_CASE("Text writer writes theory", "[text]") {
                 // Ensure that we don't use "foo" for x_3.
                 REQUIRE(output.str() == "{x_1;x_2}.\n"
                                         "x_4 :- &atom{elem : x_1, not x_2; p : x_1}.\n"
-                                        "#show foo : &atom{elem : x_1, not x_2; p : x_1}.\n#show.\n");
+                                        "#show.\n#show foo : &atom{elem : x_1, not x_2; p : x_1}.\n");
             }
             SECTION("twice") {
                 out.output("bar", (body = {3}));
                 out.endStep();
                 REQUIRE(output.str() == "{x_1;x_2}.\n"
                                         "x_4 :- &atom{elem : x_1, not x_2; p : x_1}.\n"
-                                        "#show foo : &atom{elem : x_1, not x_2; p : x_1}.\n"
-                                        "#show bar : &atom{elem : x_1, not x_2; p : x_1}.\n#show.\n");
+                                        "#show.\n#show foo : &atom{elem : x_1, not x_2; p : x_1}.\n"
+                                        "#show bar : &atom{elem : x_1, not x_2; p : x_1}.\n");
             }
         }
     }
