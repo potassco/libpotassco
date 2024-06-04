@@ -101,6 +101,7 @@ public:
 
 private:
 	std::ostream& printName(std::ostream& os, Lit_t lit);
+	std::ostream& printHide(std::ostream& os);
 	void writeDirectives();
 	void visitTheories();
 	bool assignAtomName(Atom_t id, const std::string& name);
@@ -116,7 +117,7 @@ private:
 	TheoryData theory_;
 	Data*      data_;
 	int        step_;
-	int        showAtoms_;
+	bool       showAtoms_;
 	Atom_t     startAtom_;
 	Atom_t     maxAtom_;
 };

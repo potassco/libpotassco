@@ -403,16 +403,25 @@ std::ostream& AspifTextOutput::printName(std::ostream& os, Lit_t lit) {
 	}
 	else {
 		os << "x_" << id;
-		if (showAtoms_ == 0) {
-			showAtoms_ = 1;
+		if (!showAtoms_) {
+			showAtoms_ = true;
+			if (data_->atoms.empty()) { data_->atoms.push_back(0); }
+			data_->setGenName(0);
 		}
 	}
 	maxAtom_ = std::max(maxAtom_, id);
 	return os;
 }
+std::ostream& AspifTextOutput::printHide(std::ostream& os) {
+	if (data_->genName && data_->atoms[0] == data_->genName) {
+		data_->atoms[0] = 0;
+		os << "#show.\n";
+	}
+	return os;
+}
 void AspifTextOutput::initProgram(bool incremental) {
 	step_      = incremental ? 0 : -1;
-	showAtoms_ = 0;
+	showAtoms_ = false;
 	startAtom_ = 0;
 	maxAtom_   = 0;
 	data_->reset();
@@ -422,6 +431,7 @@ void AspifTextOutput::beginStep() {
 		if (step_) { os_ << "% #program step(" << step_ << ").\n"; theory_.update(); }
 		else       { os_ << "% #program base.\n"; }
 		++step_;
+		startAtom_ = data_->atoms.size();
 	}
 }
 void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
@@ -577,6 +587,7 @@ void AspifTextOutput::writeDirectives() {
 				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
 				break;
 			case Directive_t::Output:
+				printHide(os_);
 				sep = " : "; term = ".";
 				os_ << "#show " << data_->out[get<uint32_t>()]->first;
 				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") {
@@ -618,10 +629,7 @@ void AspifTextOutput::writeDirectives() {
 		os_ << term << "\n";
 	}
 	if (showAtoms_) {
-		if (showAtoms_ == 1) {
-			os_ << "#show.\n";
-			showAtoms_ = 2;
-		}
+		printHide(os_);
 		for (Atom_t a = startAtom_; a < data_->atoms.size(); ++a) {
 			if (const std::string* n = data_->getAtomName(a)) {
 				if (*n->c_str() != '&') {
@@ -629,7 +637,6 @@ void AspifTextOutput::writeDirectives() {
 				}
 			}
 		}
-		startAtom_ = data_->atoms.size();
 	}
 	os_ << std::flush;
 }
