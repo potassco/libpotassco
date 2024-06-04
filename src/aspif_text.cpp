@@ -413,7 +413,7 @@ struct AspifTextOutput::Data {
         if (atom < startAtom) {
             return false;
         }
-        bool theory = name[0] == '&';
+        bool theoryAtom = name[0] == '&';
         if (atom >= atoms.size()) {
             atoms.resize(atom + 1, nullptr);
         }
@@ -422,7 +422,7 @@ struct AspifTextOutput::Data {
                 return true; // identical name, ignore duplicate
             }
             convertToOutput(node); // drop assignment
-            if (!theory) {
+            if (!theoryAtom) {
                 return false;
             }
         }
@@ -484,6 +484,9 @@ struct AspifTextOutput::Data {
         return *this;
     }
     void          endStep(std::ostream&, bool more);
+    void          visitTheoryAtoms(std::ostream& os);
+    std::ostream& printTheoryAtom(std::ostream&, const TheoryAtom&);
+    std::ostream& appendTerm(std::ostream&, Id_t term) const;
     std::ostream& printName(std::ostream& os, Lit_t lit);
     std::ostream& printName(std::ostream& os, Atom_t at) { return printName(os, lit(at)); }
     std::ostream& printCondition(std::ostream&, const uint32_t*& pos, const char* init = "");
@@ -501,25 +504,29 @@ struct AspifTextOutput::Data {
         return static_cast<T>(*pos++);
     }
 
-    RawVec    directives;
-    StringMap strings;
-    AtomMap   atoms; // maps into strings
-    OutVec    out;
-    LitVec    conditions;
-    Atom_t    startAtom  = 1;
-    Atom_t    maxGenAtom = 0;
+    RawVec     directives;
+    StringMap  strings;
+    AtomMap    atoms; // maps into strings
+    OutVec     out;
+    LitVec     conditions;
+    TheoryData theory;
+    Atom_t     startAtom  = 0;
+    Atom_t     maxGenAtom = 0;
 };
-AspifTextOutput::AspifTextOutput(std::ostream& os) : os_(os), data_(std::make_unique<Data>()), step_(-1) {}
+AspifTextOutput::AspifTextOutput(std::ostream& os) : os_(os), data_(std::make_unique<Data>()), step_(-2) {}
 AspifTextOutput::~AspifTextOutput() = default;
 void AspifTextOutput::initProgram(bool incremental) {
+    if (step_ != -2) {
+        data_.reset();
+        data_ = std::make_unique<Data>();
+    }
     step_ = incremental ? 0 : -1;
-    std::exchange(*data_, {});
 }
 void AspifTextOutput::beginStep() {
     if (step_ >= 0) {
         if (step_) {
             os_ << "% #program step(" << step_ << ").\n";
-            theory_.update();
+            data_->theory.update();
         }
         else {
             os_ << "% #program base.\n";
@@ -566,38 +573,26 @@ void AspifTextOutput::acycEdge(int s, int t, const LitSpan& condition) {
 void AspifTextOutput::heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) {
     data_->push(Directive_t::Heuristic).push(a).push(condition).push(bias).push(prio).push(static_cast<uint32_t>(t));
 }
-void AspifTextOutput::theoryTerm(Id_t termId, int number) { theory_.addTerm(termId, number); }
-void AspifTextOutput::theoryTerm(Id_t termId, const std::string_view& name) { theory_.addTerm(termId, name); }
+void AspifTextOutput::theoryTerm(Id_t termId, int number) { data_->theory.addTerm(termId, number); }
+void AspifTextOutput::theoryTerm(Id_t termId, const std::string_view& name) { data_->theory.addTerm(termId, name); }
 void AspifTextOutput::theoryTerm(Id_t termId, int compound, const IdSpan& args) {
     if (compound >= 0)
-        theory_.addTerm(termId, static_cast<Id_t>(compound), args);
+        data_->theory.addTerm(termId, static_cast<Id_t>(compound), args);
     else
-        theory_.addTerm(termId, Potassco::enum_cast<Tuple_t>(compound).value(), args);
+        data_->theory.addTerm(termId, Potassco::enum_cast<Tuple_t>(compound).value(), args);
 }
 void AspifTextOutput::theoryElement(Id_t id, const IdSpan& terms, const LitSpan& cond) {
-    theory_.addElement(id, terms, data_->addTheoryCondition(cond));
+    data_->theory.addElement(id, terms, data_->addTheoryCondition(cond));
 }
 void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) {
-    theory_.addAtom(atomOrZero, termId, elements);
+    data_->theory.addAtom(atomOrZero, termId, elements);
 }
 void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) {
-    theory_.addAtom(atomOrZero, termId, elements, op, rhs);
-}
-void AspifTextOutput::visitTheoryAtoms() {
-    for (auto it = theory_.currBegin(), end = theory_.end(); it != end; ++it) {
-        if (auto atom = (*it)->atom(); not atom) {
-            printTheoryAtom(os_, **it) << ".\n";
-        }
-        else {
-            std::ostringstream str;
-            printTheoryAtom(str, **it);
-            data_->assignTheoryAtomName(atom, std::move(str).str());
-        }
-    }
+    data_->theory.addAtom(atomOrZero, termId, elements, op, rhs);
 }
 
-std::ostream& AspifTextOutput::appendTerm(std::ostream& os, Id_t tId) const {
-    const auto& term = theory_.getTerm(tId);
+std::ostream& AspifTextOutput::Data::appendTerm(std::ostream& os, Id_t tId) const {
+    const auto& term = theory.getTerm(tId);
     if (term.type() == Theory_t::Number) {
         return os << term.number();
     }
@@ -607,7 +602,7 @@ std::ostream& AspifTextOutput::appendTerm(std::ostream& os, Id_t tId) const {
     else {
         POTASSCO_CHECK_PRE(term.type() == Theory_t::Compound);
         if (term.isFunction()) {
-            const auto* fSym = theory_.getTerm(term.function()).symbol();
+            const auto* fSym = theory.getTerm(term.function()).symbol();
             if (term.size() <= 2 && std::strchr("/!<=>+-*\\?&@|:;~^.", *fSym)) {
                 if (auto args = term.terms(); args.size() == 2) {
                     return appendTerm(appendTerm(os, args[0]) << " "sv << fSym << " "sv, args[1]);
@@ -626,18 +621,18 @@ std::ostream& AspifTextOutput::appendTerm(std::ostream& os, Id_t tId) const {
     }
 }
 
-std::ostream& AspifTextOutput::printTheoryAtom(std::ostream& os, const TheoryAtom& atom) const {
+std::ostream& AspifTextOutput::Data::printTheoryAtom(std::ostream& os, const TheoryAtom& atom) {
     appendTerm(os << '&', atom.term()) << '{';
     auto sep = ""sv;
     for (auto e : atom.elements()) {
         os << std::exchange(sep, ""sv);
-        const auto& elem = theory_.getElement(e);
+        const auto& elem = theory.getElement(e);
         for (auto term : elem) { appendTerm(os << std::exchange(sep, ", "sv), term); }
         if (auto cId = elem.condition(); cId) {
             sep = " : "sv;
-            for (auto lit : data_->theoryCondition(cId)) {
+            for (auto lit : theoryCondition(cId)) {
                 os << std::exchange(sep, ", "sv);
-                data_->printName(os, lit);
+                printName(os, lit);
             }
         }
         sep = "; "sv;
@@ -651,7 +646,18 @@ std::ostream& AspifTextOutput::printTheoryAtom(std::ostream& os, const TheoryAto
     }
     return os;
 }
-
+void AspifTextOutput::Data::visitTheoryAtoms(std::ostream& os) {
+    for (auto it = theory.currBegin(), end = theory.end(); it != end; ++it) {
+        if (auto atom = (*it)->atom(); not atom) {
+            printTheoryAtom(os, **it) << ".\n";
+        }
+        else {
+            std::ostringstream str;
+            printTheoryAtom(str, **it);
+            assignTheoryAtomName(atom, std::move(str).str());
+        }
+    }
+}
 std::ostream& AspifTextOutput::Data::printName(std::ostream& os, Lit_t lit) {
     if (lit < 0) {
         os << "not ";
@@ -704,6 +710,7 @@ std::ostream& AspifTextOutput::Data::printMinimize(std::ostream& os, const uint3
     return os << '}';
 }
 void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
+    visitTheoryAtoms(os);
     for (const auto *pos = directives.data(), *end = pos + directives.size(); pos != end;) {
         const auto *sep = "", *term = ".";
         switch (next<Directive_t>(pos)) {
@@ -777,15 +784,10 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
     std::exchange(directives, {});
     std::erase_if(strings, [](const auto& e) { return e.second < atomMin || e.second > atomMax; });
     if (not more) {
+        theory.reset();
         std::exchange(conditions, {});
     }
 }
-void AspifTextOutput::endStep() {
-    visitTheoryAtoms();
-    data_->endStep(os_, step_ >= 0);
-    if (step_ < 0) {
-        theory_.reset();
-    }
-}
+void AspifTextOutput::endStep() { data_->endStep(os_, step_ >= 0); }
 
 } // namespace Potassco

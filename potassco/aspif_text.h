@@ -107,12 +107,7 @@ public:
 
 private:
     struct Data;
-    std::ostream& printTheoryAtom(std::ostream&, const TheoryAtom&) const;
-    std::ostream& appendTerm(std::ostream&, Id_t term) const;
-    void          visitTheoryAtoms();
-
     std::ostream&         os_;
-    TheoryData            theory_;
     std::unique_ptr<Data> data_;
     int                   step_;
 };
