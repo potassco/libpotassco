@@ -372,7 +372,10 @@ TEST_CASE("Test Basic", "[rule]") {
         static_assert(atomMin < UINT32_MAX);
         auto x = Atom_t(7);
         CHECK(weight(x) == 1);
-        CHECK(id(x) == x);
+        CHECK(validAtom(atomMin));
+        CHECK(validAtom(atomMax));
+        CHECK_FALSE(validAtom(atomMin - 1));
+        CHECK_FALSE(validAtom(atomMax + 1));
     }
     SECTION("literal") {
         static_assert(std::is_same_v<Lit_t, int32_t>);
@@ -380,8 +383,8 @@ TEST_CASE("Test Basic", "[rule]") {
         CHECK(weight(x) == 1);
         CHECK(atom(x) == 7);
         CHECK(neg(x) == -7);
-        CHECK(id(x) == 7);
-        CHECK(lit(id(neg(x))) == -7);
+        CHECK(validAtom(x));
+        CHECK_FALSE(validAtom(neg(x)));
     }
     SECTION("weight literal") {
         WeightLit_t wl{.lit = -4, .weight = 3};

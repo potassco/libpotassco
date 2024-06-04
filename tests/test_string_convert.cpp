@@ -199,7 +199,7 @@ TEST_CASE("String conversion", "[string]") {
     }
 
     SECTION("double parsing before local change") {
-        double d;
+        double d  = 0;
         auto   in = "1233.22foo";
         auto   r  = fromChars(in, d);
         CHECK(d == 1233.22);
@@ -236,7 +236,7 @@ TEST_CASE("String conversion", "[string]") {
     }
 
     SECTION("double parsing stops at invalid pos") {
-        double      d;
+        double      d(0);
         std::string what;
         char        next(0);
         double      expected = 1233.22;

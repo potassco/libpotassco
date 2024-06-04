@@ -31,10 +31,10 @@ namespace Potassco::ProgramOptions::detail {
 
 class RefCountable {
 public:
-    RefCountable() : refCount_(1) {}
-    int               addRef() { return ++refCount_; }
-    int               release() { return --refCount_; }
-    [[nodiscard]] int refCount() const { return refCount_; }
+    constexpr RefCountable() noexcept : refCount_(1) {}
+    constexpr int               addRef() noexcept { return ++refCount_; }
+    constexpr int               release() noexcept { return --refCount_; }
+    [[nodiscard]] constexpr int refCount() const noexcept { return refCount_; }
 
 private:
     int refCount_;
@@ -44,48 +44,35 @@ template <typename T>
 class IntrusiveSharedPtr {
 public:
     using element_type = T;
-    explicit IntrusiveSharedPtr(T* p = nullptr) noexcept : ptr_(p) {}
-    IntrusiveSharedPtr(const IntrusiveSharedPtr& o) noexcept : ptr_(o.ptr_) { addRef(); }
-    IntrusiveSharedPtr(IntrusiveSharedPtr&& o) noexcept : ptr_(std::exchange(o.ptr_, nullptr)) {}
-    ~IntrusiveSharedPtr() noexcept { release(); }
-    // NOLINTNEXTLINE(bugprone-unhandled-self-assignment)
-    IntrusiveSharedPtr& operator=(const IntrusiveSharedPtr& other) noexcept {
-        other.addRef();
-        this->release();
-        this->ptr_ = other.ptr_;
+    constexpr explicit IntrusiveSharedPtr(T* p = nullptr) noexcept : ptr_(p) {}
+    constexpr IntrusiveSharedPtr(const IntrusiveSharedPtr& o) noexcept : ptr_(o.ptr_) { addRef(); }
+    constexpr IntrusiveSharedPtr(IntrusiveSharedPtr&& o) noexcept : ptr_(std::exchange(o.ptr_, nullptr)) {}
+    constexpr ~IntrusiveSharedPtr() noexcept { release(); }
+    constexpr IntrusiveSharedPtr& operator=(IntrusiveSharedPtr other) noexcept {
+        this->swap(other);
         return *this;
     }
-    IntrusiveSharedPtr& operator=(IntrusiveSharedPtr&& other) noexcept {
-        IntrusiveSharedPtr(std::move(other)).swap(*this);
-        return *this;
-    }
-    T&                 operator*() const noexcept { return *ptr_; }
-    T*                 operator->() const noexcept { return ptr_; }
-    [[nodiscard]] T*   get() const noexcept { return ptr_; }
-    [[nodiscard]] bool unique() const noexcept { return ptr_ == nullptr || ptr_->refCount() == 1; }
-    [[nodiscard]] int  count() const noexcept { return ptr_ ? ptr_->refCount() : 0; }
+    constexpr T&                 operator*() const noexcept { return *ptr_; }
+    constexpr T*                 operator->() const noexcept { return ptr_; }
+    [[nodiscard]] constexpr T*   get() const noexcept { return ptr_; }
+    [[nodiscard]] constexpr bool unique() const noexcept { return ptr_ == nullptr || ptr_->refCount() == 1; }
+    [[nodiscard]] constexpr int  count() const noexcept { return ptr_ ? ptr_->refCount() : 0; }
 
-    void reset() noexcept {
-        release();
-        ptr_ = nullptr;
-    }
-    void swap(IntrusiveSharedPtr& b) {
-        T* temp = ptr_;
-        ptr_    = b.ptr_;
-        b.ptr_  = temp;
-    }
+    constexpr void reset() noexcept { release(); }
+    constexpr void swap(IntrusiveSharedPtr& b) noexcept { std::swap(ptr_, b.ptr_); }
 
 private:
-    T*   ptr_;
-    void addRef() const {
+    constexpr void addRef() const noexcept {
         if (ptr_)
             ptr_->addRef();
     }
-    void release() const {
-        if (ptr_ && ptr_->release() == 0) {
-            delete ptr_;
+    constexpr void release() noexcept {
+        if (auto* prev = std::exchange(ptr_, nullptr); prev && prev->release() == 0) {
+            delete prev;
         }
     }
+
+    T* ptr_;
 };
 
 } // namespace Potassco::ProgramOptions::detail

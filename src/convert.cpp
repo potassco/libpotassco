@@ -296,7 +296,7 @@ void SmodelsConvert::endStep() {
 void SmodelsConvert::flushMinimize() {
     const SmData::Minimize* last = nullptr;
     for (const auto& m : data_->minimize_) {
-        assert(not last || last->prio < m.prio);
+        POTASSCO_ASSERT(not last || last->prio < m.prio);
         data_->rule_.clear().startMinimize(m.prio);
         data_->mapBody(std::span{m.lits}).end(&out_);
         last = &m;

@@ -429,7 +429,7 @@ struct AspifTextOutput::Data {
         if (name.size() > 2 && name.starts_with("x_") && BufferedStream::isDigit(name[2])) {
             auto id = 0u;
             auto r  = std::from_chars(name.data() + 2, name.data() + name.size(), id);
-            if (r.ec == std::errc{} && r.ptr == name.data() + name.size() && id > 0 && id <= atomMax) {
+            if (r.ec == std::errc{} && r.ptr == name.data() + name.size() && validAtom(id)) {
                 atoms[atom] = &c_genName;
                 return false;
             }
@@ -782,7 +782,7 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
     }
     os << std::flush;
     std::exchange(directives, {});
-    std::erase_if(strings, [](const auto& e) { return e.second < atomMin || e.second > atomMax; });
+    std::erase_if(strings, [](const auto& e) { return not validAtom(e.second); });
     if (not more) {
         theory.reset();
         std::exchange(conditions, {});

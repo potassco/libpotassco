@@ -546,6 +546,7 @@ TEST_CASE("Text writer ", "[text]") {
 TEST_CASE("Text writer writes theory", "[text]") {
     std::stringstream output;
     AspifTextOutput   out(output);
+    using namespace std::literals;
     out.initProgram(false);
     out.beginStep();
     SECTION("parens") {
@@ -583,20 +584,20 @@ TEST_CASE("Text writer writes theory", "[text]") {
         REQUIRE_THROWS(out.theoryTerm(3, -4, (ids = {1, 2})));
         SECTION("tuple") {
             comp = int(Tuple_t::Paren);
-            sep  = std::make_pair("(", ")");
+            sep  = std::make_pair("("s, ")"s);
         }
         SECTION("set") {
             comp = int(Tuple_t::Brace);
-            sep  = std::make_pair("{", "}");
+            sep  = std::make_pair("{"s, "}"s);
         }
         SECTION("list") {
             comp = int(Tuple_t::Bracket);
-            sep  = std::make_pair("[", "]");
+            sep  = std::make_pair("["s, "]"s);
         }
         SECTION("func") {
             out.theoryTerm(4, "f");
             comp = 4;
-            sep  = std::make_pair("f(", ")");
+            sep  = std::make_pair("f("s, ")"s);
         }
         out.theoryTerm(3, comp, (ids = {1, 2}));
         out.theoryElement(0, (ids = {3}), {});

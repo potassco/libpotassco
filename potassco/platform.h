@@ -70,7 +70,8 @@
     _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wpragmas\"")                                     \
         _Pragma("GCC diagnostic ignored \"-Wpedantic\"") _Pragma("GCC diagnostic ignored \"-pedantic\"")               \
             _Pragma("GCC diagnostic ignored \"-Wsign-conversion\"")
-#define POTASSCO_WARNING_END_RELAXED _Pragma("GCC diagnostic pop")
+#define POTASSCO_WARNING_END_RELAXED    _Pragma("GCC diagnostic pop")
+#define POTASSCO_GCC_WARNING_IGNORED(X) POTASSCO_APPLY_PRAGMA(GCC diagnostic ignored X)
 #endif
 #else
 #define POTASSCO_FUNC_NAME __FILE__
@@ -82,6 +83,10 @@
 #if not defined(POTASSCO_ENABLE_PRAGMA_TODO) || POTASSCO_ENABLE_PRAGMA_TODO == 0
 #undef POTASSCO_PRAGMA_TODO
 #define POTASSCO_PRAGMA_TODO(X)
+#endif
+
+#if not defined(POTASSCO_GCC_WARNING_IGNORED)
+#define POTASSCO_GCC_WARNING_IGNORED(X)
 #endif
 
 static_assert(UINTPTR_MAX <= UINT64_MAX, "Unsupported platform!");

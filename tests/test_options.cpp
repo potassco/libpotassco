@@ -32,8 +32,8 @@ namespace Po = ProgramOptions;
 TEST_CASE("Test intrusive pointer", "[options]") {
     int count = 0;
     struct Foo : Po::detail::RefCountable {
-        explicit Foo(int& c) : count(&c) { ++*count; }
-        ~Foo() { --*count; }
+        constexpr explicit Foo(int& c) : count(&c) { ++*count; }
+        constexpr ~Foo() { --*count; }
         Foo(const Foo&)            = delete;
         Foo& operator=(const Foo&) = delete;
         int  x                     = 12;
@@ -41,33 +41,37 @@ TEST_CASE("Test intrusive pointer", "[options]") {
     };
 
     Po::detail::IntrusiveSharedPtr<Foo> ptr(new Foo(count));
-    CHECK(ptr->refCount() == 1);
+    CHECK(ptr.count() == 1);
     CHECK(count == 1);
 
+    // Disable bogus gcc use-after-free warning with -O2 (or above) in following section.
+    POTASSCO_WARNING_BEGIN_RELAXED
+    POTASSCO_GCC_WARNING_IGNORED("-Wuse-after-free")
     SECTION("copy") {
         auto ptr2 = ptr;
-        CHECK(ptr2->refCount() == 2);
+        CHECK(ptr2.count() == 2);
         Po::detail::IntrusiveSharedPtr<Foo> ptr3;
         ptr3 = ptr2;
-        CHECK(ptr3->refCount() == 3);
+        CHECK(ptr3.count() == 3);
         ptr2 = ptr3;
-        CHECK(ptr2->refCount() == 3);
+        CHECK(ptr2.count() == 3);
         ptr2->x = 77;
     }
+    POTASSCO_WARNING_END_RELAXED
 
     SECTION("move") {
         auto ptr2 = std::move(ptr);
-        CHECK(ptr2->refCount() == 1);
+        CHECK(ptr2.count() == 1);
         CHECK(ptr.get() == nullptr);
         Po::detail::IntrusiveSharedPtr<Foo> ptr3;
         ptr3 = std::move(ptr2);
-        CHECK(ptr3->refCount() == 1);
+        CHECK(ptr3.count() == 1);
         CHECK(ptr2.get() == nullptr);
         ptr = std::move(ptr3);
         CHECK(ptr.get() != nullptr);
         ptr->x = 77;
     }
-    CHECK(count == 1);
+    REQUIRE(count == 1);
     CHECK(ptr->x == 77);
     ptr.reset();
     CHECK(count == 0);

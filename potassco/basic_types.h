@@ -70,7 +70,7 @@ namespace Potassco {
 //! Ids are non-negative integers in the range [0..idMax].
 using Id_t = uint32_t;
 //! Maximum value for ids.
-constexpr Id_t idMax = static_cast<Id_t>(-1);
+constexpr auto idMax = static_cast<Id_t>(-1);
 //! Atom ids are positive integers in the range [atomMin..atomMax].
 using Atom_t = uint32_t;
 //! Minimum value for atom ids (must not be 0).
@@ -187,16 +187,24 @@ public:
  * \ingroup BasicTypes
  */
 ///@{
-//! Returns the id of the given atom.
-constexpr Id_t id(Atom_t a) { return static_cast<Id_t>(a); }
-//! Returns the id of the given literal.
-constexpr Id_t id(Lit_t lit) { return static_cast<Id_t>(lit); }
+//! Returns whether @c n is a valid atom number (i.e. in the range [atomMin..atomMax])
+template <std::integral T>
+constexpr bool validAtom(T n) {
+    if constexpr (std::is_signed_v<T>) {
+        return n >= 0 && validAtom(std::make_unsigned_t<T>(n));
+    }
+    else {
+        return n >= atomMin && n <= atomMax;
+    }
+}
+//! Identity function for atoms.
+constexpr Atom_t atom(Atom_t atom) { return atom; }
 //! Returns the atom of the given literal.
 constexpr Atom_t atom(Lit_t lit) { return static_cast<Atom_t>(lit >= 0 ? lit : -lit); }
 //! Returns the atom of the given weight literal.
 constexpr Atom_t atom(const WeightLit_t& w) { return atom(w.lit); }
-//! Converts the given id back to a literal.
-constexpr Lit_t lit(Id_t a) { return static_cast<Lit_t>(a); }
+//! Returns the positive literal of the given atom.
+constexpr Lit_t lit(Atom_t atom) { return static_cast<Lit_t>(atom); }
 //! Identity function for literals.
 constexpr Lit_t lit(Lit_t lit) { return lit; }
 //! Returns the literal of the given weight literal.
