@@ -325,35 +325,6 @@ static constexpr bool match(std::string_view& in, std::string_view word) {
 }
 static constexpr bool match(std::string_view& in, char sep) { return match(in, {&sep, 1}); }
 
-static bool matchAtom(std::string_view& input, std::string_view& arg) {
-    auto        scan = input;
-    std::size_t pos  = 0;
-    for (std::size_t end = scan.size(), paren = 0; pos != end; ++pos) {
-        if (auto c = scan[pos]; c == '(') {
-            ++paren;
-        }
-        else if (c == ')') {
-            if (paren-- == 0) {
-                break;
-            }
-        }
-        else if (c == '"') {
-            for (auto quoted = false; ++pos != end && ((c = scan[pos]) != '\"' || quoted);) {
-                quoted = not quoted && c == '\\';
-            }
-            if (pos == end) {
-                break;
-            }
-        }
-        else if (paren == 0 && c == ',') {
-            break;
-        }
-    }
-    arg   = input.substr(0, pos);
-    input = scan.substr(pos);
-    return not arg.empty();
-}
-
 static bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr) {
     int  n;
     auto r  = std::from_chars(in.data(), in.data() + in.size(), nOut ? *nOut : n);
@@ -382,13 +353,13 @@ bool matchEdgePred(std::string_view in, std::string_view& n0, std::string_view& 
                in.empty();
     }
     else if (match(in, edgePred)) { // _edge(<n0>,<n1>)
-        return matchAtom(in, n0) && match(in, ',') && matchAtom(in, n1) && match(in, ')') && in.empty();
+        return matchTerm(in, n0) && match(in, ',') && matchTerm(in, n1) && match(in, ')') && in.empty();
     }
     return false;
 }
 bool matchDomHeuPred(std::string_view in, std::string_view& atom, Heuristic_t& type, int& bias, unsigned& prio) {
     // _heuristic(<atom>,<type>,<bias>[,<prio>])
-    if (match(in, heuristicPred) && matchAtom(in, atom) && match(in, ',') && match(in, type) && match(in, ',') &&
+    if (match(in, heuristicPred) && matchTerm(in, atom) && match(in, ',') && match(in, type) && match(in, ',') &&
         matchNum(in, nullptr, &bias)) {
         prio = bias < 0 ? static_cast<unsigned>(~bias) + 1u : static_cast<unsigned>(bias);
         if (match(in, ',')) {

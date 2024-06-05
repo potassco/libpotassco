@@ -206,6 +206,8 @@ private:
     bool        inc_    = false;
 };
 
+bool matchTerm(std::string_view& input, std::string_view& termOut);
+
 //! Attaches the given stream to r and calls ProgramReader::parse() with the read mode set to ProgramReader::Complete.
 int readProgram(std::istream& str, ProgramReader& r);
 

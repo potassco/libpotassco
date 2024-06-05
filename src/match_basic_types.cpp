@@ -218,6 +218,34 @@ int readProgram(std::istream& str, ProgramReader& reader) {
     }
     return 0;
 }
+bool matchTerm(std::string_view& input, std::string_view& arg) {
+    auto        scan = input;
+    std::size_t pos  = 0;
+    for (std::size_t end = scan.size(), paren = 0; pos != end; ++pos) {
+        if (auto c = scan[pos]; c == '(') {
+            ++paren;
+        }
+        else if (c == ')') {
+            if (paren-- == 0) {
+                break;
+            }
+        }
+        else if (c == '"') {
+            for (auto quoted = false; ++pos != end && ((c = scan[pos]) != '\"' || quoted);) {
+                quoted = not quoted && c == '\\';
+            }
+            if (pos == end) {
+                break;
+            }
+        }
+        else if (paren == 0 && c == ',') {
+            break;
+        }
+    }
+    arg   = input.substr(0, pos);
+    input = scan.substr(pos);
+    return not arg.empty();
+}
 /////////////////////////////////////////////////////////////////////////////////////////
 // DynamicBuffer
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -314,4 +342,5 @@ int32_t FixedString::addRef(int32_t x) {
     auto& r   = *reinterpret_cast<std::atomic<int32_t>*>(large()->str - sizeof(std::atomic<int32_t>));
     return r += x;
 }
+
 } // namespace Potassco

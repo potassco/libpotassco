@@ -360,7 +360,7 @@ Heuristic_t AspifTextInput::matchHeuMod() {
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifTextOutput::Data {
     static_assert(amc::is_trivially_relocatable_v<FixedString>, "should be relocatable");
-    using StringMap = std::unordered_map<FixedString, Atom_t>;
+    using StringMap = std::unordered_map<FixedString, Atom_t, std::hash<FixedString>, std::equal_to<>>;
     using AtomMap   = amc::SmallVector<StringMap::const_pointer, 64>;
     using LitVec    = amc::SmallVector<Lit_t, 64>;
     using RawVec    = amc::SmallVector<uint32_t, 4096>;
@@ -408,7 +408,7 @@ struct AspifTextOutput::Data {
         }
     }
 
-    bool assignAtomName(Atom_t atom, const std::string_view& name) {
+    bool assignAtomName(Atom_t atom, std::string_view name) {
         POTASSCO_DEBUG_ASSERT(not name.empty());
         if (atom < startAtom) {
             return false;
@@ -434,6 +434,11 @@ struct AspifTextOutput::Data {
                 return false;
             }
         }
+        auto [id, a] = predicate(name);
+        POTASSCO_CHECK(a >= 0, Errc::invalid_argument, "syntax error in output name");
+        if (a == 0) {
+            name = id;
+        }
         auto* node = &*strings.try_emplace(name, atom).first;
         if (node->second == atom || node->second == idMax) { // assign tentative name to atom
             node->second = atom;
@@ -448,7 +453,7 @@ struct AspifTextOutput::Data {
         return false;
     }
     void assignTheoryAtomName(Atom_t atom, const std::string_view& name) {
-        POTASSCO_CHECK_PRE(atom >= startAtom, "Redefinition: theory atom '%u:%*s' already defined in a previous step",
+        POTASSCO_CHECK_PRE(atom >= startAtom, "Redefinition: theory atom '%u:%.*s' already defined in a previous step",
                            atom, (int) name.size(), name.data());
         assignAtomName(atom, name);
     }
@@ -459,6 +464,21 @@ struct AspifTextOutput::Data {
         }
         POTASSCO_DEBUG_ASSERT(atoms[atom]->second == atom);
         return &atoms[atom]->first;
+    }
+
+    static std::pair<std::string_view, int> predicate(const std::string_view& name) {
+        auto id   = name.substr(0, name.find('('));
+        auto args = name.substr(id.size());
+        if (args.size() < 3 || args.back() != ')') { // zero arity - pred or pred()
+            return {id, 0 - (not args.empty() && args != "()"sv)};
+        }
+        auto arity = 1;
+        args.remove_prefix(1);
+        for (auto t = ""sv; matchTerm(args, t) && args.size() > 2 && args.starts_with(',');) {
+            ++arity;
+            args.remove_prefix(1);
+        }
+        return {id, args == ")"sv ? arity : -1};
     }
 
     template <typename T>
@@ -492,13 +512,6 @@ struct AspifTextOutput::Data {
     std::ostream& printCondition(std::ostream&, const uint32_t*& pos, const char* init = "");
     std::ostream& printMinimize(std::ostream&, const uint32_t*& pos);
     std::ostream& printAggregate(std::ostream&, const uint32_t*& pos, bool weights);
-    std::ostream& printHide(std::ostream& os) {
-        if (not atoms.empty() && atoms[0] == &c_genName) {
-            os << "#show.\n";
-            atoms[0] = nullptr;
-        }
-        return os;
-    }
     template <typename T = uint32_t>
     static constexpr T next(const uint32_t*& pos) {
         return static_cast<T>(*pos++);
@@ -740,7 +753,6 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
             case Directive_t::Minimize: printMinimize(os, pos); break;
             case Directive_t::Project : printCondition(os << "#project{", pos) << '}'; break;
             case Directive_t::Output:
-                printHide(os);
                 printCondition(os << "#show " << out.at(next(pos))->first.view(), pos, " : ");
                 break;
             case Directive_t::External:
@@ -773,11 +785,31 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
         POTASSCO_ASSERT(pos <= end);
     }
     if (maxGenAtom) {
-        printHide(os);
+        amc::vector<char> temp;
+        auto              last = std::pair<std::string_view, int>{};
         for (auto a = startAtom; a < atoms.size(); ++a) {
             if (const auto* name = getAtomName(a); name && *name->c_str() != '&') {
-                os << "#show " << name->view() << " : " << name->view() << ".\n";
+                if (auto [id, arity] = predicate(name->view()); arity <= 0) {
+                    POTASSCO_ASSERT(arity == 0);
+                    os << "#show " << id << "/0.\n";
+                }
+                else if (arity != last.second || id != last.first) {
+                    temp.resize(name->size());
+                    auto w = snprintf(temp.data(), temp.size(), "%.*s/%d", (int) id.size(), id.data(), arity);
+                    POTASSCO_ASSERT(w > 0 && static_cast<std::size_t>(w) > id.size());
+                    auto pred = std::string_view{temp.data(), temp.data() + static_cast<std::size_t>(w)};
+                    if (auto it = strings.find(pred); it == strings.end()) {
+                        strings.emplace_hint(it, pred, a);
+                        os << "#show " << pred << ".\n";
+                    }
+                    last = {id, arity};
+                }
+                atoms[0] = nullptr; // clear hide.
             }
+        }
+        POTASSCO_ASSERT(not atoms.empty());
+        if (std::exchange(atoms[0], nullptr) != nullptr) {
+            os << "#show.\n";
         }
     }
     os << std::flush;
