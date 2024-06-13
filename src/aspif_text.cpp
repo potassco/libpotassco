@@ -338,8 +338,26 @@ struct AspifTextOutput::Data {
 		return node && node->second == atom ? &node->first : 0;
 	}
 	void setGenName(Atom_t atom) {
-		if (!genName) genName = &*strings.insert(StringMapVal(std::string(), 0)).first;
+		if (!genName) genName = &*strings.insert(StringMapVal(std::string(), idMax)).first;
 		atoms.at(atom) = genName;
+	}
+	static int atomArity(const std::string& name, std::size_t* sepPos = 0) {
+		if (name.empty() || name[0] == '&') return -1;
+		std::size_t pos = std::min(name.find('('), name.size());
+		POTASSCO_REQUIRE(pos == name.size() || name.back() == ')', "invalid name");
+		if (sepPos) *sepPos = pos;
+		if (name.size() - pos <= 2) {
+			return 0;
+		}
+		const char* args = name.data() + pos + 1;
+		int arity = 0;
+		for (StringSpan ignore;;) {
+			POTASSCO_REQUIRE(matchAtomArg(args, ignore), "invalid empty argument in name");
+			++arity;
+			if (*args++ == ')') break;
+		}
+		POTASSCO_REQUIRE(!*args, "invalid character in name");
+		return arity;
 	}
 
 	RawVec        directives;
@@ -412,13 +430,6 @@ std::ostream& AspifTextOutput::printName(std::ostream& os, Lit_t lit) {
 	maxAtom_ = std::max(maxAtom_, id);
 	return os;
 }
-std::ostream& AspifTextOutput::printHide(std::ostream& os) {
-	if (data_->genName && data_->atoms[0] == data_->genName) {
-		data_->atoms[0] = 0;
-		os << "#show.\n";
-	}
-	return os;
-}
 void AspifTextOutput::initProgram(bool incremental) {
 	step_      = incremental ? 0 : -1;
 	showAtoms_ = false;
@@ -478,8 +489,14 @@ static bool isAtom(const StringSpan& s) {
 }
 
 void AspifTextOutput::output(const StringSpan& str, const LitSpan& cond) {
-	if (size(cond) == 1 && isAtom(str) && assignAtomName(atom(*begin(cond)), std::string(begin(str), end(str)))) {
-		return;
+	if (size(cond) == 1 && isAtom(str)) {
+		std::string name(begin(str), end(str));
+		std::size_t ep;
+		if (Data::atomArity(name, &ep) == 0 && ep < name.size()) {
+			name.resize(ep);
+		}
+		if (assignAtomName(atom(*begin(cond)), name))
+			return;
 	}
 	push(Directive_t::Output).push(data_->addOutputString(str)).push(cond);
 }
@@ -587,7 +604,6 @@ void AspifTextOutput::writeDirectives() {
 				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") { printName(os_ << sep, get<Lit_t>()); }
 				break;
 			case Directive_t::Output:
-				printHide(os_);
 				sep = " : "; term = ".";
 				os_ << "#show " << data_->out[get<uint32_t>()]->first;
 				for (uint32_t n = get<uint32_t>(); n--; sep = ", ") {
@@ -629,13 +645,33 @@ void AspifTextOutput::writeDirectives() {
 		os_ << term << "\n";
 	}
 	if (showAtoms_) {
-		printHide(os_);
+		std::pair<std::string, int> last;
 		for (Atom_t a = startAtom_; a < data_->atoms.size(); ++a) {
 			if (const std::string* n = data_->getAtomName(a)) {
-				if (*n->c_str() != '&') {
-					os_ << "#show " << *n << " : " << *n << ".\n";
+				std::size_t ep;
+				int arity = Data::atomArity(*n, &ep);
+				if (arity < 0) continue;
+				POTASSCO_ASSERT(ep != std::string::npos);
+				data_->atoms[0] = 0; // clear hide.
+				if (arity == 0) {
+					os_ << "#show " << *n << "/0.\n";
+				}
+				else if (last.second != arity || n->compare(0, ep, last.first) != 0) {
+					last.first.resize(n->size());
+					auto w = snprintf(&last.first[0], n->size(), "%.*s/%d", (int) ep, n->c_str(), arity);
+					assert(w > ep);
+					last.first.resize(w);
+					if (data_->strings.insert(Data::StringMapVal(last.first, idMax)).second) {
+						os_ << "#show " << last.first << ".\n";
+					}
+					last.first.resize(ep);
+					last.second = arity;
 				}
 			}
+		}
+		if (data_->atoms[0]) {
+			data_->atoms[0] = 0;
+			os_ << "#show.\n";
 		}
 	}
 	os_ << std::flush;

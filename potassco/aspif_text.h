@@ -101,7 +101,6 @@ public:
 
 private:
 	std::ostream& printName(std::ostream& os, Lit_t lit);
-	std::ostream& printHide(std::ostream& os);
 	void writeDirectives();
 	void visitTheories();
 	bool assignAtomName(Atom_t id, const std::string& name);
