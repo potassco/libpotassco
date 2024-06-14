@@ -25,11 +25,11 @@
 #include <potassco/platform.h>
 
 #include <system_error>
+namespace Potassco {
 /*!
  * \addtogroup BasicTypes
  */
 ///@{
-namespace Potassco {
 
 enum class Errc : std::underlying_type_t<std::errc> {
     precondition_fail = -1,
@@ -112,9 +112,9 @@ POTASSCO_ATTR_NORETURN extern void failThrow(Errc ec, const ExpressionInfo& expr
 POTASSCO_ATTR_NORETURN extern void failAbort(const ExpressionInfo& expressionInfo, const char* fmt = nullptr, ...)
     POTASSCO_ATTRIBUTE_FORMAT(2, 3);
 
-//! Evaluates the given expression and calls Potassco::failAbort() if it is false.
+//! Evaluates the given expression and calls @c Potassco::failAbort() if it is false.
 /*!
- * \note The given expression is *always* evaluated. Use POTASSCO_DEBUG_ASSERT for debug-only checks.
+ * \note The given expression is @b always evaluated. Use @c POTASSCO_DEBUG_ASSERT() for debug-only checks.
  *
  * \param exp Expression that shall be true.
  * \param ... An optional message that is added to the error output on failure. The message can be a C-style format
@@ -125,11 +125,11 @@ POTASSCO_ATTR_NORETURN extern void failAbort(const ExpressionInfo& expressionInf
 
 //! Evaluates the given expression and calls failThrow(code, ...) with the given error code if it is false.
 /*!
- * \note On failure, Potassco::failThrow(code, ...) is called if `code` is of type int,  std::errc, or Errc.
+ * \note On failure, Potassco::failThrow(code, ...) is called if @c code is of type int, std::errc, or Errc.
  *       Otherwise, failThrow(code, ...) must be a viable function found via ADL.
  *
  * \param exp  Expression that is expected to be true.
- * \param code An error code describing the error if `exp` is false.
+ * \param code An error code describing the error if @c exp is false.
  * \param ...  Optional parameters passed to the selected failThrow() overload on error.
  */
 #define POTASSCO_CHECK(exp, code, ...)                                                                                 \
@@ -145,7 +145,7 @@ POTASSCO_ATTR_NORETURN extern void failAbort(const ExpressionInfo& expressionInf
 
 //! Evaluates the given expression and calls Potassco::failThrow(Errc::precondition_fail, ...) if it is false.
 /*!
- * \note The given expression is *always* evaluated. Use POTASSCO_DEBUG_CHECK_PRE for debug-only checks.
+ * \note The given expression is @b always evaluated. Use @c POTASSCO_DEBUG_CHECK_PRE() for debug-only checks.
  * \note By default, precondition failures are mapped to std::invalid_argument exceptions.
  *
  * \param exp Expression that shall be true.
@@ -157,6 +157,16 @@ POTASSCO_ATTR_NORETURN extern void failAbort(const ExpressionInfo& expressionInf
 //! Effect: POTASSCO_ASSERT(false, Msg, ...)
 #define POTASSCO_ASSERT_NOT_REACHED(Msg, ...)                                                                          \
     Potassco::failAbort(POTASSCO_CAPTURE_EXPRESSION(not reached), Msg POTASSCO_OPTARGS(__VA_ARGS__))
+
+/*!
+ * \def POTASSCO_DEBUG_ASSERT(exp, ...)
+ * Like POTASSCO_ASSERT but only evaluated if @c NDEBUG is not defined.
+ */
+
+/*!
+ * \def POTASSCO_DEBUG_CHECK_PRE(exp, ...)
+ * Like POTASSCO_CHECK_PRE but only evaluated if @c NDEBUG is not defined.
+ */
 
 #ifdef NDEBUG
 #define POTASSCO_DEBUG_ASSERT(exp, ...)    static_cast<void>(0)

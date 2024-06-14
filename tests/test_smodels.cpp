@@ -53,16 +53,7 @@ static void finalize(std::stringstream& str, const AtomTab& atoms = AtomTab(), c
     str << "0\n1\n";
 }
 
-enum class Rule_t : unsigned {
-    Basic           = 1,
-    Cardinality     = 2,
-    Choice          = 3,
-    Weight          = 5,
-    Optimize        = 6,
-    Disjunctive     = 8,
-    ClaspAssignExt  = 91,
-    ClaspReleaseExt = 92
-};
+using Rule_t = SmodelsRule_t;
 
 class ReadObserver : public Test::ReadObserver {
 public:
@@ -85,17 +76,19 @@ public:
         }
     }
     void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override {
-        int rt = isSmodelsRule(ht, head, bound, body);
-        REQUIRE(rt != 0);
         REQUIRE(size(head) == 1);
+        REQUIRE(ht == Head_t::Disjunctive);
         std::vector<int> r(1, lit(head[0]));
         r.push_back(bound);
+        auto hasWeights = std::ranges::any_of(body, [](const auto& wl) { return weight(wl) != 1; });
         for (auto&& x : body) {
+            REQUIRE(weight(x) >= 0);
             r.push_back(lit(x));
-            if (rt == (int) Rule_t::Weight)
+            if (hasWeights) {
                 r.push_back(weight(x));
+            }
         }
-        rules[static_cast<Rule_t>(rt)].push_back(std::move(r));
+        rules[hasWeights ? Rule_t::Weight : Rule_t::Cardinality].push_back(std::move(r));
     }
     void minimize(Weight_t prio, const WeightLitSpan& lits) override {
         std::vector<int> r;
@@ -546,12 +539,18 @@ TEST_CASE("Convert to smodels", "[convert]") {
         REQUIRE(cr == observer.rules[Rule_t::Choice][0]);
         REQUIRE(sr == observer.rules[Rule_t::Weight][0]);
     }
+    SECTION("convert satisfied sum rule") {
+        Atom_t  a    = 1;
+        AggLits lits = {{4, 2}, {-3, 3}, {-2, 1}, {5, 4}};
+        convert.rule(Head_t::Disjunctive, {&a, 1}, -3, {begin(lits), lits.size()});
+        REQUIRE(observer.rules[Rule_t::Weight].empty());
+        REQUIRE(observer.rules[Rule_t::Basic].size() == 1);
+        RawRule sr = {convert.get(lit(a))};
+        REQUIRE(observer.rules[Rule_t::Basic][0] == sr);
+    }
     SECTION("convert invalid rule") {
-        std::initializer_list<Atom_t> h    = {1, 2, 3};
-        AggLits                       lits = {{4, 2}, {-3, 3}, {-2, 1}, {5, 4}};
-        REQUIRE_THROWS_AS(convert.rule(Head_t::Choice, {begin(h), h.size()}, -2, {begin(lits), lits.size()}),
-                          std::logic_error);
-        AggLits invalid = {{4, 2}, {-3, -3}};
+        std::initializer_list<Atom_t> h       = {1, 2, 3};
+        AggLits                       invalid = {{4, 2}, {-3, -3}};
         REQUIRE_THROWS_AS(convert.rule(Head_t::Choice, {begin(h), h.size()}, 2, {begin(invalid), invalid.size()}),
                           std::logic_error);
     }

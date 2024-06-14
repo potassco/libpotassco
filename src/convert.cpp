@@ -117,7 +117,8 @@ struct SmodelsConvert::SmData {
         static_assert(amc::is_trivially_relocatable_v<WLitVec>);
         using trivially_relocatable = std::true_type;
         Weight_t prio;
-        WLitVec  lits;
+        unsigned startPos;
+        unsigned endPos;
     };
     static_assert(amc::is_trivially_relocatable_v<Minimize>);
     using MinSet = amc::vector<Minimize>;
@@ -170,17 +171,19 @@ struct SmodelsConvert::SmData {
     }
 
     void addMinimize(Weight_t prio, const WeightLitSpan& lits) {
-        auto it = std::lower_bound(minimize_.begin(), minimize_.end(), prio,
-                                   [](const Minimize& lhs, Weight_t rhs) { return lhs.prio < rhs; });
-        if (it == minimize_.end() || it->prio != prio)
-            it = minimize_.insert(it, {.prio = prio, .lits = {}});
+        if (minimize_.empty() || minimize_.back().prio != prio) {
+            minimize_.push_back({.prio = prio, .startPos = minLits_.size(), .endPos = minLits_.size()});
+        }
+        auto& vec = minimize_.back();
+        POTASSCO_ASSERT(vec.endPos == minLits_.size());
         for (auto x : lits) {
             if (weight(x) < 0) {
                 x.lit    = -x.lit;
                 x.weight = -x.weight;
             }
-            it->lits.push_back(x);
+            minLits_.push_back(x);
         }
+        vec.endPos = minLits_.size();
     }
     void addExternal(Atom_t a, Value_t v) {
         if (auto& ma = mapAtom(a); not ma.head) {
@@ -193,16 +196,18 @@ struct SmodelsConvert::SmData {
         heuristic_.push_back(h);
     }
     void flushStep() {
-        minimize_.clear();
-        AtomVec().swap(extern_);
-        HeuVec().swap(heuristic_);
+        std::exchange(minimize_, {});
+        std::exchange(minLits_, {});
+        std::exchange(extern_, {});
+        std::exchange(heuristic_, {});
         output_.clear();
     }
     AtomMap     atoms_;     // maps input atoms to output atoms
     SymTab      symTab_;    // maps output atoms to their names
     AtomVec     extern_;    // external atoms
     HeuVec      heuristic_; // list of heuristic modifications not yet processed
-    MinSet      minimize_;  // set of minimize literals
+    MinSet      minimize_;  // set of minimize constraints
+    WLitVec     minLits_;   // minimize literals
     OutVec      output_;    // list of output atoms not yet processed
     RuleBuilder rule_;      // active (mapped) rule
     Atom_t      next_;      // next unused output atom
@@ -241,18 +246,22 @@ void SmodelsConvert::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) 
 }
 void SmodelsConvert::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
     if (not head.empty() || ht == Head_t::Disjunctive) {
+        POTASSCO_CHECK_PRE(std::ranges::none_of(body, [](const auto wl) { return weight(wl) < 0; }),
+                           "negative weights in body are not supported");
+        if (bound <= 0) {
+            SmodelsConvert::rule(ht, head, {});
+            return;
+        }
         data_->mapHead(head, ht).startSum(bound);
         data_->mapBody(body);
         auto mHead = data_->rule_.head();
         auto mBody = data_->rule_.sum().lits;
-        if (isSmodelsRule(ht, mHead, bound, mBody)) {
+        if (ht == Head_t::Disjunctive && mHead.size() == 1) {
             data_->rule_.end(&out_);
             return;
         }
         auto auxH = data_->newAtom();
         auto auxB = lit(auxH);
-        POTASSCO_CHECK(isSmodelsRule(Head_t::Disjunctive, {&auxH, 1}, bound, mBody), Errc::invalid_argument,
-                       "unsupported rule");
         out_.rule(Head_t::Disjunctive, {&auxH, 1}, bound, mBody);
         out_.rule(ht, mHead, {&auxB, 1});
     }
@@ -294,13 +303,23 @@ void SmodelsConvert::endStep() {
     out_.endStep();
 }
 void SmodelsConvert::flushMinimize() {
-    const SmData::Minimize* last = nullptr;
-    for (const auto& m : data_->minimize_) {
-        POTASSCO_ASSERT(not last || last->prio < m.prio);
-        data_->rule_.clear().startMinimize(m.prio);
-        data_->mapBody(std::span{m.lits}).end(&out_);
-        last = &m;
+    if (data_->minimize_.empty()) {
+        return;
     }
+    std::ranges::sort(data_->minimize_, [](const auto& lhs, const auto& rhs) {
+        return lhs.prio < rhs.prio || (lhs.prio == rhs.prio && lhs.startPos < rhs.startPos);
+    });
+    const SmData::Minimize* last = &data_->minimize_[0];
+    data_->rule_.startMinimize(last->prio);
+    for (const auto& m : data_->minimize_) {
+        if (last->prio != m.prio) {
+            data_->rule_.end(&out_);
+            data_->rule_.clear().startMinimize(m.prio);
+            last = &m;
+        }
+        data_->mapBody(WeightLitSpan{data_->minLits_.data() + m.startPos, m.endPos - m.startPos});
+    }
+    data_->rule_.end(&out_);
 }
 void SmodelsConvert::flushExternal() {
     LitSpan T{};

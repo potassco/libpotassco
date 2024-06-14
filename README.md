@@ -18,7 +18,7 @@ libpotassco is part of the potassco project. For further information please visi
 ## Installation
 
 The preferred way to build libpotassco is to use [CMake][cmake] 
-version 3.1 or later.
+version 3.16 or later.
 
 The following options can be used to configure the build:
   
@@ -27,7 +27,7 @@ The following options can be used to configure the build:
 
 For example, to build libpotassco in release mode in directory `<dir>`:
 
-    cmake -H. -B<dir>
+    cmake -S. -B<dir>
     cmake --build <dir>
 
 The following options can be used to configure the installation:
@@ -37,7 +37,7 @@ The following options can be used to configure the installation:
 
 For example, to install lpconvert and libpotassco under `/home/<usr>`:
 
-    cmake -H. -B<dir> -DCMAKE_INSTALL_PREFIX=/home/<usr> -DLIB_POTASSCO_INSTALL_LIB=ON
+    cmake -S. -B<dir> -DCMAKE_INSTALL_PREFIX=/home/<usr> -DLIB_POTASSCO_INSTALL_LIB=ON
     cmake --build <dir> --target install
 
 To use libpotassco in a cmake-based project either:

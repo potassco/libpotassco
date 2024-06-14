@@ -40,11 +40,11 @@ enum class Clause_t {
     Volatile       = 2, //!< Removable clause associated with current solving step.
     VolatileStatic = 3  //!< Unremovable clause associated with current solving step.
 };
-//! Returns whether `p` is either Volatile or VolatileStatic.
+//! Returns whether @c p is either Volatile or VolatileStatic.
 constexpr bool isVolatile(Clause_t p) {
     return (static_cast<unsigned>(p) & static_cast<unsigned>(Clause_t::Volatile)) != 0;
 }
-//! Returns whether `p` is either Static or VolatileStatic.
+//! Returns whether @c p is either Static or VolatileStatic.
 constexpr bool isStatic(Clause_t p) {
     return (static_cast<unsigned>(p) & static_cast<unsigned>(Clause_t::Static)) != 0;
 }
@@ -73,11 +73,11 @@ public:
     [[nodiscard]] virtual uint32_t level() const = 0;
     //! Returns the number of decision literals that will not be backtracked while solving.
     [[nodiscard]] virtual uint32_t rootLevel() const = 0;
-    //! Returns whether `lit` is a valid literal in this assignment.
+    //! Returns whether @c lit is a valid literal in this assignment.
     [[nodiscard]] virtual bool hasLit(Lit_t lit) const = 0;
-    //! Returns the truth value that is currently assigned to `lit` or Value_t::Free if `lit` is unassigned.
+    //! Returns the truth value that is currently assigned to @c lit or @c Value_t::Free if @c lit is unassigned.
     [[nodiscard]] virtual Value_t value(Lit_t lit) const = 0;
-    //! Returns the decision level on which `lit` was assigned or UINT32_MAX if `lit` is unassigned.
+    //! Returns the decision level on which @c lit was assigned or @c UINT32_MAX if @c lit is unassigned.
     [[nodiscard]] virtual uint32_t level(Lit_t lit) const = 0;
     //! Returns the decision literal of the given decision level.
     [[nodiscard]] virtual Lit_t decision(uint32_t) const = 0;
@@ -85,24 +85,24 @@ public:
     [[nodiscard]] virtual uint32_t trailSize() const = 0;
     //! Returns the literal in the trail at the given position.
     /*!
-     * \pre pos < trailSize()
+     * \pre <tt>pos \< trailSize()</tt>
      */
     [[nodiscard]] virtual Lit_t trailAt(uint32_t pos) const = 0;
     //! Returns the trail position of the first literal assigned at the given level.
-    /*
-     * \pre level <= level()
+    /*!
+     * \pre <tt>level \<= level()</tt>
      */
     [[nodiscard]] virtual uint32_t trailBegin(uint32_t level) const = 0;
     //! Returns the one-past-the-end position of literals assigned at the given decision level.
-    /*
+    /*!
      * \note Literals assigned at the given level are in the half-open range [trailBegin(), trailEnd()).
-     * \pre level <= level()
+     * \pre level \<= level()
      */
     [[nodiscard]] uint32_t trailEnd(uint32_t level) const;
 
     //! Returns whether the current assignment is total.
     /*!
-     * The default implementation returns unassigned() == 0.
+     * The default implementation returns <tt>unassigned() == 0.</tt>
      */
     [[nodiscard]] virtual bool isTotal() const;
     //! Returns whether the given literal is irrevocably assigned on the top level.
@@ -133,7 +133,7 @@ public:
      * \param prop   Properties to be associated with the new clause.
      *
      * \note If clause contains a volatile variable, i.e., a variable
-     * that was created with Solver::addVariable(), it is also considered volatile.
+     * that was created with @c Solver::addVariable(), it is also considered volatile.
      *
      */
     [[nodiscard]] virtual bool addClause(const Potassco::LitSpan& clause, Clause_t prop) = 0;
@@ -155,18 +155,18 @@ public:
      *
      * @{ */
 
-    //! Returns whether the active propagator watches `lit` in this solver instance.
+    //! Returns whether the active propagator watches @c lit in this solver instance.
     [[nodiscard]] virtual bool hasWatch(Lit lit) const = 0;
 
     //! Adds the active propagator to the list of propagators to be notified when the given literal is assigned in this
     //! solver instance.
     /*!
-     * \post hasWatch(lit) returns true.
+     * \post @c hasWatch(lit) returns true.
      */
     virtual void addWatch(Lit lit) = 0;
-    //! Removes the active propagator from the list of propagators watching `lit` in the given solver.
+    //! Removes the active propagator from the list of propagators watching @c lit in the given solver.
     /*!
-     * \post hasWatch(lit) returns false.
+     * \post @c hasWatch(lit) returns false.
      */
     virtual void removeWatch(Lit lit) = 0;
     //@}
@@ -178,9 +178,9 @@ public:
     //! Type for representing a set of literals that have recently changed.
     using ChangeList = Potassco::LitSpan;
     virtual ~AbstractPropagator();
-    //! Shall propagate the newly assigned literals given in `changes`.
+    //! Shall propagate the newly assigned literals given in @c changes.
     virtual void propagate(AbstractSolver& solver, const ChangeList& changes) = 0;
-    //! May update internal state of the newly unassigned literals given in `undo`.
+    //! May update internal state of the newly unassigned literals given in @c undo.
     virtual void undo(const AbstractSolver& solver, const ChangeList& undo) = 0;
     //! Similar to propagate but called on an assignment without a list of changes.
     virtual void check(AbstractSolver& solver) = 0;
@@ -234,7 +234,7 @@ public:
     //@{
     //! Returns the element at the given zero-based index.
     /*!
-     * \pre index < size(key)
+     * \pre <tt>index \< size(key)</tt>
      */
     [[nodiscard]] virtual Key_t at(Key_t arr, size_t index) const = 0;
 
@@ -256,7 +256,7 @@ public:
     //@{
     //! Returns the name of the ith element in the given map.
     /*!
-     * \pre i < size(mapK)
+     * \pre <tt>i \< size(mapK)</tt>
      * \note The order of elements in a map is unspecified and might change after a solve operation.
      */
     [[nodiscard]] virtual const char* key(Key_t mapK, size_t i) const = 0;
@@ -276,7 +276,7 @@ public:
 
     //! Creates a statistic object under the given name in the given map.
     /*!
-     * \pre writable(mapK).
+     * \pre @c writable(mapK).
      * \param mapK The map object to which the statistic object should be added.
      * \param name The name under which the statistic object should be added.
      * \param type The type of the statistic object to create.
@@ -298,7 +298,7 @@ public:
 
     //! Sets value as value for the given statistic object.
     /*!
-     * \pre writable(key).
+     * \pre @c writable(key).
      */
     virtual void set(Key_t key, double value) = 0;
     //@}

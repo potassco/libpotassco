@@ -99,9 +99,9 @@ namespace Potassco {
 struct ExpressionInfo {
     std::string_view     expression;
     std::source_location location;
-    //! Returns `loc`'s file_name() relative to source root directory.
+    //! Returns @c loc's @c file_name() relative to source root directory.
     /*!
-     * \note If the given location is not from the same source tree, file_name() is returned unmodified.
+     * \note If the given location is not from the same source tree, @c file_name() is returned unmodified.
      */
     static const char* relativeFileName(const std::source_location& loc);
 };
@@ -110,10 +110,10 @@ struct ExpressionInfo {
     Potassco::ExpressionInfo { .expression = #E, .location = POTASSCO_CURRENT_LOCATION() }
 
 using AbortHandler = void (*)(const char* msg);
-//! Sets handler as the new abort handler returns the previously installed handler.
+//! Sets handler as the new abort handler and returns the previously installed handler.
 /*!
- * \note If called, handler shall either abort the program or throw an exception. If handler is not set or is set to
- *       nullptr, std::abort() is used as the abort handler.
+ * \note A given handler shall either abort the program or throw an exception. If no handler is set, @c std::abort() is
+ *       used as the abort handler.
  */
 extern AbortHandler setAbortHandler(AbortHandler handler);
 

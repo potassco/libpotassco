@@ -33,42 +33,6 @@
 
 namespace Potassco {
 using namespace std::literals;
-enum SmodelsRule : int {
-    End             = 0,
-    Basic           = 1,
-    Cardinality     = 2,
-    Choice          = 3,
-    Generate        = 4,
-    Weight          = 5,
-    Optimize        = 6,
-    Disjunctive     = 8,
-    ClaspIncrement  = 90,
-    ClaspAssignExt  = 91,
-    ClaspReleaseExt = 92
-};
-int isSmodelsHead(Head_t t, const AtomSpan& head, bool allowConstraint) {
-    if (head.empty()) {
-        return allowConstraint && t != Head_t::Choice ? Basic : End;
-    }
-    if (t == Head_t::Choice) {
-        return Choice;
-    }
-    return head.size() == 1 ? Basic : Disjunctive;
-}
-
-int isSmodelsRule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body, bool allowConstraint) {
-    if (isSmodelsHead(t, head, allowConstraint) != Basic || bound < 0) {
-        return End;
-    }
-    auto ret = Cardinality;
-    for (const auto& wl : body) {
-        if (auto w = weight(wl); w < 0)
-            return End;
-        else if (w != 1)
-            ret = Weight;
-    }
-    return ret;
-}
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsInput
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -160,38 +124,40 @@ void SmodelsInput::matchSum(RuleBuilder& rule, bool weights) {
 bool SmodelsInput::readRules() {
     RuleBuilder rule;
     Weight_t    minPrio = 0;
-    for (unsigned rt; (rt = matchId("rule type expected")) != 0;) {
+    for (SmodelsRule_t rt; (rt = matchEnum<SmodelsRule_t>("rule type expected")) != SmodelsRule_t::End;) {
         rule.clear();
         switch (rt) {
             default: error("unrecognized rule type"); return false;
-            case Choice:
-            case Disjunctive: // n a1..an
-                rule.start(rt == Choice ? Head_t::Choice : Head_t::Disjunctive);
+            case SmodelsRule_t::Choice:
+            case SmodelsRule_t::Disjunctive: // n a1..an
+                rule.start(rt == SmodelsRule_t::Choice ? Head_t::Choice : Head_t::Disjunctive);
                 for (unsigned i = matchAtom("positive head size expected"); i--;) { rule.addHead(matchAtom()); }
                 matchBody(rule);
                 rule.end(&out_);
                 break;
-            case Basic:
+            case SmodelsRule_t::Basic:
                 rule.start(Head_t::Disjunctive).addHead(matchAtom());
                 matchBody(rule);
                 rule.end(&out_);
                 break;
-            case Cardinality: // fall through
-            case Weight:      // fall through
+            case SmodelsRule_t::Cardinality: // fall through
+            case SmodelsRule_t::Weight:      // fall through
                 rule.start(Head_t::Disjunctive).addHead(matchAtom());
-                matchSum(rule, rt == Weight);
+                matchSum(rule, rt == SmodelsRule_t::Weight);
                 rule.end(&out_);
                 break;
-            case Optimize:
+            case SmodelsRule_t::Optimize:
                 rule.startMinimize(minPrio++);
                 matchSum(rule, true);
                 rule.end(&out_);
                 break;
-            case ClaspIncrement: require(opts_.claspExt && matchId() == 0, "unrecognized rule type"); break;
-            case ClaspAssignExt:
-            case ClaspReleaseExt:
+            case SmodelsRule_t::ClaspIncrement:
+                require(opts_.claspExt && matchId() == 0, "unrecognized rule type");
+                break;
+            case SmodelsRule_t::ClaspAssignExt:
+            case SmodelsRule_t::ClaspReleaseExt:
                 require(opts_.claspExt, "unrecognized rule type");
-                if (rt == ClaspAssignExt) {
+                if (rt == SmodelsRule_t::ClaspAssignExt) {
                     auto rHead = matchAtom();
                     out_.external(rHead, static_cast<Value_t>((matchUint(0u, 2u, "0..2 expected") ^ 3) - 1));
                 }
@@ -412,9 +378,10 @@ SmodelsOutput::SmodelsOutput(std::ostream& os, bool ext, Atom_t fAtom)
     , ext_(ext)
     , inc_(false)
     , fHead_(false) {}
-SmodelsOutput& SmodelsOutput::startRule(int rt) {
-    POTASSCO_CHECK_PRE(sec_ == 0 || rt == End || rt >= ClaspIncrement, "adding rules after symbols not supported");
-    os_ << rt;
+SmodelsOutput& SmodelsOutput::startRule(SmodelsRule_t rt) {
+    POTASSCO_CHECK_PRE(sec_ == 0 || rt == SmodelsRule_t::End || rt >= SmodelsRule_t::ClaspIncrement,
+                       "adding rules after symbols not supported");
+    os_ << static_cast<unsigned>(rt);
     return *this;
 }
 SmodelsOutput& SmodelsOutput::add(unsigned i) {
@@ -451,7 +418,10 @@ SmodelsOutput& SmodelsOutput::add(Weight_t bnd, const WeightLitSpan& lits, bool 
     }
     print(os_, lits, neg, size - neg);
     if (not card) {
-        print(os_, lits, neg, size - neg, [](const WeightLit_t& wl) { return wl.weight; });
+        print(os_, lits, neg, size - neg, [](const WeightLit_t& wl) {
+            POTASSCO_CHECK_PRE(wl.weight >= 0, "invalid negative weight in weight rule");
+            return wl.weight;
+        });
     }
     return *this;
 }
@@ -467,30 +437,43 @@ void SmodelsOutput::beginStep() {
     sec_   = 0;
     fHead_ = false;
     if (ext_ && inc_) {
-        startRule(ClaspIncrement).add(0).endRule();
+        startRule(SmodelsRule_t::ClaspIncrement).add(0).endRule();
     }
 }
 void SmodelsOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
     if (head.empty() && ht == Head_t::Choice)
         return;
-    auto rt = (SmodelsRule) isSmodelsHead(ht, head, false_ != 0);
-    POTASSCO_CHECK_PRE(rt != End, "unsupported rule type");
+    POTASSCO_CHECK_PRE(false_ != 0 || not head.empty(), "empty head requires false atom");
+    auto rt = ht == Head_t::Choice ? SmodelsRule_t::Choice
+              : head.size() > 1    ? SmodelsRule_t::Disjunctive
+                                   : SmodelsRule_t::Basic;
     startRule(rt).add(ht, head).add(body).endRule();
 }
 void SmodelsOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
-    if (head.empty() && ht == Head_t::Choice)
+    if (head.empty() && ht == Head_t::Choice) {
         return;
-    auto rt = (SmodelsRule) isSmodelsRule(ht, head, bound, body, false_ != 0);
-    POTASSCO_CHECK_PRE(rt != End, "unsupported rule type");
-    startRule(rt).add(ht, head).add(bound, body, rt == Cardinality).endRule();
+    }
+    POTASSCO_CHECK_PRE(ht == Head_t::Disjunctive && head.size() < 2, "normal head expected");
+    POTASSCO_CHECK_PRE(false_ != 0 || not head.empty(), "empty head requires false atom");
+    bound   = std::max(bound, 0);
+    auto rt = SmodelsRule_t::Cardinality;
+    for (const auto& wl : body) {
+        POTASSCO_CHECK_PRE(weight(wl) >= 0, "negative weights not supported");
+        if (weight(wl) != 1) {
+            rt = SmodelsRule_t::Weight;
+        }
+    }
+    startRule(rt).add(ht, head).add(bound, body, rt == SmodelsRule_t::Cardinality).endRule();
 }
-void SmodelsOutput::minimize(Weight_t, const WeightLitSpan& lits) { startRule(Optimize).add(0, lits, false).endRule(); }
+void SmodelsOutput::minimize(Weight_t, const WeightLitSpan& lits) {
+    startRule(SmodelsRule_t::Optimize).add(0, lits, false).endRule();
+}
 void SmodelsOutput::output(const std::string_view& str, const LitSpan& cond) {
     POTASSCO_CHECK_PRE(sec_ <= 1, "adding symbols after compute not supported");
     POTASSCO_CHECK_PRE(cond.size() == 1 && lit(cond.front()) > 0,
                        "general output directive not supported in smodels format");
     if (sec_ == 0) {
-        startRule(End).endRule();
+        startRule(SmodelsRule_t::End).endRule();
         sec_ = 1;
     }
     os_ << unsigned(cond[0]) << " ";
@@ -500,16 +483,16 @@ void SmodelsOutput::output(const std::string_view& str, const LitSpan& cond) {
 void SmodelsOutput::external(Atom_t a, Value_t t) {
     POTASSCO_CHECK_PRE(ext_, "external directive not supported in smodels format");
     if (t != Value_t::Release) {
-        startRule(ClaspAssignExt).add(a).add((unsigned(t) ^ 3) - 1).endRule();
+        startRule(SmodelsRule_t::ClaspAssignExt).add(a).add((unsigned(t) ^ 3) - 1).endRule();
     }
     else {
-        startRule(ClaspReleaseExt).add(a).endRule();
+        startRule(SmodelsRule_t::ClaspReleaseExt).add(a).endRule();
     }
 }
 void SmodelsOutput::assume(const LitSpan& lits) {
     POTASSCO_CHECK_PRE(sec_ < 2, "at most one compute statement supported in smodels format");
     while (sec_ != 2) {
-        startRule(End).endRule();
+        startRule(SmodelsRule_t::End).endRule();
         ++sec_;
     }
     os_ << "B+\n";

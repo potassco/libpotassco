@@ -30,7 +30,7 @@ namespace Potassco {
  */
 ///@{
 /*!
- * Parses the given program in asp intermediate format and calls `out` on each parsed element.
+ * Parses the given program in asp intermediate format and calls @c out on each parsed element.
  */
 int readAspif(std::istream& prg, AbstractProgram& out);
 
@@ -39,19 +39,19 @@ enum class Theory_t;
 //! Class for parsing logic programs in asp intermediate format.
 class AspifInput : public ProgramReader {
 public:
-    //! Creates a new parser object that calls `out` on each parsed element.
+    //! Creates a new parser object that calls @c out on each parsed element.
     AspifInput(AbstractProgram& out);
 
 protected:
     //! Checks whether stream starts with aspif header.
     bool doAttach(bool& inc) override;
-    //! Parses the current step and throws exception on error.
+    //! Parses the current step and throws an exception on error.
     /*!
      * The function calls beginStep()/endStep() on the associated
      * output object before/after parsing the current step.
      */
     bool doParse() override;
-    //! Attempts to parse a theory directive of type t.
+    //! Attempts to parse a theory directive of type @c t.
     /*!
      * \see Potassco::Theory_t
      */
@@ -64,10 +64,7 @@ private:
     void matchWLits(bool positive);
     void matchString();
     void matchIds();
-    template <typename EnumT>
-    EnumT matchType(const char* err) {
-        return static_cast<EnumT>(matchUint(0u, enum_count<EnumT>() - 1, err));
-    }
+
     AbstractProgram& out_;
     Extra*           data_;
 };
@@ -125,13 +122,13 @@ public:
 protected:
     //! Starts writing an aspif directive.
     AspifOutput& startDir(Directive_t r);
-    //! Writes `x`.
+    //! Writes @c x.
     template <typename T>
     AspifOutput& add(T x);
-    //! Writes `size(lits)` followed by the elements in `lits`.
+    //! Writes @c size(lits) followed by the elements in @c lits.
     template <typename T>
     AspifOutput& add(const std::span<const T>& lits);
-    //! Writes `size(str)` followed by the characters in `str`.
+    //! Writes @c size(str) followed by the characters in @c str.
     AspifOutput& add(const std::string_view& str);
     //! Terminates the active directive by writing a newline.
     AspifOutput& endDir();

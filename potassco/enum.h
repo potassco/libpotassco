@@ -78,7 +78,10 @@ struct EnumHelper {
     std::optional<UT> v;
 };
 } // namespace detail
-
+/*!
+ * \addtogroup BasicTypes
+ */
+///@{
 template <typename T>
 using enum_type = std::type_identity<T>;
 
@@ -99,6 +102,7 @@ struct EnumReflect<EnumT, std::void_t<decltype(getEnumEntries(c_type<EnumT>))>> 
     static constexpr auto c_entries = getEnumEntries(c_type<EnumT>);
 };
 
+//! Internal helper macro.
 #define POTASSCO_ENUM_IMPL(ENUM_T, BASE_T, FRIEND, ...)                                                                \
     enum class ENUM_T : BASE_T { __VA_ARGS__ };                                                                        \
     FRIEND consteval auto getEnumEntries(std::type_identity<ENUM_T>) {                                                 \
@@ -110,19 +114,20 @@ struct EnumReflect<EnumT, std::void_t<decltype(getEnumEntries(c_type<EnumT>))>> 
 
 //! Defines a scoped enum at namespace scope with primitive reflection support.
 /*!
- *
- * \param ENUM_T The name of the enum to be defined. \
- * \param BASE_T The underlying (numeric) type of the enum. \
- * \param  ...   The individual enumerators. \
+ * \param ENUM_T The name of the enum to be defined.
+ * \param BASE_T The underlying (numeric) type of the enum.
+ * \param  ...   The individual enumerators.
  *
  * Example:
+ * \code
  * POTASSCO_ENUM(Color, unsigned, red = 0, green, blue);
+ * \endcode
  *
- * Reflection support:
- * - enum_count<EnumT>()   : Returns the number of enumerators in the enum, e.g. 3 for example enum Color.
- * - enum_name(EnumT e)    : Returns the name of the given element e as std::string_view, e.g. "red" for Color:red.
- * - enum_cast<EnumT>(n)   : Returns the enumerator with the given value n as an optional, e.g. Color::red for 0.
- * - enum_entries<EnumT>() : Returns the enumerators of the enum as an array of (name, "name")-pairs, e.g.
+ * \par Reflection support:
+ * - enum_count\<EnumT\>()   : Returns the number of enumerators in the enum, e.g. 3 for example enum Color.
+ * - enum_name(EnumT e)      : Returns the name of the given element e as std::string_view, e.g. "red" for Color:red.
+ * - enum_cast\<EnumT\>(n)   : Returns the enumerator with the given value n as an optional, e.g. Color::red for 0.
+ * - enum_entries\<EnumT\>() : Returns the enumerators of the enum as an array of (name, "name")-pairs, e.g.
  *                           [(Color::red, "red"), (Color::green, "green"), (Color::blue, "blue")] for enum Color.
  */
 #define POTASSCO_ENUM(ENUM_T, BASE_T, ...) POTASSCO_ENUM_IMPL(ENUM_T, BASE_T, , __VA_ARGS__)
@@ -130,9 +135,11 @@ struct EnumReflect<EnumT, std::void_t<decltype(getEnumEntries(c_type<EnumT>))>> 
 //! Defines a scoped enum at class scope with primitive reflection support.
 /*!
  * Example:
+ * \code
  * struct Foo {
  *  POTASSCO_NESTED_ENUM(Color, unsigned, red = 0, green, blue);
  * };
+ * \endcode
  */
 #define POTASSCO_NESTED_ENUM(ENUM_T, BASE_T, ...) POTASSCO_ENUM_IMPL(ENUM_T, BASE_T, friend, __VA_ARGS__)
 
@@ -157,11 +164,11 @@ consteval auto enum_count() -> std::size_t {
     return std::size(EnumReflect<EnumT>::c_entries);
 }
 
-//! Returns the name of the given enumerator `e`.
+//! Returns the name of the given enumerator @c e.
 /*!
  * \tparam EnumT An enum type with reflection support.
  * \param e Enumerator for which the name should be returned.
- * \return The stringified name of `e` or an empty string_view if `e` is not a named enumerator of EnumT.
+ * \return The stringified name of @c e or an empty string_view if @c e is not a named enumerator of EnumT.
  */
 template <typename EnumT>
 requires EnumReflect<EnumT>::value
@@ -184,5 +191,6 @@ constexpr auto enum_cast(std::underlying_type_t<EnumT> n) -> std::optional<EnumT
                ? std::optional{static_cast<EnumT>(n)}
                : std::optional<EnumT>{};
 }
+///@}
 
 } // namespace Potassco

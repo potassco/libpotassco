@@ -108,7 +108,7 @@ public:
 
     //! Stop definition of rule and add rule to out if given.
     /*!
-     * Once end() was called, the active rule is considered frozen.
+     * Once @c end() was called, the active rule is considered frozen.
      */
     RuleBuilder& end(AbstractProgram* out = nullptr);
     //! Discard active rule and unfreeze builder.

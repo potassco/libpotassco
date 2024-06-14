@@ -143,16 +143,16 @@ public:
     //@{
     //! Mark the given list of atoms as projection atoms.
     virtual void project(const AtomSpan& atoms);
-    //! Output `str` whenever condition is true in a stable model.
+    //! Output @c str whenever condition is true in a stable model.
     virtual void output(const std::string_view& str, const LitSpan& condition);
-    //! If `v` is not equal to Value_t::Release, mark a as external and assume value `v`. Otherwise, treat a as regular
-    //! atom.
+    //! If @c v is not equal to @c Value_t::Release, mark a as external and assume value @c v. Otherwise, treat @c a as
+    //! regular atom.
     virtual void external(Atom_t a, Value_t v);
     //! Assume the given literals to true during solving.
     virtual void assume(const LitSpan& lits);
-    //! Apply the given heuristic modification to atom `a` whenever condition is true.
+    //! Apply the given heuristic modification to atom @c a whenever condition is true.
     virtual void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition);
-    //! Assume an edge between `s` and `t` whenever condition is true.
+    //! Assume an edge between @c s and @c t whenever condition is true.
     virtual void acycEdge(int s, int t, const LitSpan& condition);
     //@}
 
@@ -253,7 +253,7 @@ public:
         return {data() + pos, std::min(n, size() - pos)};
     }
 
-    //! Increases the capacity of the buffer to a value that's greater or equal to @c n.
+    //! Increases the capacity of the buffer to a value that is greater or equal to @c n.
     void reserve(std::size_t n);
 
     //! Resizes the buffer to accommodate an additional @c n bytes at the end.
@@ -261,7 +261,7 @@ public:
      * If the current capacity is not sufficient, this function grows the region by reallocating a new block of memory
      * thereby invalidating all existing references into the region.
      *
-     * \post size() >= n
+     * \post <tt>size() >= n</tt>
      */
     [[nodiscard]] std::span<char> alloc(std::size_t n);
     void                          append(const void* what, std::size_t n);
@@ -279,7 +279,7 @@ public:
 
     //! Releases all allocated memory in this region.
     /*!
-     * \post size() == capacity() == 0
+     * \post <tt>size() == capacity() == 0</tt>
      */
     void release() noexcept;
 
@@ -311,15 +311,15 @@ public:
         storage_[0]          = 0;
         storage_[c_maxSmall] = static_cast<char>(c_maxSmall);
     }
-    //! Creates a string by coping `n`.
+    //! Creates a string by coping @c n.
     /*!
-     * The creation mode determines how further copies are handled. If `n` exceeds the SSO limit and `m` is set to
-     * "Shared", further copies only increase an internal reference count.
+     * The creation mode determines how further copies are handled. If @c n exceeds the SSO limit and @c m is set to
+     * @c CreateMode::Shared, further copies only increase an internal reference count.
      */
     FixedString(std::string_view n, CreateMode m = Unique);
-    //! Creates a copy of `o`.
+    //! Creates a copy of @c o.
     FixedString(const FixedString& o);
-    //! "Steals" the content of `o`.
+    //! "Steals" the content of @c o.
     constexpr FixedString(FixedString&& o) noexcept {
         if (o.small()) {
             if (std::is_constant_evaluated()) {
@@ -355,7 +355,7 @@ public:
     [[nodiscard]] constexpr std::size_t size() const {
         return small() ? c_maxSmall - static_cast<std::size_t>(storage_[c_maxSmall]) : large()->size;
     }
-    //! Returns the character at the given position, which shall be < size().
+    //! Returns the character at the given position, which shall be \< @c size().
     [[nodiscard]] constexpr char operator[](std::size_t pos) const { return c_str()[pos]; }
 
     [[nodiscard]] constexpr bool small() const { return storage_[c_maxSmall] < c_largeTag; }

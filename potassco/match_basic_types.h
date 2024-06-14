@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <ios>
 #include <iosfwd>
+#include <limits>
 #include <stdexcept>
 
 namespace Potassco {
@@ -66,12 +67,12 @@ public:
     //! Attempts to extract the given string from the input stream.
     /*!
      * If the function returns false, no characters were extracted from the stream.
-     * \pre tok.length() <= BUF_SIZE
+     * \pre <tt>tok.length() <= BUF_SIZE</tt>
      */
     bool match(std::string_view tok);
     //! Discards leading whitespace from the input stream.
     void skipWs();
-    //! Extracts up to `bufferOut.size()` characters from the input stream and copies them into the given buffer.
+    //! Extracts up to @c bufferOut.size() characters from the input stream and copies them into the given buffer.
     /*!
      * \return The number of characters copied to the given buffer.
      */
@@ -168,7 +169,7 @@ protected:
     Id_t matchId(const char* error = "id expected") { return static_cast<Id_t>(matchUint(0u, idMax, error)); }
     //! Extracts a literal (i.e. positive or negative atom) or fails with an std::exception.
     Lit_t matchLit(const char* error = "literal expected") {
-        auto res = matchInt(-static_cast<Lit_t>(varMax_), static_cast<Lit_t>(varMax_));
+        auto res = matchInt(-static_cast<Lit_t>(varMax_), static_cast<Lit_t>(varMax_), error);
         require(res != 0, error);
         return static_cast<Lit_t>(res);
     }
@@ -193,6 +194,20 @@ protected:
     int matchInt(int minV, int maxV, const char* error = "integer expected") {
         return static_cast<int>(matchNum(minV, maxV, error));
     }
+    //! Extracts a number in the range of the given enum or fails with an std::exception.
+    template <typename EnumT>
+    requires std::is_enum_v<EnumT>
+    EnumT matchEnum(const char* error) {
+        using UT = std::underlying_type_t<EnumT>;
+        if constexpr (EnumReflect<EnumT>::value) {
+            static_assert(not EnumReflect<EnumT>::c_entries.empty(), "empty enum not supported");
+            return static_cast<EnumT>(matchNum(static_cast<UT>(EnumReflect<EnumT>::c_entries.front().first),
+                                               static_cast<UT>(EnumReflect<EnumT>::c_entries.back().first), error));
+        }
+        else {
+            return static_cast<EnumT>(matchNum(std::numeric_limits<UT>::min(), std::numeric_limits<UT>::max(), error));
+        }
+    }
 
 private:
     template <std::integral T>
@@ -208,7 +223,8 @@ private:
 
 bool matchTerm(std::string_view& input, std::string_view& termOut);
 
-//! Attaches the given stream to r and calls ProgramReader::parse() with the read mode set to ProgramReader::Complete.
+//! Attaches the given stream to @c r and calls ProgramReader::parse() with the read mode set to
+//! ProgramReader::Complete.
 int readProgram(std::istream& str, ProgramReader& r);
 
 } // namespace Potassco

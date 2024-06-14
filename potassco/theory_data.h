@@ -186,12 +186,12 @@ public:
     /*!
      * Each element in terms shall be an id of a theory term
      * eventually added via one of the addTerm() overloads.
-     * \note If cond is COND_DEFERRED, the condition may later be changed via a call to setCondition().
+     * \note If cond is @c COND_DEFERRED, the condition may later be changed via a call to @c setCondition().
      */
     void addElement(Id_t elementId, const IdSpan& terms, Id_t cond = COND_DEFERRED);
     //! Changes the condition of the element with the given id.
     /*!
-     * \pre The element was previously added with condition COND_DEFERRED.
+     * \pre The element was previously added with condition @c COND_DEFERRED.
      */
     void setCondition(Id_t elementId, Id_t newCond);
 
@@ -214,7 +214,7 @@ public:
     /*!
      * \note It is the caller's responsibility to ensure that the removed term is not referenced
      * by any theory element.
-     * \note The term id of a removed term may be reused in a subsequent call to addTerm().
+     * \note The term id of a removed term may be reused in a subsequent call to @c addTerm().
      */
     void removeTerm(Id_t termId);
 
@@ -239,7 +239,7 @@ public:
     //! Returns the element with the given id or throws if no such element exists.
     [[nodiscard]] const Element& getElement(Id_t e) const;
 
-    //! Removes all theory atoms `a` for which `f(a)` returns true.
+    //! Removes all theory atoms @c a for which @c f(a) returns true.
     template <class F>
     void filter(const F& f) {
         auto** j   = const_cast<TheoryAtom**>(currBegin());
@@ -259,11 +259,11 @@ public:
     class Visitor {
     public:
         virtual ~Visitor() = default;
-        //! Visit a theory term. Should call data.accept(t, *this) to visit any arguments of the term.
+        //! Visit a theory term. Should call <tt>data.accept(t, *this)</tt> to visit any arguments of the term.
         virtual void visit(const TheoryData& data, Id_t termId, const TheoryTerm& t) = 0;
-        //! Visit a theory element. Should call data.accept(e, *this) to visit the terms of the element.
+        //! Visit a theory element. Should call <tt>data.accept(e, *this)</tt> to visit the terms of the element.
         virtual void visit(const TheoryData& data, Id_t elemId, const TheoryElement& e) = 0;
-        //! Visit the theory atom. Should call data.accept(a, *this) to visit the elements of the atom.
+        //! Visit the theory atom. Should call <tt>data.accept(a, *this)</tt> to visit the elements of the atom.
         virtual void visit(const TheoryData& data, const TheoryAtom& a) = 0;
     };
     //! Possible visitation modes.
@@ -272,7 +272,7 @@ public:
      * that were added in previous steps, i.e. before the last call to update().
      */
     enum VisitMode { visit_all, visit_current };
-    //! Calls out.visit(*this, a) for all theory atoms.
+    //! Calls <tt>out.visit(*this, a)</tt> for all theory atoms.
     void accept(Visitor& out, VisitMode m = visit_current) const;
     //! Visits terms and elements of the given atom.
     void accept(const TheoryAtom& a, Visitor& out, VisitMode m = visit_all) const;

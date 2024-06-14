@@ -69,16 +69,16 @@ bool AspifInput::doParse() {
     data_      = &data;
     auto& rule = data.rule;
     out_.beginStep();
-    for (Directive_t rt; (rt = matchType<Directive_t>("rule type or 0 expected")) != Directive_t::End; rule.clear()) {
+    for (Directive_t rt; (rt = matchEnum<Directive_t>("rule type or 0 expected")) != Directive_t::End; rule.clear()) {
         switch (rt) {
             default:
                 require(rt == Directive_t::Comment, "unrecognized rule type");
                 skipLine();
                 break;
             case Directive_t::Rule: {
-                rule.start(matchType<Head_t>("invalid head type"));
+                rule.start(matchEnum<Head_t>("invalid head type"));
                 matchAtoms();
-                if (auto bt = matchType<Body_t>("invalid body type"); bt == Body_t::Normal) {
+                if (auto bt = matchEnum<Body_t>("invalid body type"); bt == Body_t::Normal) {
                     matchLits();
                 }
                 else {
@@ -105,7 +105,7 @@ bool AspifInput::doParse() {
             }
             case Directive_t::External:
                 if (auto atom = matchAtom()) {
-                    out_.external(atom, matchType<Value_t>("value expected"));
+                    out_.external(atom, matchEnum<Value_t>("value expected"));
                 }
                 break;
             case Directive_t::Assume:
@@ -113,7 +113,7 @@ bool AspifInput::doParse() {
                 out_.assume(rule.body());
                 break;
             case Directive_t::Heuristic: {
-                auto type = matchType<Heuristic_t>("invalid heuristic modifier");
+                auto type = matchEnum<Heuristic_t>("invalid heuristic modifier");
                 auto atom = matchAtom();
                 auto bias = matchInt();
                 auto prio = matchUint("invalid heuristic priority");

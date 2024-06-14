@@ -33,6 +33,20 @@ namespace Potassco {
  * \addtogroup ParseType
  */
 ///@{
+//! Smodels rule types.
+enum class SmodelsRule_t : unsigned {
+    End             = 0,  //!< Not a rule, marks the end of all rules.
+    Basic           = 1,  //!< Normal rule, i.e. h :- l1, ..., ln.
+    Cardinality     = 2,  //!< Cardinality constraint, i.e. h :- lb {l1, ..., ln}.
+    Choice          = 3,  //!< Choice rule, i.e. {h1, ... hn} :- l1, ..., ln.
+    Generate        = 4,  //!< Generate rule - not supported.
+    Weight          = 5,  //!< Weight constraint, i.e. h :- lb {l1=w1, ..., ln=wn}.
+    Optimize        = 6,  //!< Optimize rule, i.e. minimize {l1=w1, ..., ln=wn}.
+    Disjunctive     = 8,  //!< Normal rule, i.e. h1 | ... | hn :- l1, ..., ln.
+    ClaspIncrement  = 90, //!< clasp extension for defining incremental programs.
+    ClaspAssignExt  = 91, //!< clasp extension for assigning/declaring external atoms.
+    ClaspReleaseExt = 92  //!< clasp extension for releasing external atoms.
+};
 
 //! Class for parsing logic programs in (extended) smodels format.
 class SmodelsInput : public ProgramReader {
@@ -67,10 +81,10 @@ public:
         bool cHeuristic;
         bool filter;
     };
-    //! Creates a new parser object that calls out on each parsed element.
+    //! Creates a new parser object that calls @c out on each parsed element.
     /*!
-     * \note The (optional) lookup function is used to lookup atoms referenced in _heuristic predicates. If not given,
-     *       SmodelsInput maintains an internal lookup table for this.
+     * \note The (optional) lookup function is used to lookup atoms referenced in @a _heuristic predicates.
+     *       If not given, SmodelsInput maintains an internal lookup table for this.
      */
     SmodelsInput(AbstractProgram& out, const Options& opts, AtomLookup lookup = nullptr);
     ~SmodelsInput() override;
@@ -122,14 +136,6 @@ int readSmodels(std::istream& prg, AbstractProgram& out, const SmodelsInput::Opt
  * \addtogroup WriteType
  */
 ///@{
-
-enum SmodelsRule : int;
-//! Returns a non-zero value if head can be represented in smodels format.
-int isSmodelsHead(Head_t ht, const AtomSpan& head, bool allowConstraint = false);
-//! Returns a non-zero value if rule can be represented in smodels format.
-int isSmodelsRule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body,
-                  bool allowConstraint = false);
-
 //! Writes a program in smodels numeric format to the given output stream.
 /*!
  * \note The class only supports program constructs that can be directly
@@ -156,9 +162,9 @@ public:
     void initProgram(bool inc) override;
     //! Starts a new step.
     void beginStep() override;
-    //! Writes the given rule provided that isSmodelsHead(head) returns a non-zero value.
+    //! Writes a basic, choice, or disjunctive rule or throws an exception if rule is not representable.
     void rule(Head_t t, const AtomSpan& head, const LitSpan& body) override;
-    //! Writes the given rule provided that isSmodelsRule(head, bound, body) returns a non-zero value.
+    //! Writes a cardinality or weight rule or throws an exception if rule is not representable.
     void rule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override;
     //! Writes the given minimize rule while ignoring its priority.
     void minimize(Weight_t prio, const WeightLitSpan& lits) override;
@@ -167,7 +173,7 @@ public:
      * \note Symbols shall only be added once after all rules were added.
      */
     void output(const std::string_view& str, const LitSpan& cond) override;
-    //! Writes lits as a compute statement.
+    //! Writes @c lits as a compute statement.
     /*!
      * \note The function shall be called at most once per step and only after all rules and symbols were added.
      */
@@ -178,15 +184,15 @@ public:
     void endStep() override;
 
 protected:
-    //! Starts writing an smodels-rule of type rt.
-    SmodelsOutput& startRule(int rt);
+    //! Starts writing an smodels-rule of type @c rt.
+    SmodelsOutput& startRule(SmodelsRule_t rt);
     //! Writes the given head.
     SmodelsOutput& add(Head_t ht, const AtomSpan& head);
-    //! Writes the given normal body in smodels format, i.e. size(lits) size(B-) atoms in B- atoms in B+
+    //! Writes the given normal body in smodels format, i.e. @c size(lits) @c size(B-) atoms in B- atoms in B+
     SmodelsOutput& add(const LitSpan& lits);
     //! Writes the given extended body in smodels format.
     SmodelsOutput& add(Weight_t bound, const WeightLitSpan& lits, bool card);
-    //! Writes i.
+    //! Writes @c i.
     SmodelsOutput& add(unsigned i);
     //! Terminates the active rule by writing a newline.
     SmodelsOutput& endRule();
