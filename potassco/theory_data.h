@@ -24,6 +24,7 @@
 #pragma once
 
 #include <potassco/basic_types.h>
+#include <potassco/error.h>
 
 #include <iterator>
 #include <new>
@@ -39,13 +40,19 @@ class TheoryData;
 ///@{
 //! Supported aspif theory directives.
 enum class Theory_t { Number = 0, Symbol = 1, Compound = 2, Reserved = 3, Element = 4, Atom = 5, AtomWithGuard = 6 };
+[[maybe_unused]] consteval auto enable_meta(std::type_identity<Theory_t>) { return DefaultEnum<Theory_t, 7u>(); }
 
 //! Supported aspif theory tuple types.
 enum class Tuple_t { Bracket = -3, Brace = -2, Paren = -1 };
-consteval auto getEnumEntries(enum_type<Tuple_t>) {
+[[maybe_unused]] consteval auto enable_meta(std::type_identity<Tuple_t>) { return DefaultEnum<Theory_t, 3u, -3>(); }
+[[nodiscard]] constexpr auto    parens(Tuple_t t) -> std::string_view {
     using namespace std::literals;
-    using enum Tuple_t;
-    return std::array{enumDecl(Bracket, "[]"sv), enumDecl(Brace, "{}"sv), enumDecl(Paren, "()"sv)};
+    switch (t) {
+        case Tuple_t::Bracket: return "[]"sv;
+        case Tuple_t::Brace  : return "{}"sv;
+        case Tuple_t::Paren  : return "()"sv;
+    }
+    POTASSCO_ASSERT_NOT_REACHED("unexpected tuple type");
 }
 
 //! A term is either a number, symbolic, or compound term (function or tuple).

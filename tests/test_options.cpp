@@ -45,8 +45,8 @@ TEST_CASE("Test intrusive pointer", "[options]") {
     CHECK(count == 1);
 
     // Disable bogus gcc use-after-free warning with -O2 (or above) in following section.
-    POTASSCO_WARNING_BEGIN_RELAXED
-    POTASSCO_GCC_WARNING_IGNORED("-Wuse-after-free")
+    POTASSCO_WARNING_PUSH()
+    POTASSCO_WARNING_IGNORE_GCC("-Wuse-after-free")
     SECTION("copy") {
         auto ptr2 = ptr;
         CHECK(ptr2.count() == 2);
@@ -57,7 +57,7 @@ TEST_CASE("Test intrusive pointer", "[options]") {
         CHECK(ptr2.count() == 3);
         ptr2->x = 77;
     }
-    POTASSCO_WARNING_END_RELAXED
+    POTASSCO_WARNING_POP()
 
     SECTION("move") {
         auto ptr2 = std::move(ptr);

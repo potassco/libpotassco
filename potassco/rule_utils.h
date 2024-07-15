@@ -145,12 +145,13 @@ public:
     //@}
 private:
     struct Range {
-        [[nodiscard]] uint32_t start() const { return start_type & ~3u; }
-        [[nodiscard]] uint32_t end() const { return end_flag & ~3u; }
-        [[nodiscard]] uint32_t type() const { return start_type & 3u; }
-        [[nodiscard]] bool     started() const { return end_flag & 1u; }
-        [[nodiscard]] bool     finished() const { return end_flag & 2u; }
-        [[nodiscard]] bool     open() const { return (end_flag & 3u) == 0; }
+        enum : uint32_t { sbit = 0u, ebit = 1u, mask = 3u };
+        [[nodiscard]] uint32_t start() const { return clear_mask(start_type, mask); }
+        [[nodiscard]] uint32_t end() const { return clear_mask(end_flag, mask); }
+        [[nodiscard]] uint32_t type() const { return clear_mask(start_type, ~mask); }
+        [[nodiscard]] bool     started() const { return test_bit(end_flag, sbit); }
+        [[nodiscard]] bool     finished() const { return test_bit(end_flag, ebit); }
+        [[nodiscard]] bool     open() const { return not test_any(end_flag, mask); }
         uint32_t               start_type = 0; // 4-byte aligned, align-bits = type
         uint32_t               end_flag   = 0; // 4-byte aligned, align-bits = flags
     };

@@ -14,6 +14,7 @@ set(header
 	${header_path}/aspif.h
 	${header_path}/aspif_text.h
 	${header_path}/basic_types.h
+	${header_path}/bits.h
 	${header_path}/clingo.h
 	${header_path}/convert.h
 	${header_path}/enum.h

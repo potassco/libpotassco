@@ -288,17 +288,31 @@ TEST_CASE("String conversion", "[string]") {
     }
 }
 
-POTASSCO_ENUM(Foo_t, unsigned, Value1 = 0, Value2 = 1, Value3 = 2, Value4, Value5 = 7, Value6 = 7 + 1);
+enum class Foo_t : unsigned { Value1 = 0, Value2 = 1, Value3 = 2, Value4, Value5 = 7, Value6 = 7 + 1 };
+[[maybe_unused]] consteval auto enable_meta(std::type_identity<Foo_t>) {
+    return Potassco::reflectEntries<Foo_t, 0u, 8u>();
+}
+
 using namespace std::literals;
 static_assert(Potassco::enum_count<Foo_t>() == 6, "Wrong count");
 static_assert(Potassco::enum_name(Foo_t::Value3) == "Value3"sv, "Wrong name");
-
 TEST_CASE("Enum entries", "[enum]") {
-    using Potassco::enumDecl;
+    using P = std::pair<Foo_t, std::string_view>;
     using enum Foo_t;
-    REQUIRE(Potassco::enum_entries<Foo_t>() == std::array{enumDecl(Value1, "Value1"sv), enumDecl(Value2, "Value2"sv),
-                                                          enumDecl(Value3, "Value3"sv), enumDecl(Value4, "Value4"sv),
-                                                          enumDecl(Value5, "Value5"sv), enumDecl(Value6, "Value6"sv)});
+
+    REQUIRE(Potassco::enum_entries<Foo_t>() == std::array{P(Value1, "Value1"sv), P(Value2, "Value2"sv),
+                                                          P(Value3, "Value3"sv), P(Value4, "Value4"sv),
+                                                          P(Value5, "Value5"sv), P(Value6, "Value6"sv)});
+
+    REQUIRE(Potassco::enum_min<Foo_t>() == 0);
+    REQUIRE(Potassco::enum_max<Foo_t>() == 8);
+    REQUIRE_FALSE(Potassco::enum_cast<Foo_t>(4).has_value());
+    REQUIRE_FALSE(Potassco::enum_cast<Foo_t>(5).has_value());
+    REQUIRE_FALSE(Potassco::enum_cast<Foo_t>(6).has_value());
+    REQUIRE(Potassco::enum_cast<Foo_t>(7) == Foo_t::Value5);
+    enum NoMeta : uint8_t {};
+    REQUIRE(Potassco::enum_min<NoMeta>() == 0u);
+    REQUIRE(Potassco::enum_max<NoMeta>() == 255u);
 }
 
 TEST_CASE("Enum to string", "[enum]") {
@@ -316,6 +330,7 @@ TEST_CASE("Enum from string", "[enum]") {
     REQUIRE(string_cast<Foo_t>("Value3") == Foo_t::Value3);
     REQUIRE(string_cast<Foo_t>("7") == Foo_t::Value5);
     REQUIRE(string_cast<Foo_t>("Value4") == Foo_t::Value4);
+    REQUIRE(string_cast<Foo_t>("vAlUe4") == Foo_t::Value4);
     REQUIRE(string_cast<Foo_t>("8") == Foo_t::Value6);
     REQUIRE_FALSE(string_cast<Foo_t>("9").has_value());
     REQUIRE_FALSE(string_cast<Foo_t>("Value98").has_value());

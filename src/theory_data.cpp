@@ -57,19 +57,19 @@ struct TheoryTerm::FuncData {
     POTASSCO_WARNING_END_RELAXED
 };
 
-constexpr uint64_t c_nulTerm = static_cast<uint64_t>(-1);
-constexpr uint64_t typeMask  = static_cast<uint64_t>(3);
+constexpr uint64_t c_nulTerm  = static_cast<uint64_t>(-1);
+constexpr uint64_t c_typeMask = static_cast<uint64_t>(3);
 static uint64_t    assertPtr(const void* p, uint32_t mask) {
     auto data = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(p));
-    POTASSCO_ASSERT((data & mask) == 0u, "Invalid pointer alignment");
+    POTASSCO_ASSERT(not test_any(data, mask), "Invalid pointer alignment");
     return data | mask;
 }
-Theory_t TheoryTerm::type() const { return static_cast<Theory_t>(data_ & typeMask); }
+Theory_t TheoryTerm::type() const { return static_cast<Theory_t>(clear_mask(data_, ~c_typeMask)); }
 int      TheoryTerm::number() const {
     POTASSCO_CHECK(type() == Theory_t::Number, Errc::invalid_argument, "Term is not a number");
     return static_cast<int>(data_ >> 2);
 }
-uintptr_t   TheoryTerm::getPtr() const { return static_cast<uintptr_t>(data_ & ~typeMask); }
+uintptr_t   TheoryTerm::getPtr() const { return static_cast<uintptr_t>(clear_mask(data_, c_typeMask)); }
 const char* TheoryTerm::symbol() const {
     POTASSCO_CHECK(type() == Theory_t::Symbol, Errc::invalid_argument, "Term is not a symbol");
     return reinterpret_cast<const char*>(getPtr());

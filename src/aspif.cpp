@@ -82,6 +82,7 @@ bool AspifInput::doParse() {
                     matchLits();
                 }
                 else {
+                    require(bt == Body_t::Sum, "unexpected body type");
                     rule.startSum(matchWeight());
                     matchWLits(true);
                 }
@@ -166,7 +167,7 @@ void AspifInput::matchTheory(Theory_t rt) {
             out_.theoryTerm(tId, data_->sym.view());
             break;
         case Theory_t::Compound: {
-            auto type = matchInt(-static_cast<int>(enum_count<Tuple_t>()), INT_MAX, "unrecognized compound term type");
+            auto type = matchInt("unrecognized compound term type");
             matchIds();
             out_.theoryTerm(tId, type, data_->ids);
             break;
@@ -211,7 +212,7 @@ AspifOutput& AspifOutput::startDir(Directive_t r) {
 template <typename T>
 AspifOutput& AspifOutput::add(T x) {
     if constexpr (std::is_enum_v<T>)
-        os_ << " " << static_cast<std::underlying_type_t<T>>(x);
+        os_ << " " << to_underlying(x);
     else
         os_ << " " << x;
     return *this;

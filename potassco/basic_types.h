@@ -34,8 +34,10 @@
  * A specification of aspif can be found in Appendix A of:
  * https://www.cs.uni-potsdam.de/wv/publications/DBLP_conf/iclp/GebserKKOSW16x.pdf
  */
-#include <potassco/enum.h>
 #include <potassco/platform.h>
+
+#include <potassco/bits.h>
+#include <potassco/enum.h>
 
 #include <cstring>
 #include <memory>
@@ -95,28 +97,45 @@ using LitSpan       = std::span<const Lit_t>;
 using WeightLitSpan = std::span<const WeightLit_t>;
 
 //! Supported rule head types.
-POTASSCO_ENUM(Head_t, unsigned, Disjunctive = 0, Choice = 1);
+enum class Head_t : unsigned { Disjunctive = 0, Choice = 1 };
+[[maybe_unused]] consteval auto enable_meta(std::type_identity<Head_t>) { return DefaultEnum<Head_t, 2u>(); }
 
 //! Supported rule body types.
-POTASSCO_ENUM(Body_t, unsigned, Normal = 0, Sum = 1, Count = 2);
+enum class Body_t : unsigned { Normal = 0, Sum = 1, Count = 2 };
+[[maybe_unused]] consteval auto enable_meta(std::type_identity<Body_t>) { return DefaultEnum<Body_t, 3u>(); }
 
 //! Type representing an external value.
-POTASSCO_ENUM(Value_t, unsigned, Free = 0, True = 1, False = 2, Release = 3);
+enum class Value_t : unsigned { Free = 0, True = 1, False = 2, Release = 3 };
+[[maybe_unused]] consteval auto enable_meta(std::type_identity<Value_t>) {
+    using enum Value_t;
+    using namespace std::literals;
+    return EnumEntries(Free, "free"sv, True, "true"sv, False, "false"sv, Release, "release"sv);
+}
 
 //! Supported modifications for domain heuristic.
 enum class Heuristic_t : unsigned { Level = 0, Sign = 1, Factor = 2, Init = 3, True = 4, False = 5 };
-consteval auto getEnumEntries(enum_type<Heuristic_t>) {
-    using namespace std::literals;
+[[maybe_unused]] consteval auto enable_meta(std::type_identity<Heuristic_t>) {
     using enum Heuristic_t;
-    return std::array{
-        enumDecl(Level, "level"sv), enumDecl(Sign, "sign"sv), enumDecl(Factor, "factor"sv),
-        enumDecl(Init, "init"sv),   enumDecl(True, "true"sv), enumDecl(False, "false"sv),
-    };
+    using namespace std::literals;
+    return EnumEntries(Level, "level"sv, Sign, "sign"sv, Factor, "factor"sv, Init, "init"sv, True, "true"sv, False,
+                       "false"sv);
 }
 
 //! Supported aspif directives.
-POTASSCO_ENUM(Directive_t, unsigned, End = 0, Rule = 1, Minimize = 2, Project = 3, Output = 4, External = 5, Assume = 6,
-              Heuristic = 7, Edge = 8, Theory = 9, Comment = 10);
+enum class Directive_t : unsigned {
+    End       = 0,
+    Rule      = 1,
+    Minimize  = 2,
+    Project   = 3,
+    Output    = 4,
+    External  = 5,
+    Assume    = 6,
+    Heuristic = 7,
+    Edge      = 8,
+    Theory    = 9,
+    Comment   = 10
+};
+[[maybe_unused]] consteval auto enable_meta(std::type_identity<Directive_t>) { return DefaultEnum<Directive_t, 11u>(); }
 
 //! Basic callback interface for constructing a logic program.
 class AbstractProgram {

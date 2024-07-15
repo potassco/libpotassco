@@ -198,15 +198,7 @@ protected:
     template <typename EnumT>
     requires std::is_enum_v<EnumT>
     EnumT matchEnum(const char* error) {
-        using UT = std::underlying_type_t<EnumT>;
-        if constexpr (EnumReflect<EnumT>::value) {
-            static_assert(not EnumReflect<EnumT>::c_entries.empty(), "empty enum not supported");
-            return static_cast<EnumT>(matchNum(static_cast<UT>(EnumReflect<EnumT>::c_entries.front().first),
-                                               static_cast<UT>(EnumReflect<EnumT>::c_entries.back().first), error));
-        }
-        else {
-            return static_cast<EnumT>(matchNum(std::numeric_limits<UT>::min(), std::numeric_limits<UT>::max(), error));
-        }
+        return static_cast<EnumT>(matchNum(enum_min<EnumT>(), enum_max<EnumT>(), error));
     }
 
 private:

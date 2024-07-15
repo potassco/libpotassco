@@ -34,20 +34,21 @@ namespace Potassco {
 ///@{
 
 //! Supported clause types in theory propagation.
-enum class Clause_t {
-    Learnt         = 0, //!< Cumulative removable (i.e. subject to nogood deletion) clause.
-    Static         = 1, //!< Cumulative unremovable clause.
-    Volatile       = 2, //!< Removable clause associated with current solving step.
-    VolatileStatic = 3  //!< Unremovable clause associated with current solving step.
+enum class Clause_t : unsigned {
+    Learnt         = 0u, //!< Cumulative removable (i.e. subject to nogood deletion) clause.
+    Static         = 1u, //!< Cumulative unremovable clause.
+    Volatile       = 2u, //!< Removable clause associated with current solving step.
+    VolatileStatic = 3u  //!< Unremovable clause associated with current solving step.
 };
+[[maybe_unused]] consteval auto enable_ops(std::type_identity<Clause_t>) -> BitOps;
 //! Returns whether @c p is either Volatile or VolatileStatic.
-constexpr bool isVolatile(Clause_t p) {
-    return (static_cast<unsigned>(p) & static_cast<unsigned>(Clause_t::Volatile)) != 0;
-}
+constexpr bool isVolatile(Clause_t p) { return test(p, Clause_t::Volatile); }
+static_assert(isVolatile(Clause_t::Volatile) && isVolatile(Clause_t::VolatileStatic) &&
+              isVolatile(Clause_t::Learnt | Clause_t::Volatile));
 //! Returns whether @c p is either Static or VolatileStatic.
-constexpr bool isStatic(Clause_t p) {
-    return (static_cast<unsigned>(p) & static_cast<unsigned>(Clause_t::Static)) != 0;
-}
+constexpr bool isStatic(Clause_t p) { return test(p, Clause_t::Static); }
+static_assert(isStatic(Clause_t::Static) && isStatic(Clause_t::VolatileStatic) &&
+              isStatic(Clause_t::Volatile | Clause_t::Static));
 
 //! Named constants.
 enum class Statistics_t {

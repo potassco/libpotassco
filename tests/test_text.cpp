@@ -580,9 +580,9 @@ TEST_CASE("Text writer writes theory", "[text]") {
     out.beginStep();
     SECTION("parens") {
         using namespace std::literals;
-        CHECK(enum_name(Tuple_t::Paren) == "()"sv);
-        CHECK(enum_name(Tuple_t::Brace) == "{}"sv);
-        CHECK(enum_name(Tuple_t::Bracket) == "[]"sv);
+        CHECK(parens(Tuple_t::Paren) == "()"sv);
+        CHECK(parens(Tuple_t::Brace) == "{}"sv);
+        CHECK(parens(Tuple_t::Bracket) == "[]"sv);
     }
 
     SECTION("write empty atom") {

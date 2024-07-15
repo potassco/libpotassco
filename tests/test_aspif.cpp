@@ -402,6 +402,52 @@ TEST_CASE("Test Basic", "[rule]") {
         CHECK(lit(-4) < wl);
         CHECK(wl > lit(-4));
     }
+    SECTION("enums") {
+        using std::literals::operator""sv;
+        CHECK(enum_min<Directive_t>() == 0);
+        CHECK(enum_max<Directive_t>() == 10);
+        CHECK(enum_count<Directive_t>() == 11);
+
+        CHECK(enum_min<Head_t>() == 0);
+        CHECK(enum_max<Head_t>() == 1);
+        CHECK(enum_count<Head_t>() == 2);
+
+        CHECK(enum_min<Body_t>() == 0);
+        CHECK(enum_max<Body_t>() == 2);
+        CHECK(enum_count<Body_t>() == 3);
+
+        CHECK(enum_min<Value_t>() == 0);
+        CHECK(enum_max<Value_t>() == 3);
+        CHECK(enum_count<Value_t>() == 4);
+        static_assert(enum_name(Value_t::False) == "false"sv);
+        static_assert(enum_name(Value_t::Release) == "release"sv);
+
+        CHECK(enum_min<Heuristic_t>() == 0);
+        CHECK(enum_max<Heuristic_t>() == 5);
+        CHECK(enum_count<Heuristic_t>() == 6);
+
+        static_assert(enum_name(Heuristic_t::Init) == "init"sv);
+        static_assert(enum_name(Heuristic_t::Level) == "level"sv);
+
+        CHECK(enum_min<Theory_t>() == 0);
+        CHECK(enum_max<Theory_t>() == 6);
+        CHECK(enum_count<Theory_t>() == 7);
+
+        CHECK(enum_min<Tuple_t>() == -3);
+        CHECK(enum_max<Tuple_t>() == -1);
+        CHECK(enum_count<Tuple_t>() == 3);
+    }
+    SECTION("bits") {
+        unsigned n = 0;
+        CHECK(store_set_bit(n, 2u) == 4u);
+        CHECK(test_bit(n, 2u));
+        CHECK(store_toggle_bit(n, 3u) == 12u);
+        CHECK(test_bit(n, 3u));
+        CHECK(store_toggle_bit(n, 2u) == 8u);
+        CHECK_FALSE(test_bit(n, 2u));
+        CHECK(store_clear_bit(n, 3u) == 0u);
+        CHECK(n == 0);
+    }
 }
 TEST_CASE("Test RuleBuilder", "[rule]") {
     RuleBuilder rb;

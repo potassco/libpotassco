@@ -22,6 +22,7 @@
 // IN THE SOFTWARE.
 //
 #pragma once
+#include <potassco/enum.h>
 #include <potassco/platform.h>
 
 #include <system_error>
@@ -34,14 +35,14 @@ namespace Potassco {
 enum class Errc : std::underlying_type_t<std::errc> {
     precondition_fail = -1,
     // std::bad_alloc
-    bad_alloc = std::underlying_type_t<std::errc>(std::errc::not_enough_memory),
+    bad_alloc = to_underlying(std::errc::not_enough_memory),
     // standard logic errors
-    length_error     = std::underlying_type_t<std::errc>(std::errc::argument_list_too_long),
-    invalid_argument = std::underlying_type_t<std::errc>(std::errc::invalid_argument),
-    domain_error     = std::underlying_type_t<std::errc>(std::errc::argument_out_of_domain),
-    out_of_range     = std::underlying_type_t<std::errc>(std::errc::result_out_of_range),
+    length_error     = to_underlying(std::errc::argument_list_too_long),
+    invalid_argument = to_underlying(std::errc::invalid_argument),
+    domain_error     = to_underlying(std::errc::argument_out_of_domain),
+    out_of_range     = to_underlying(std::errc::result_out_of_range),
     // standard runtime errors
-    overflow_error = std::underlying_type_t<std::errc>(std::errc::value_too_large),
+    overflow_error = to_underlying(std::errc::value_too_large),
 };
 
 class RuntimeError : public std::runtime_error {

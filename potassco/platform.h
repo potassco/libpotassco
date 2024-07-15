@@ -38,11 +38,13 @@
 #define POTASSCO_ATTR_NORETURN [[noreturn]]
 
 #if defined(_MSC_VER)
-#define POTASSCO_PRAGMA_TODO(X)        __pragma(message(__FILE__ "(" POTASSCO_STRING(__LINE__) ") : TODO: " X))
-#define POTASSCO_FUNC_NAME             __FUNCTION__
-#define POTASSCO_WARNING_BEGIN_RELAXED __pragma(warning(push)) __pragma(warning(disable : 4200))
-
-#define POTASSCO_WARNING_END_RELAXED __pragma(warning(pop))
+#define POTASSCO_WARNING_PUSH()         __pragma(warning(push))
+#define POTASSCO_WARNING_POP()          __pragma(warning(pop))
+#define POTASSCO_WARNING_IGNORE_MSVC(X) __pragma(warning(disable : X))
+#define POTASSCO_PRAGMA_TODO(X)         __pragma(message(__FILE__ "(" POTASSCO_STRING(__LINE__) ") : TODO: " X))
+#define POTASSCO_FUNC_NAME              __FUNCTION__
+#define POTASSCO_WARNING_BEGIN_RELAXED  POTASSCO_WARNING_PUSH() POTASSCO_WARNING_IGNORE_MSVC(4200)
+#define POTASSCO_WARNING_END_RELAXED    POTASSCO_WARNING_POP()
 #define POTASSCO_ATTRIBUTE_FORMAT(fp, ap)
 
 #elif defined(__GNUC__) || defined(__clang__)
@@ -60,18 +62,23 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
 #pragma clang diagnostic ignored "-Wvariadic-macros"
-#define POTASSCO_WARNING_BEGIN_RELAXED                                                                                 \
-    _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wzero-length-array\"")
-#define POTASSCO_WARNING_END_RELAXED _Pragma("clang diagnostic pop")
+#define POTASSCO_WARNING_PUSH()          _Pragma("clang diagnostic push")
+#define POTASSCO_WARNING_POP()           _Pragma("clang diagnostic pop")
+#define POTASSCO_WARNING_IGNORE_CLANG(X) _Pragma(POTASSCO_STRING(clang diagnostic ignored X))
+#define POTASSCO_WARNING_BEGIN_RELAXED   POTASSCO_WARNING_PUSH() POTASSCO_WARNING_IGNORE_CLANG("-Wzero-length-array")
+#define POTASSCO_WARNING_END_RELAXED     POTASSCO_WARNING_POP()
 #else
 #pragma GCC diagnostic push
 #pragma GCC system_header
+#define POTASSCO_WARNING_PUSH()        _Pragma("GCC diagnostic push") POTASSCO_WARNING_IGNORE_GCC("-Wpragmas")
+#define POTASSCO_WARNING_POP()         _Pragma("GCC diagnostic pop")
+#define POTASSCO_WARNING_IGNORE_GCC(X) _Pragma(POTASSCO_STRING(GCC diagnostic ignored X))
 #define POTASSCO_WARNING_BEGIN_RELAXED                                                                                 \
-    _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wpragmas\"")                                     \
-        _Pragma("GCC diagnostic ignored \"-Wpedantic\"") _Pragma("GCC diagnostic ignored \"-pedantic\"")               \
-            _Pragma("GCC diagnostic ignored \"-Wsign-conversion\"")
-#define POTASSCO_WARNING_END_RELAXED    _Pragma("GCC diagnostic pop")
-#define POTASSCO_GCC_WARNING_IGNORED(X) POTASSCO_APPLY_PRAGMA(GCC diagnostic ignored X)
+    POTASSCO_WARNING_PUSH()                                                                                            \
+    POTASSCO_WARNING_IGNORE_GCC("-Wpedantic")                                                                          \
+    POTASSCO_WARNING_IGNORE_GCC("-pedantic")                                                                           \
+    POTASSCO_WARNING_IGNORE_GCC("-Wsign-conversion")
+#define POTASSCO_WARNING_END_RELAXED POTASSCO_WARNING_POP()
 #endif
 #else
 #define POTASSCO_FUNC_NAME __FILE__
@@ -84,9 +91,14 @@
 #undef POTASSCO_PRAGMA_TODO
 #define POTASSCO_PRAGMA_TODO(X)
 #endif
-
-#if not defined(POTASSCO_GCC_WARNING_IGNORED)
-#define POTASSCO_GCC_WARNING_IGNORED(X)
+#if not defined(POTASSCO_WARNING_IGNORE_GCC)
+#define POTASSCO_WARNING_IGNORE_GCC(...)
+#endif
+#if not defined(POTASSCO_WARNING_IGNORE_CLANG)
+#define POTASSCO_WARNING_IGNORE_CLANG(...)
+#endif
+#if not defined(POTASSCO_WARNING_IGNORE_MSVC)
+#define POTASSCO_WARNING_IGNORE_MSVC(...)
 #endif
 
 static_assert(UINTPTR_MAX <= UINT64_MAX, "Unsupported platform!");

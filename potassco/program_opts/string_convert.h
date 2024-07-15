@@ -151,8 +151,7 @@ std::from_chars_result fromChars(std::string_view in, C& out) {
     return detail::success(in, 0);
 }
 
-template <typename EnumT>
-requires EnumReflect<EnumT>::value
+template <HasEnumEntries EnumT>
 std::from_chars_result fromChars(std::string_view in, EnumT& out) {
     // try numeric extraction first
     using UT = std::underlying_type_t<EnumT>;
@@ -228,13 +227,12 @@ S& toChars(S& out, T in) {
     auto* end = detail::writeFloat(std::begin(temp), std::end(temp), static_cast<double>(in));
     return out.append(std::string_view{temp, end});
 }
-template <CharBuffer S, typename EnumT>
-requires EnumReflect<EnumT>::value
+template <CharBuffer S, HasEnumEntries EnumT>
 S& toChars(S& out, EnumT enumT) {
     if (auto name = Potassco::enum_name(enumT); not name.empty())
         return out.append(name);
     else
-        return toChars(out, static_cast<std::underlying_type_t<EnumT>>(enumT));
+        return toChars(out, to_underlying(enumT));
 }
 
 template <CharBuffer S, typename T, typename U>

@@ -153,18 +153,12 @@ bool AspifTextInput::matchDirective() {
         auto v = Value_t::False;
         matchDelim('.');
         if (matchOpt("["sv)) {
-            if (matchOpt("true"sv)) {
-                v = Value_t::True;
-            }
-            else if (matchOpt("free"sv)) {
-                v = Value_t::Free;
-            }
-            else if (matchOpt("release"sv)) {
-                v = Value_t::Release;
-            }
-            else {
-                require(matchOpt("false"sv), "<value> expected");
-            }
+            require(std::ranges::any_of(enum_entries<Value_t>(),
+                                        [&](const auto& e) {
+                                            v = e.first;
+                                            return matchOpt(e.second);
+                                        }),
+                    "<value> expected");
             matchDelim(']');
         }
         out_->external(a, v);
@@ -626,7 +620,7 @@ std::ostream& AspifTextOutput::Data::appendTerm(std::ostream& os, Id_t tId) cons
             }
             os << fSym;
         }
-        auto parens = Potassco::enum_name(term.isTuple() ? term.tuple() : Potassco::Tuple_t::Paren);
+        auto parens = Potassco::parens(term.isTuple() ? term.tuple() : Potassco::Tuple_t::Paren);
         auto sep    = ""sv;
         os << parens.substr(0, 1);
         for (auto e : term) { appendTerm(os << std::exchange(sep, ", "sv), e); }
@@ -757,11 +751,9 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
                 break;
             case Directive_t::External:
                 printName(os << "#external ", next<Atom_t>(pos));
-                switch (next<Value_t>(pos)) {
-                    default              : break;
-                    case Value_t::Free   : term = ". [free]"; break;
-                    case Value_t::True   : term = ". [true]"; break;
-                    case Value_t::Release: term = ". [release]"; break;
+                if (auto v = next<Value_t>(pos); v != Value_t::False) {
+                    os << ". [" << enum_name(v) << "]";
+                    term = "";
                 }
                 break;
             case Directive_t::Assume: printCondition(os << "#assume{", pos) << '}'; break;
@@ -794,7 +786,7 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
                     os << "#show " << id << "/0.\n";
                 }
                 else if (arity != last.second || id != last.first) {
-                    temp.resize(name->size());
+                    temp.resize(static_cast<decltype(temp)::size_type>(name->size()));
                     auto w = snprintf(temp.data(), temp.size(), "%.*s/%d", (int) id.size(), id.data(), arity);
                     POTASSCO_ASSERT(w > 0 && static_cast<std::size_t>(w) > id.size());
                     auto pred = std::string_view{temp.data(), temp.data() + static_cast<std::size_t>(w)};

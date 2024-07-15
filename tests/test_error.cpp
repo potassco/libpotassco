@@ -41,7 +41,8 @@ void failThrow(Error_t, const Potassco::ExpressionInfo& info, std::string m) {
 } // namespace User
 
 namespace Potassco::Test {
-
+POTASSCO_WARNING_PUSH()
+POTASSCO_WARNING_IGNORE_MSVC(4702) // unreachable code
 TEST_CASE("Assertion and Error", "[error]") {
     namespace CM         = Catch::Matchers;
     auto makeError       = [](std::errc ec = std::errc::invalid_argument) { return detail::translateEc(ec); };
@@ -139,10 +140,7 @@ TEST_CASE("Assertion and Error", "[error]") {
 
     SECTION("fail ec") {
         auto           e         = POTASSCO_CAPTURE_EXPRESSION(expression);
-        constexpr auto errcMatch = [](Errc lhs, std::errc rhs) {
-            return static_cast<std::underlying_type_t<Errc>>(lhs) ==
-                   static_cast<std::underlying_type_t<std::errc>>(rhs);
-        };
+        constexpr auto errcMatch = [](Errc lhs, std::errc rhs) { return to_underlying(lhs) == to_underlying(rhs); };
         SECTION("logic errors") {
             static_assert(errcMatch(Errc::invalid_argument, std::errc::invalid_argument), "unexpected mapping");
             static_assert(errcMatch(Errc::domain_error, std::errc::argument_out_of_domain), "unexpected mapping");
@@ -237,6 +235,7 @@ TEST_CASE("Assertion and Error", "[error]") {
         }
     }
 }
+POTASSCO_WARNING_POP()
 
 TEST_CASE("Scope exit", "[error]") {
     SECTION("simple") {

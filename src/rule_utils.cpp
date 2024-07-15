@@ -80,12 +80,14 @@ RuleBuilder& RuleBuilder::clear() {
     head_ = body_ = {};
     return *this;
 }
-bool RuleBuilder::frozen() const { return (head_.end_flag & 3u) == 3u && (body_.end_flag & 3u) == 3u; }
+bool RuleBuilder::frozen() const {
+    return test_mask(head_.end_flag, Range::mask) && test_mask(body_.end_flag, Range::mask);
+}
 void RuleBuilder::start(Range& r, uint32_t type, const Weight_t* bound) {
     if (not frozen()) {
         POTASSCO_CHECK_PRE(r.open(), "%s already started", (&r == &head_ ? "Head" : "Body"));
         if (auto& other = &r == &head_ ? body_ : head_; not other.open()) {
-            other.end_flag |= 2u;
+            store_set_bit(other.end_flag, Range::ebit);
         }
     }
     else {
@@ -95,8 +97,8 @@ void RuleBuilder::start(Range& r, uint32_t type, const Weight_t* bound) {
         new (mem_.alloc(sizeof(Weight_t)).data()) Weight_t(*bound);
     }
     auto pos = mem_.size();
-    POTASSCO_ASSERT((pos & 3u) == 0u, "unexpected alignment");
-    r = Range{.start_type = pos | type, .end_flag = pos | 1u};
+    POTASSCO_ASSERT(not test_any(pos, Range::mask), "unexpected alignment");
+    r = Range{.start_type = set_mask(pos, type), .end_flag = set_bit(pos, Range::sbit)};
 }
 template <typename T>
 void RuleBuilder::extend(Range& r, const T& elem, const char* what) {
@@ -214,8 +216,8 @@ Rule_t RuleBuilder::rule() const {
     }
 }
 RuleBuilder& RuleBuilder::end(AbstractProgram* out) {
-    head_.end_flag |= 3u;
-    body_.end_flag |= 3u;
+    store_set_mask(head_.end_flag, Range::mask);
+    store_set_mask(body_.end_flag, Range::mask);
     if (out) {
         if (bodyType() == Body_t::Normal) {
             out->rule(headType(), head(), body());
