@@ -234,6 +234,13 @@ int xconvert(const char* x, double& out, const char** errPos, int) {
 	return parsed(err != x, err, errPos);
 }
 
+int xconvert(const char* x, float& out, const char** errPos, int i) {
+	double temp;
+	int r = xconvert(x, temp, errPos, i);
+	if (r > 0) { out = static_cast<float>(temp); }
+	return r;
+}
+
 int xconvert(const char* x, const char*& out, const char** errPos, int) {
 	out = x;
 	if (errPos) { *errPos = x + strlen(x); }
