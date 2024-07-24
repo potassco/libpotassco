@@ -216,6 +216,13 @@ bool SmodelsInput::readSymbols() {
                 auto space = deferredDom.alloc(c_defSize + n0.size());
                 std::memcpy(space.data(), &def, c_defSize);
                 std::memcpy(space.data() + c_defSize, n0.data(), n0.size());
+                if (opts_.filter && not atoms_) {
+                    atoms_  = std::make_unique<StringTab>();
+                    lookup_ = [this, prev = std::move(lookup_)](std::string_view aName) {
+                        auto a = atoms_->findOr(aName, 0);
+                        return a || not prev ? a : prev(aName);
+                    };
+                }
             }
             filter = opts_.filter;
         }
@@ -227,7 +234,7 @@ bool SmodelsInput::readSymbols() {
                                scratch.data());
         }
     }
-    for (auto dom = deferredDom.view(); dom.size() > c_defSize;) {
+    for (auto dom = deferredDom.view(); dom.size() >= c_defSize;) {
         Deferred data;
         std::memcpy(&data, dom.data(), c_defSize);
         dom.remove_prefix(c_defSize);
