@@ -250,10 +250,10 @@ TEST_CASE("Test DynamicBuffer", "[rule]") {
         }
     }
 }
-TEST_CASE("Test FixedString", "[rule]") {
+TEST_CASE("Test ConstString", "[rule]") {
     SECTION("empty") {
-        static_assert(sizeof(FixedString) == 24);
-        FixedString s;
+        static_assert(sizeof(ConstString) == 24);
+        ConstString s;
         REQUIRE(s.size() == 0);
         REQUIRE(s.c_str() != nullptr);
         REQUIRE_FALSE(*s.c_str());
@@ -262,7 +262,7 @@ TEST_CASE("Test FixedString", "[rule]") {
         std::string v;
         for (unsigned i = 0;; ++i) {
             v.assign(i, 'x');
-            FixedString s(v);
+            ConstString s(v);
             REQUIRE(v.size() == i);
             REQUIRE(s.size() == v.size());
             REQUIRE(std::strcmp(s.c_str(), v.c_str()) == 0);
@@ -274,15 +274,15 @@ TEST_CASE("Test FixedString", "[rule]") {
     }
     SECTION("deep copy") {
         std::string_view sv("small");
-        FixedString      s(sv);
-        FixedString      s2(s);
+        ConstString      s(sv);
+        ConstString      s2(s);
         REQUIRE(s == sv);
         REQUIRE_FALSE(s.shareable());
         REQUIRE(s2 == sv);
         REQUIRE((void*) s.c_str() != (void*) s2.c_str());
         std::string large(32, 'x');
-        FixedString s3(large);
-        FixedString s4(s3);
+        ConstString s3(large);
+        ConstString s4(s3);
         REQUIRE_FALSE(s.shareable());
         REQUIRE(s3 == std::string_view{large});
         REQUIRE(s4 == std::string_view{large});
@@ -290,15 +290,15 @@ TEST_CASE("Test FixedString", "[rule]") {
     }
     SECTION("shallow copy") {
         std::string_view sv("small");
-        FixedString      s(sv, FixedString::Shared);
-        FixedString      s2(s);
+        ConstString      s(sv, ConstString::Shared);
+        ConstString      s2(s);
         REQUIRE(s == sv);
         REQUIRE_FALSE(s.shareable());
         REQUIRE(s2 == sv);
         REQUIRE((void*) s.c_str() != (void*) s2.c_str());
         std::string large(32, 'x');
-        FixedString s3(large, FixedString::Shared);
-        FixedString s4(s3);
+        ConstString s3(large, ConstString::Shared);
+        ConstString s4(s3);
         REQUIRE(s3.shareable());
         REQUIRE(s4.shareable());
         REQUIRE(s3 == std::string_view{large});
@@ -307,21 +307,34 @@ TEST_CASE("Test FixedString", "[rule]") {
     }
     SECTION("move") {
         std::string_view sv("small");
-        FixedString      s(sv);
-        FixedString      s2(std::move(s));
+        ConstString      s(sv);
+        ConstString      s2(std::move(s));
         REQUIRE(s == std::string_view{});
         REQUIRE(s2 == sv);
         std::string large(32, 'x');
-        FixedString s3(large);
+        ConstString s3(large);
         auto        old = (void*) s3.c_str();
-        FixedString s4(std::move(s3));
+        ConstString s4(std::move(s3));
         REQUIRE(s3 == std::string_view{});
         REQUIRE(s4 == std::string_view(large));
         REQUIRE((void*) s4.c_str() == old);
+
+        SECTION("assign") {
+            s = std::move(s2);
+            REQUIRE(s2 == std::string_view{});
+            REQUIRE(s == sv);
+
+            s3 = std::move(s4);
+            REQUIRE(s4 == std::string_view{});
+            REQUIRE(s3 == std::string_view(large));
+
+            s3 = ConstString();
+            REQUIRE(s3 == std::string_view{});
+        }
     }
     SECTION("compare") {
-        FixedString s("one");
-        FixedString t("two");
+        ConstString s("one");
+        ConstString t("two");
         REQUIRE(s == s);
         REQUIRE(s != t);
         REQUIRE(s < t);
@@ -482,6 +495,12 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
         REQUIRE(rb.bound() == 2);
         REQUIRE(spanEq(rb.sum().lits, std::vector<WeightLit_t>{{2, 1}, {-3, 1}, {4, 2}}));
         REQUIRE(spanEq(rb.sum().lits, rb.wlits_begin(), rb.wlits_end()));
+
+        auto r = rb.rule();
+        REQUIRE(spanEq(r.head, rb.head()));
+        REQUIRE(r.bt == Body_t::Sum);
+        REQUIRE(r.agg.bound == 2);
+        REQUIRE(spanEq(r.agg.lits, rb.sum().lits));
     }
     SECTION("update bound") {
         rb.start().addHead(1).startSum(2).addGoal(2, 1).addGoal(-3, 1).addGoal(4, 2).setBound(3);
@@ -502,6 +521,11 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
         REQUIRE(rb.bound() == 1);
         REQUIRE(spanEq(rb.sum().lits, std::vector<WeightLit_t>{{2, 1}, {-3, 1}, {4, 1}}));
         REQUIRE(spanEq(rb.sum().lits, rb.wlits_begin(), rb.wlits_end()));
+        auto r = rb.rule();
+        REQUIRE(spanEq(r.head, rb.head()));
+        REQUIRE(r.bt == Body_t::Count);
+        REQUIRE(r.agg.bound == 1);
+        REQUIRE(spanEq(r.agg.lits, rb.sum().lits));
     }
     SECTION("weaken to normal rule") {
         rb.start().addHead(1).startSum(3).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).weaken(Body_t::Normal).end();
@@ -509,6 +533,11 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
         REQUIRE(rb.bodyType() == Body_t::Normal);
         REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{2, -3, 4}));
         REQUIRE(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
+
+        auto r = rb.rule();
+        REQUIRE(spanEq(r.head, rb.head()));
+        REQUIRE(r.bt == Body_t::Normal);
+        REQUIRE(spanEq(r.cond, rb.body()));
     }
     SECTION("weak to normal rule - inverse order") {
         rb.startSum(3).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).start().addHead(1).weaken(Body_t::Normal).end();

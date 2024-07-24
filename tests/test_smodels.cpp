@@ -320,6 +320,15 @@ TEST_CASE("Write smodels", "[smodels]") {
         RawRule r = {0, -3, 1, -4, 3, 2, 2, 5, 4};
         REQUIRE(observer.rules[Rule_t::Optimize][0] == r);
     }
+    SECTION("minimize lits with negative weights are inverted") {
+        Vec<WeightLit_t> body = {{2, -2}, {3, 1}, {4, -1}};
+        writer.minimize(10, body);
+        writer.endStep();
+        REQUIRE(readSmodels(str, observer) == 0);
+        REQUIRE(observer.rules[Rule_t::Optimize].size() == 1);
+        RawRule r = {0, -2, 2, -4, 1, 3, 1};
+        REQUIRE(observer.rules[Rule_t::Optimize][0] == r);
+    }
     SECTION("output is written to symbol table") {
         Lit_t       a  = 1;
         std::string an = "Hallo";

@@ -85,10 +85,17 @@ using Lit_t = int32_t;
 using Weight_t = int32_t;
 //! A literal with an associated weight.
 struct WeightLit_t {
-    Lit_t                 lit;    //!< Literal.
-    Weight_t              weight; //!< Associated weight.
-    friend constexpr bool operator==(const WeightLit_t& lhs, const WeightLit_t& rhs)  = default;
-    friend constexpr auto operator<=>(const WeightLit_t& lhs, const WeightLit_t& rhs) = default;
+    Lit_t    lit;    //!< Literal.
+    Weight_t weight; //!< Associated weight.
+
+    friend constexpr bool operator==(const WeightLit_t& lhs, const WeightLit_t& rhs) noexcept  = default;
+    friend constexpr auto operator<=>(const WeightLit_t& lhs, const WeightLit_t& rhs) noexcept = default;
+    friend constexpr auto operator==(const WeightLit_t& lhs, Lit_t rhs) noexcept {
+        return lhs.lit == rhs && lhs.weight == 1;
+    }
+    friend constexpr auto operator<=>(const WeightLit_t& lhs, Lit_t rhs) noexcept {
+        return lhs <=> WeightLit_t{.lit = rhs, .weight = 1};
+    }
 };
 
 using IdSpan        = std::span<const Id_t>;
@@ -120,6 +127,7 @@ enum class Heuristic_t : unsigned { Level = 0, Sign = 1, Factor = 2, Init = 3, T
     return EnumEntries(Level, "level"sv, Sign, "sign"sv, Factor, "factor"sv, Init, "init"sv, True, "true"sv, False,
                        "false"sv);
 }
+[[maybe_unused]] consteval auto enable_ops(std::type_identity<Heuristic_t>) -> CmpOps;
 
 //! Supported aspif directives.
 enum class Directive_t : unsigned {
@@ -239,11 +247,6 @@ constexpr Weight_t weight(Lit_t) { return 1; }
 //! Returns the weight of the given weight literal.
 constexpr Weight_t weight(const WeightLit_t& w) { return w.weight; }
 
-constexpr auto operator==(const WeightLit_t& lhs, Lit_t rhs) { return lit(lhs) == rhs && weight(lhs) == 1; }
-constexpr auto operator==(Lit_t lhs, const WeightLit_t& rhs) { return rhs == lhs; }
-constexpr auto operator<=>(const WeightLit_t& lhs, Lit_t rhs) { return lhs <=> WeightLit_t{.lit = rhs, .weight = 1}; }
-constexpr auto operator<=>(Lit_t lhs, const WeightLit_t& rhs) { return WeightLit_t{.lit = lhs, .weight = 1} <=> rhs; }
-
 ///@}
 
 //! A (dynamically-sized) buffer of raw memory.
@@ -317,13 +320,13 @@ class RuleBuilder;
  * a pointer referencing a buffer internal to the string, making relocation non-trivial.
  * In contrast, this class uses a SSO implementation that is more similar to the one from libc++.
  */
-class FixedString {
+class ConstString {
 public:
     using trivially_relocatable = std::true_type;
     //! Supported creation modes.
     enum CreateMode { Unique, Shared };
     //! Creates an empty string.
-    constexpr FixedString() {
+    constexpr ConstString() noexcept {
         if (std::is_constant_evaluated()) {
             std::fill(std::begin(storage_) + 1, std::end(storage_), char(0));
         }
@@ -335,11 +338,11 @@ public:
      * The creation mode determines how further copies are handled. If @c n exceeds the SSO limit and @c m is set to
      * @c CreateMode::Shared, further copies only increase an internal reference count.
      */
-    FixedString(std::string_view n, CreateMode m = Unique);
+    ConstString(std::string_view n, CreateMode m = Unique);
     //! Creates a copy of @c o.
-    FixedString(const FixedString& o);
+    ConstString(const ConstString& o);
     //! "Steals" the content of @c o.
-    constexpr FixedString(FixedString&& o) noexcept {
+    constexpr ConstString(ConstString&& o) noexcept {
         if (o.small()) {
             if (std::is_constant_evaluated()) {
                 std::copy(std::begin(o.storage_), std::end(o.storage_), storage_);
@@ -356,13 +359,19 @@ public:
         o.storage_[0]          = 0;
         o.storage_[c_maxSmall] = static_cast<char>(c_maxSmall);
     }
-    constexpr ~FixedString() {
+    constexpr ~ConstString() {
         if (not small()) {
             release();
         }
     }
-    FixedString& operator=(const FixedString&) = delete;
-    FixedString& operator=(FixedString&&)      = delete;
+    ConstString&           operator=(const ConstString&) = delete;
+    constexpr ConstString& operator=(ConstString&& other) noexcept {
+        if (this != &other) {
+            this->~ConstString();
+            new (this) ConstString(std::move(other));
+        }
+        return *this;
+    }
 
     //! Converts this string to a string_view.
     [[nodiscard]] constexpr explicit operator std::string_view() const { return {c_str(), size()}; }
@@ -380,8 +389,8 @@ public:
     [[nodiscard]] constexpr bool small() const { return storage_[c_maxSmall] < c_largeTag; }
     [[nodiscard]] constexpr bool shareable() const { return storage_[c_maxSmall] == c_largeTag + Shared; }
 
-    friend bool operator==(const FixedString& lhs, const FixedString& rhs) { return lhs.view() == rhs.view(); }
-    friend auto operator<=>(const FixedString& lhs, const FixedString& rhs) { return lhs.view() <=> rhs.view(); }
+    friend bool operator==(const ConstString& lhs, const ConstString& rhs) { return lhs.view() == rhs.view(); }
+    friend auto operator<=>(const ConstString& lhs, const ConstString& rhs) { return lhs.view() <=> rhs.view(); }
 
 private:
     static constexpr auto c_maxSmall = 23;
@@ -400,8 +409,8 @@ private:
 
 } // namespace Potassco
 template <>
-struct std::hash<Potassco::FixedString> : std::hash<std::string_view> {
+struct std::hash<Potassco::ConstString> : std::hash<std::string_view> {
     using is_transparent = void;
     using std::hash<std::string_view>::operator();
-    std::size_t operator()(const Potassco::FixedString& str) const noexcept { return (*this)(str.view()); }
+    std::size_t operator()(const Potassco::ConstString& str) const noexcept { return (*this)(str.view()); }
 };

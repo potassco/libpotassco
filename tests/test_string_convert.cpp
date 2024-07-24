@@ -145,6 +145,10 @@ TEST_CASE("String conversion", "[string]") {
     SECTION("double conversion is reversible") {
         const double d = 0.00000001;
         REQUIRE(string_cast<double>(Potassco::toString(d)) == d);
+
+        float x;
+        REQUIRE(Potassco::Parse::ok(Potassco::stringTo("0.8", x)));
+        REQUIRE(Potassco::toString(x) == "0.8");
     }
     SECTION("Pairs can be converted") {
         const std::pair<int, bool> p(10, false);
@@ -184,18 +188,18 @@ TEST_CASE("String conversion", "[string]") {
     }
     SECTION("conversion works with long long") {
         long long mx = LLONG_MAX, mn = LLONG_MIN, y;
-        REQUIRE((Potassco::stringTo(Potassco::toString(mx).c_str(), y) == std::errc{} && mx == y));
-        REQUIRE((Potassco::stringTo(Potassco::toString(mn).c_str(), y) == std::errc{} && mn == y));
+        REQUIRE((Potassco::stringTo(Potassco::toString(mx), y) == std::errc{} && mx == y));
+        REQUIRE((Potassco::stringTo(Potassco::toString(mn), y) == std::errc{} && mn == y));
     }
     SECTION("conversion works with long long even if errno is initially set") {
         long long          mx  = LLONG_MAX, y;
         unsigned long long umx = ULLONG_MAX, z;
         errno                  = ERANGE;
-        REQUIRE((Potassco::stringTo(Potassco::toString(mx).c_str(), y) == std::errc{} && mx == y));
+        REQUIRE((Potassco::stringTo(Potassco::toString(mx), y) == std::errc{} && mx == y));
 
         auto s = Potassco::toString(ULLONG_MAX);
         errno  = ERANGE;
-        REQUIRE((Potassco::stringTo(s.c_str(), z) == std::errc{} && umx == z));
+        REQUIRE((Potassco::stringTo(s, z) == std::errc{} && umx == z));
     }
 
     SECTION("double parsing before local change") {
@@ -208,27 +212,29 @@ TEST_CASE("String conversion", "[string]") {
     }
 
     SECTION("double parsing is locale-independent") {
-        std::string restore = []() {
+        auto [prevStr, prevLoc] = []() {
             using P          = std::pair<std::string, std::string>;
             std::string prev = setlocale(LC_ALL, nullptr);
-            if (setlocale(LC_ALL, "deu_deu"))
-                return prev;
             for (const auto& [language, territory] :
-                 {P("de", "DE"), P("el", "GR"), P("ru", "RU"), P("es", "ES"), P("it", "IT")}) {
+                 {P("deu", "deu"), P("de", "DE"), P("el", "GR"), P("ru", "RU"), P("es", "ES"), P("it", "IT")}) {
                 for (auto sep : {'_', '-'}) {
                     for (const auto* codeset : {"", ".utf8"}) {
                         auto loc = std::string(language).append(1, sep).append(territory).append(codeset);
                         if (setlocale(LC_ALL, loc.c_str())) {
-                            return prev;
+                            return std::make_pair(prev, std::locale::global(std::locale(loc)));
                         }
                     }
                 }
             }
-            return std::string{};
+            return std::make_pair(std::string(), std::locale());
         }();
-        if (not restore.empty()) {
-            POTASSCO_SCOPE_EXIT({ setlocale(LC_ALL, restore.c_str()); });
+        if (not prevStr.empty()) {
+            POTASSCO_SCOPE_EXIT({
+                setlocale(LC_ALL, prevStr.c_str());
+                std::locale::global(prevLoc);
+            });
             REQUIRE(string_cast<double>("12.32") == 12.32);
+            REQUIRE(string_cast<float>("12.32") == 12.32f);
         }
         else {
             WARN("could not set locale - test ignored");

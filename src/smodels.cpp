@@ -49,7 +49,7 @@ struct SmodelsInput::StringTab {
         return orVal;
     }
     [[nodiscard]] uint32_t size() const noexcept { return static_cast<uint32_t>(map.size()); }
-    using StringMap = std::unordered_map<FixedString, Id_t, std::hash<FixedString>, std::equal_to<>>;
+    using StringMap = std::unordered_map<ConstString, Id_t, std::hash<ConstString>, std::equal_to<>>;
     StringMap map;
 };
 
@@ -418,10 +418,8 @@ SmodelsOutput& SmodelsOutput::add(Weight_t bnd, const WeightLitSpan& lits, bool 
     }
     print(os_, lits, neg, size - neg);
     if (not card) {
-        print(os_, lits, neg, size - neg, [](const WeightLit_t& wl) {
-            POTASSCO_CHECK_PRE(wl.weight >= 0, "invalid negative weight in weight rule");
-            return wl.weight;
-        });
+        print(os_, lits, neg, size - neg,
+              [](const WeightLit_t& wl) { return wl.weight >= 0 ? wl.weight : -wl.weight; });
     }
     return *this;
 }

@@ -353,14 +353,14 @@ Heuristic_t AspifTextInput::matchHeuMod() {
 // AspifTextOutput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifTextOutput::Data {
-    static_assert(amc::is_trivially_relocatable_v<FixedString>, "should be relocatable");
-    using StringMap = std::unordered_map<FixedString, Atom_t, std::hash<FixedString>, std::equal_to<>>;
+    static_assert(amc::is_trivially_relocatable_v<ConstString>, "should be relocatable");
+    using StringMap = std::unordered_map<ConstString, Atom_t, std::hash<ConstString>, std::equal_to<>>;
     using AtomMap   = amc::SmallVector<StringMap::const_pointer, 64>;
     using LitVec    = amc::SmallVector<Lit_t, 64>;
     using RawVec    = amc::SmallVector<uint32_t, 4096>;
     using OutVec    = amc::vector<StringMap::const_pointer>;
 
-    static constexpr auto c_genName = StringMap::value_type{FixedString(), 0};
+    static constexpr auto c_genName = StringMap::value_type{ConstString(), 0};
 
     [[nodiscard]] LitSpan theoryCondition(Id_t id) const {
         return {conditions.data() + id + 1, static_cast<size_t>(conditions[id])};
@@ -452,7 +452,7 @@ struct AspifTextOutput::Data {
         assignAtomName(atom, name);
     }
 
-    [[nodiscard]] auto getAtomName(Atom_t atom) const -> const FixedString* {
+    [[nodiscard]] auto getAtomName(Atom_t atom) const -> const ConstString* {
         if (atom >= atoms.size() || not atoms[atom] || atoms[atom] == &c_genName) {
             return nullptr;
         }

@@ -305,9 +305,9 @@ void DynamicBuffer::append(const void* what, std::size_t n) {
         std::memcpy(alloc(n).data(), what, n);
 }
 /////////////////////////////////////////////////////////////////////////////////////////
-// FixedString
+// ConstString
 /////////////////////////////////////////////////////////////////////////////////////////
-FixedString::FixedString(std::string_view n, CreateMode cm) {
+ConstString::ConstString(std::string_view n, CreateMode cm) {
     if (n.size() > c_maxSmall) {
         storage_[c_maxSmall] = static_cast<char>(c_largeTag + cm);
         auto* buf            = new char[(cm == Shared ? sizeof(std::atomic<int32_t>) : 0) + n.size() + 1];
@@ -324,7 +324,7 @@ FixedString::FixedString(std::string_view n, CreateMode cm) {
     }
     POTASSCO_DEBUG_ASSERT(static_cast<std::string_view>(*this) == n);
 }
-FixedString::FixedString(const FixedString& o) : FixedString(not o.shareable() ? o.view() : std::string_view{}) {
+ConstString::ConstString(const ConstString& o) : ConstString(not o.shareable() ? o.view() : std::string_view{}) {
     if (o.shareable()) {
         POTASSCO_DEBUG_ASSERT(not o.small());
         storage_[c_maxSmall] = o.storage_[c_maxSmall];
@@ -332,12 +332,12 @@ FixedString::FixedString(const FixedString& o) : FixedString(not o.shareable() ?
         addRef(1);
     }
 }
-void FixedString::release() {
+void ConstString::release() {
     if (not shareable() || addRef(-1) == 0) {
         delete[] (large()->str - (shareable() * sizeof(std::atomic<int32_t>)));
     }
 }
-int32_t FixedString::addRef(int32_t x) {
+int32_t ConstString::addRef(int32_t x) {
     POTASSCO_DEBUG_ASSERT(shareable());
     auto& r   = *reinterpret_cast<std::atomic<int32_t>*>(large()->str - sizeof(std::atomic<int32_t>));
     return r += x;

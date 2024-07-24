@@ -83,7 +83,7 @@ struct SmodelsConvert::SmData {
         unsigned    prio{};
         unsigned    cond{};
     };
-    using SymTab = std::unordered_map<Atom_t, FixedString>;
+    using SymTab = std::unordered_map<Atom_t, ConstString>;
     struct Output {
         enum Type : uint8_t { Name = 0, Edge = 1 };
         struct EdgeT {
@@ -101,7 +101,7 @@ struct SmodelsConvert::SmData {
         uint32_t atom : 31;
         uint32_t type : 1;
         union {
-            const FixedString* name{};
+            const ConstString* name{};
             EdgeT              edge;
         };
     };

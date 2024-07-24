@@ -201,13 +201,14 @@ protected:
         return static_cast<EnumT>(matchNum(enum_min<EnumT>(), enum_max<EnumT>(), error));
     }
 
-private:
     template <std::integral T>
     [[nodiscard]] int64_t matchNum(T min, T max, const char* err) {
         int64_t n;
         require(stream()->readInt(n) && n >= static_cast<int64_t>(min) && n <= static_cast<int64_t>(max), err);
         return n;
     }
+
+private:
     StreamType* str_    = nullptr;
     Atom_t      varMax_ = atomMax;
     bool        inc_    = false;

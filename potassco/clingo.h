@@ -138,6 +138,7 @@ public:
      *
      */
     [[nodiscard]] virtual bool addClause(const Potassco::LitSpan& clause, Clause_t prop) = 0;
+    bool addClause(const Potassco::LitSpan& clause) { return addClause(clause, Clause_t::Learnt); }
 
     //! Adds a new volatile variable to this solver instance.
     /*!

@@ -158,8 +158,13 @@ RuleBuilder& RuleBuilder::addGoal(Lit_t lit) {
     return *this;
 }
 RuleBuilder& RuleBuilder::addGoal(WeightLit_t lit) {
-    POTASSCO_CHECK_PRE(bodyType() != Body_t::Normal, "weight literal not supported in normal body");
-    extend(body_, lit, "Sum");
+    if (bodyType() == Body_t::Normal) {
+        POTASSCO_CHECK_PRE(lit.weight == 1, "non-trivial weight literal not supported in normal body");
+        extend(body_, lit.lit, "Body");
+    }
+    else {
+        extend(body_, lit, "Sum");
+    }
     return *this;
 }
 RuleBuilder& RuleBuilder::clearBody() {
@@ -208,12 +213,17 @@ WeightLit_t* RuleBuilder::wlits_end() const { return storage_cast<WeightLit_t*>(
 // RuleBuilder - Product
 /////////////////////////////////////////////////////////////////////////////////////////
 Rule_t RuleBuilder::rule() const {
-    if (bodyType() == Body_t::Normal) {
-        return Rule_t::normal(headType(), head(), body());
+    Rule_t ret;
+    ret.ht   = headType();
+    ret.head = head();
+    ret.bt   = bodyType();
+    if (ret.bt == Body_t::Normal) {
+        ret.cond = body();
     }
     else {
-        return Rule_t::sum(headType(), head(), sum());
+        ret.agg = sum();
     }
+    return ret;
 }
 RuleBuilder& RuleBuilder::end(AbstractProgram* out) {
     store_set_mask(head_.end_flag, Range::mask);
