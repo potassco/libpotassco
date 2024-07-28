@@ -25,6 +25,7 @@
 #include <potassco/program_opts/program_options.h>
 
 #include <functional>
+#include <span>
 #include <string>
 #include <utility>
 namespace Potassco {
@@ -32,15 +33,18 @@ namespace Potassco {
 // Application base class
 /////////////////////////////////////////////////////////////////////////////////////////
 class Application {
-private:
-    struct Prefix {
-        const Application* app;
-        enum Type { error, warning, info } type;
-        friend std::ostream& operator<<(std::ostream& os, const Prefix& p) { return p.app->write(os, p.type); }
-    };
-    friend std::ostream& operator<<(std::ostream& os, const Prefix& p);
-
 public:
+    //! Application specific exception type.
+    struct Error : std::runtime_error {
+        Error(const char* msg) : std::runtime_error(msg) {}
+        Error(const char* msg, std::string i, std::string d)
+            : std::runtime_error(msg)
+            , info(std::move(i))
+            , details(std::move(d)) {}
+        std::string info;
+        std::string details;
+    };
+
     //! Description of and max value for help option.
     using HelpOpt = std::pair<const char*, unsigned>;
 
@@ -72,49 +76,36 @@ public:
     int main(int argc, char** argv);
     //! Sets the value that should be returned as the application's exit code.
     void setExitCode(int n);
-    //! Sets the standard output stream (default: std::cout)
-    void setStdout(std::ostream& os);
-    //! Sets the standard error stream (default: std::cerr)
-    void setStderr(std::ostream& err);
     //! Returns the application's exit code.
     [[nodiscard]] int getExitCode() const;
     //! Returns the application object that is running.
     static Application* getInstance();
-    //! Prints the application's help information (called if options contain '--help').
-    void printHelp(const ProgramOptions::OptionContext& root);
-    //! Prints the application's version message (called if options contain '--version').
-    void printVersion();
-    //! Prints the application's usage message (default is: "usage: getName() getUsage()").
-    void printUsage();
 
-    //! Writes Error prefix to the standard error stream and returns the stream.
-    [[nodiscard]] std::ostream& error() const { return write(err_, Prefix::error); }
-    //! Writes Warning prefix to the standard error stream and returns the stream.
-    [[nodiscard]] std::ostream& warn() const { return write(err_, Prefix::warning); }
-    //! Writes Info prefix to the standard error stream and returns the stream.
-    [[nodiscard]] std::ostream& info() const { return write(err_, Prefix::info); }
+    enum MessageType { MsgError, MsgWarning, MsgInfo };
+    //! Writes a (null-terminated) message of given type to the provided buffer.
+    /*!
+     * The message format is: '***' <type-prefix> (<app-name>): <formatted-message>
+     *
+     * \param buffer Buffer for storing the formatted message.
+     * \param type   Type of message.
+     * @param fmt    A printf-style format string.
+     * @param ...    Arguments to the format string.
+     * @return The number of bytes written not counting the null-terminator. If the message exceeds the given buffer,
+     *         output is truncated but still null-terminated. If buffer.size() is 0, the function has no effect and
+     *         returns 0.
+     */
+    std::size_t formatMessage(std::span<char> buffer, MessageType type, const char* fmt, ...) const
+        POTASSCO_ATTRIBUTE_FORMAT(4, 5);
 
-    //! Returns an io-manipulator that writes an Error prefix when applied to a stream.
-    [[nodiscard]] Prefix errorPrefix() const { return {.app = this, .type = Prefix::error}; }
-    //! Returns an io-manipulator that writes a Warning prefix when applied to a stream.
-    [[nodiscard]] Prefix warnPrefix() const { return {.app = this, .type = Prefix::warning}; }
-    //! Returns an io-manipulator that writes an Info prefix when applied to a stream.
-    [[nodiscard]] Prefix infoPrefix() const { return {.app = this, .type = Prefix::info}; }
+    //! Returns an io-manipulator that writes the given messages formatted as MsgError to a stream.
+    [[nodiscard]] auto error(const char* msg = "") const { return Prefix{.app = this, .msg = msg, .type = MsgError}; }
+    //! Returns an io-manipulator that writes the given messages formatted as MsgWarning to a stream.
+    [[nodiscard]] auto warn(const char* msg = "") const { return Prefix{.app = this, .msg = msg, .type = MsgWarning}; }
+    //! Returns an io-manipulator that writes the given messages formatted as MsgInfo to a stream.
+    [[nodiscard]] auto info(const char* msg = "") const { return Prefix{.app = this, .msg = msg, .type = MsgInfo}; }
 
     //@}
 protected:
-    /*!
-     * \name Help output
-     */
-    //@{
-    //! Prints help to os.
-    virtual void printHelp(std::ostream& os, const ProgramOptions::OptionContext& root);
-    //! Prints version info to os (default prints app name followed by version and address model).
-    virtual void printVersion(std::ostream& os);
-    //! Prints usage info to os (default: "usage: <getName()> <getUsage()>").
-    virtual void printUsage(std::ostream& os);
-    //@}
-
     /*!
      * \name Life cycle and option handling
      */
@@ -124,24 +115,33 @@ protected:
     //! Validates parsed options. Shall throw to signal error.
     virtual void validateOptions(const ProgramOptions::OptionContext& root, const ProgramOptions::ParsedOptions& parsed,
                                  const ProgramOptions::ParsedValues& values) = 0;
+    //! Shall print the provided help message.
+    virtual void onHelp(const std::string& help, Potassco::ProgramOptions::DescriptionLevel level) = 0;
+    //! Shall print the provided version info.
+    virtual void onVersion(const std::string& version) = 0;
     //! Called once after option processing is done.
     virtual void setup() = 0;
     //! Shall run the application. Called after setup and option processing.
     virtual void run() = 0;
-    //! Called after run returned. The default is a noop.
+    //! Called after run returned. Should not throw. The default is a noop.
     virtual void shutdown();
-    //! Called on an exception from run(). The default terminates the application.
-    virtual void onUnhandledException();
+    //! Called on an active (i.e. unhandled) exception.
+    /*!
+     * The return value defines whether the application should exit immediately without calling destructors (true) or
+     * just return from main() (false).
+     */
+    virtual bool onUnhandledException(const char* msg) = 0;
     //! Called when a signal is received. The default terminates the application.
     virtual bool onSignal(int);
+    //! Shall write any pending application output. Always called before the Application terminates.
+    virtual void flush() = 0;
     //@}
 
     Application();
     virtual ~Application();
     [[nodiscard]] unsigned verbose() const;
-    [[noreturn]] void      exit(int exitCode) const;
+    [[noreturn]] void      exit(int exitCode);
 
-    void shutdown(bool hasError);
     void setVerbose(unsigned v);
     void setAlarm(unsigned sec);
     void killAlarm();
@@ -150,16 +150,22 @@ protected:
     void processSignal(int sigNum);
 
 private:
-    using StreamRef = std::reference_wrapper<std::ostream>;
-    bool          applyOptions(int argc, char** argv);
-    void          flush() const;
-    std::ostream& write(std::ostream&, Prefix::Type t) const;
-    static void   initInstance(Application& app);
-    static void   resetInstance(Application& app);
-    static void   sigHandler(int sig);
+    struct Prefix {
+        const Application* app;
+        const char*        msg;
+        MessageType        type;
+    };
+    friend std::ostream& operator<<(std::ostream& os, const Prefix& p) {
+        p.app->write(os, p.type, p.msg);
+        return os;
+    }
+    void               write(std::ostream& os, MessageType type, const char* msg) const;
+    bool               applyOptions(int argc, char** argv);
+    [[nodiscard]] bool formatActiveException(std::span<char> buffer) const;
+    static void        initInstance(Application& app);
+    static void        resetInstance(Application& app);
+    static void        sigHandler(int sig);
 
-    StreamRef           out_;       // standard output stream (defaults to stdout)
-    StreamRef           err_;       // standard error stream (defaults to stderr)
     int                 exitCode_;  // application's exit code
     unsigned            timeout_;   // active time limit or 0 for no limit
     unsigned            verbose_;   // active verbosity level

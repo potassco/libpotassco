@@ -29,6 +29,7 @@
 #include <potassco/program_opts/typed_value.h>
 
 #include <climits>
+#include <cstdarg>
 #include <cstring>
 #ifdef _MSC_VER
 #pragma warning(disable : 4996)
@@ -36,7 +37,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
-#include <iostream>
+#include <sstream>
 #if not defined(SIGALRM)
 #define SIGALRM 14
 #endif
@@ -62,18 +63,13 @@ namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
 Application* Application::instance_s = nullptr;
 Application::Application()
-    : out_(std::cout)
-    , err_(std::cerr)
-    , exitCode_(EXIT_FAILURE)
+    : exitCode_(EXIT_FAILURE)
     , timeout_(0)
     , verbose_(0)
     , fastExit_(false)
     , blocked_(0)
     , pending_(0) {}
-Application::~Application() {
-    flush();
-    resetInstance(*this);
-}
+Application::~Application() { resetInstance(*this); }
 void Application::initInstance(Application& app) { instance_s = &app; }
 void Application::resetInstance(Application& app) {
     if (instance_s == &app) {
@@ -91,10 +87,7 @@ void Application::setAlarm(unsigned sec) {
 void Application::setAlarm(unsigned sec) {
     static HANDLE alarmEvent  = CreateEvent(0, TRUE, TRUE, TEXT("Potassco::Application::AlarmEvent"));
     static HANDLE alarmThread = INVALID_HANDLE_VALUE;
-    if (alarmEvent == INVALID_HANDLE_VALUE) {
-        warn() << "Could not set time limit!\n";
-        return;
-    }
+    POTASSCO_CHECK(alarmEvent != nullptr, std::errc::operation_not_supported, "Could not set time limit!");
     if (alarmThread != INVALID_HANDLE_VALUE) {
         // wakeup any existing alarm
         SetEvent(alarmEvent);
@@ -119,48 +112,51 @@ void Application::setAlarm(unsigned sec) {
 }
 #endif
 
-std::ostream& Application::write(std::ostream& os, Prefix::Type t) const {
-    switch (const char* n = getName(); t) {
-        case Prefix::error  : return os << "*** ERROR: (" << n << "): ";
-        case Prefix::warning: return os << "*** Warn : (" << n << "): ";
-        default             : return os << "*** Info : (" << n << "): ";
-    }
-}
-
-void Application::setStdout(std::ostream& os) { out_ = std::ref(os); }
-void Application::setStderr(std::ostream& err) { err_ = std::ref(err); }
-void Application::flush() const {
-    err_.get().flush();
-    out_.get().flush();
-    fflush(stderr);
-    fflush(stdout);
-}
-
 // Application entry point.
 int Application::main(int argc, char** argv) {
     initInstance(*this); // singleton instance used for signal handling
     exitCode_ = EXIT_FAILURE;
     blocked_  = 0;
     pending_  = 0;
-    if (applyOptions(argc, argv)) {
-        // install signal handlers
-        for (const int* sig = getSignals(); sig && *sig; ++sig) {
-            if (signal(*sig, &Application::sigHandler) == SIG_IGN) {
-                signal(*sig, SIG_IGN);
+    try {
+        if (applyOptions(argc, argv)) {
+            // install signal handlers
+            for (const int* sig = getSignals(); sig && *sig; ++sig) {
+                if (signal(*sig, &Application::sigHandler) == SIG_IGN) {
+                    signal(*sig, SIG_IGN);
+                }
             }
-        }
-        if (timeout_) {
-            setAlarm(timeout_);
-        }
-        exitCode_ = EXIT_SUCCESS;
-        try {
+            if (timeout_) {
+                setAlarm(timeout_);
+            }
+            exitCode_       = EXIT_SUCCESS;
+            auto exceptions = std::uncaught_exceptions();
+            POTASSCO_SCOPE_EXIT({
+                auto unwinding = std::uncaught_exceptions() > exceptions;
+                try {
+                    // ignore signals/alarms during shutdown
+                    blockSignals();
+                    killAlarm();
+                    shutdown();
+                }
+                catch (...) {
+                    if (not unwinding) {
+                        throw; // propagate exception from shutdown
+                    }
+                    else {
+                        // swallow additional exception from shutdown
+                    }
+                }
+            }); // shutdown
             setup();
             run();
-            shutdown(false);
         }
-        catch (...) {
-            shutdown(true);
-        }
+    }
+    catch (...) {
+        char buffer[1024];
+        exitCode_ = exitCode_ == EXIT_SUCCESS ? EXIT_FAILURE : exitCode_;
+        auto ok   = formatActiveException(buffer);
+        fastExit_ = onUnhandledException(buffer) || not ok;
     }
     if (fastExit_) {
         exit(exitCode_);
@@ -171,45 +167,13 @@ int Application::main(int argc, char** argv) {
 
 Application* Application::getInstance() { return instance_s; }
 
-void Application::onUnhandledException() {
-    try {
-        throw;
-    }
-    catch (const RuntimeError& e) {
-        error() << e.message() << "\n" << errorPrefix() << e.details() << "\n";
-    }
-    catch (const std::exception& e) {
-        error() << e.what() << "\n";
-    }
-    catch (...) {
-        error() << "Unknown exception" << "\n";
-    }
-    exit(EXIT_FAILURE);
-}
-
 void Application::setExitCode(int n) { exitCode_ = n; }
 int  Application::getExitCode() const { return exitCode_; }
-
-// Called on application shutdown
-void Application::shutdown(bool hasError) {
-    // ignore signals/alarms during shutdown
-    blockSignals();
-    killAlarm();
-    if (hasError) {
-        onUnhandledException();
-    }
-    try {
-        shutdown();
-    }
-    catch (...) {
-        onUnhandledException();
-    }
-}
 
 void Application::shutdown() {}
 
 // Force exit without calling destructors.
-void Application::exit(int exitCode) const {
+void Application::exit(int exitCode) {
     flush();
     _exit(exitCode);
 }
@@ -244,16 +208,12 @@ void Application::processSignal(int sig) {
         } // block further signals
     }
     else if (pending_ == 0) { // signals are currently blocked because output is active
-        info() << "Queueing signal...\n";
         pending_ = sig;
     }
     fetch_and_dec(blocked_);
 }
 
-bool Application::onSignal(int x) {
-    info() << "INTERRUPTED by signal!\n";
-    exit(EXIT_FAILURE | (128 + x));
-}
+bool Application::onSignal(int x) { exit(EXIT_FAILURE | (128 + x)); }
 
 // Kill any pending alarm.
 void Application::killAlarm() {
@@ -262,98 +222,126 @@ void Application::killAlarm() {
     }
 }
 
-// Process command-line options.
-bool Application::applyOptions(int argc, char** argv) {
-    using namespace ProgramOptions;
+static const char* prefix(Application::MessageType t) {
+    switch (t) {
+        default                     : return "<?>";
+        case Application::MsgError  : return "*** ERROR: ";
+        case Application::MsgWarning: return "*** Warn : ";
+        case Application::MsgInfo   : return "*** Info : ";
+    }
+}
+
+void Application::write(std::ostream& os, MessageType type, const char* msg) const {
+    os << prefix(type) << "(" << getName() << "): " << (msg ? msg : "");
+}
+std::size_t Application::formatMessage(std::span<char> buffer, MessageType t, const char* fmt, ...) const {
+    auto r1 = snprintf(buffer.data(), buffer.size(), "%s(%s): ", prefix(t), getName());
+    if (r1 <= 0 || static_cast<std::size_t>(r1) >= buffer.size()) {
+        return r1 <= 0 ? static_cast<std::size_t>(0) : buffer.size() - 1;
+    }
+    va_list args;
+    va_start(args, fmt);
+    auto rest = buffer.subspan(static_cast<std::size_t>(r1));
+    auto r2   = std::vsnprintf(rest.data(), rest.size(), fmt, args);
+    va_end(args);
+    return r2 <= 0 ? static_cast<std::size_t>(0) : std::min(buffer.size() - 1, static_cast<std::size_t>(r1 + r2));
+}
+
+bool Application::formatActiveException(std::span<char> buffer) const {
     try {
-        unsigned      help    = 0;
-        bool          version = false;
-        ParsedOptions parsed; // options found in command-line
-        OptionContext allOpts(std::string("<").append(getName()).append(">"));
-        HelpOpt       helpO = getHelpOption();
-        if (helpO.second == 0) {
-            error() << "Invalid help option!\n";
-            exit(EXIT_FAILURE);
+        throw;
+    }
+    catch (const Potassco::ProgramOptions::Error& e) {
+        buffer = buffer.subspan(formatMessage(buffer, MsgError, "%s\n", e.what()));
+        formatMessage(buffer, MsgInfo, "Try '--help' for usage information");
+    }
+    catch (const Potassco::RuntimeError& e) {
+        auto m = e.message();
+        auto d = e.details();
+        buffer = buffer.subspan(formatMessage(buffer, MsgError, "%.*s\n", (int) m.size(), m.data()));
+        formatMessage(buffer, MsgError, "%.*s", (int) d.size(), d.data());
+    }
+    catch (const Application::Error& e) {
+        buffer = buffer.subspan(formatMessage(buffer, MsgError, "%s%s", e.what(), not e.info.empty() ? "\n" : ""));
+        if (not e.info.empty() && not buffer.empty()) {
+            buffer = buffer.subspan(
+                formatMessage(buffer, MsgInfo, "%s%s", e.info.c_str(), not e.details.empty() ? "\n" : ""));
         }
-        OptionGroup basic("Basic Options");
-        Value*      hv = helpO.second == 1
-                             ? storeTo(help)->flag()
-                             : storeTo(help,
-                                       [maxV = helpO.second](const std::string& v, unsigned& out) {
-                                      return Potassco::stringTo(v, out) == std::errc{} && out > 0 && out <= maxV;
-                                  })
-                              ->arg("<n>")
-                              ->implicit("1");
-        basic.addOptions()                                                                                 //
-            ("help,h", hv, helpO.first)                                                                    //
-            ("version,v", flag(version), "Print version information and exit")                             //
-            ("verbose,V", storeTo(verbose_ = 0)->implicit("-1")->arg("<n>"), "Set verbosity level to %A")  //
-            ("time-limit", storeTo(timeout_ = 0)->arg("<n>"), "Set time limit to %A seconds (0=no limit)") //
-            ("fast-exit,@1", flag(fastExit_ = false), "Force fast exit (do not call dtors)");              //
-        allOpts.add(basic);
-        initOptions(allOpts);
-        auto values = parseCommandLine(argc, argv, allOpts, false, [this](const std::string& value, std::string& opt) {
-            if (const auto* n = getPositional(value); n) {
-                opt = n;
-                return true;
-            }
-            return false;
-        });
-        parsed.assign(values);
-        allOpts.assignDefaults(parsed);
-        if (help || version) {
-            exitCode_ = EXIT_SUCCESS;
-            if (help) {
-                auto x = (DescriptionLevel) (help - 1);
-                allOpts.setActiveDescLevel(x);
-                printHelp(allOpts);
-            }
-            else {
-                printVersion();
-            }
-            return false;
+        if (not e.details.empty() && not buffer.empty()) {
+            formatMessage(buffer, MsgInfo, "%s", e.details.c_str());
         }
-        validateOptions(allOpts, parsed, values);
     }
     catch (const std::exception& e) {
-        error() << e.what() << "\n" << infoPrefix() << "Try '--help' for usage information\n";
+        formatMessage(buffer, MsgError, "%s", e.what());
+    }
+    catch (...) {
+        formatMessage(buffer, MsgError, "Unknown exception");
         return false;
     }
     return true;
 }
 
-void Application::printHelp(std::ostream& os, const OptionContext& root) {
-    os << getName() << " version " << getVersion() << "\n";
-    printUsage(os);
-    ProgramOptions::OptionPrinter printer(os);
-    root.description(printer);
-    os << "\n";
-    printUsage(os);
-    os << "Default command-line:\n" << getName() << " " << root.defaults(strlen(getName()) + 1) << "\n";
-}
+// Process command-line options.
+bool Application::applyOptions(int argc, char** argv) {
+    using namespace ProgramOptions;
 
-void Application::printHelp(const OptionContext& root) {
-    printHelp(out_, root);
-    out_.get().flush();
+    unsigned      help    = 0;
+    bool          version = false;
+    ParsedOptions parsed; // options found in command-line
+    OptionContext allOpts(std::string("<").append(getName()).append(">"));
+    HelpOpt       helpO = getHelpOption();
+    OptionGroup   basic("Basic Options");
+    if (helpO.second > 0) {
+        Value* hv = helpO.second == 1
+                        ? storeTo(help)->flag()
+                        : storeTo(help,
+                                  [maxV = helpO.second](const std::string& v, unsigned& out) {
+                                      return Potassco::stringTo(v, out) == std::errc{} && out > 0 && out <= maxV;
+                                  })
+                              ->arg("<n>")
+                              ->implicit("1");
+        basic.addOptions()("help,h", hv, helpO.first);
+    }
+    basic.addOptions()                                                                                 //
+        ("version,v", flag(version), "Print version information and exit")                             //
+        ("verbose,V", storeTo(verbose_ = 0)->implicit("-1")->arg("<n>"), "Set verbosity level to %A")  //
+        ("time-limit", storeTo(timeout_ = 0)->arg("<n>"), "Set time limit to %A seconds (0=no limit)") //
+        ("fast-exit,@1", flag(fastExit_ = false), "Force fast exit (do not call dtors)");              //
+    allOpts.add(basic);
+    initOptions(allOpts);
+    auto values = parseCommandLine(argc, argv, allOpts, false, [this](const std::string& value, std::string& opt) {
+        if (const auto* n = getPositional(value); n) {
+            opt = n;
+            return true;
+        }
+        return false;
+    });
+    parsed.assign(values);
+    allOpts.assignDefaults(parsed);
+    if (help || version) {
+        exitCode_ = EXIT_SUCCESS;
+        std::stringstream msg;
+        msg << getName() << " version " << getVersion() << "\n";
+        if (help) {
+            auto x = (DescriptionLevel) (help - 1);
+            allOpts.setActiveDescLevel(x);
+            msg << "usage: " << getName() << " " << getUsage() << "\n";
+            ProgramOptions::OptionPrinter printer(msg);
+            allOpts.description(printer);
+            msg << "\n";
+            msg << "usage: " << getName() << " " << getUsage() << "\n";
+            msg << "Default command-line:\n" << getName() << " " << allOpts.defaults(strlen(getName()) + 1) << "\n";
+            onHelp(msg.str(), x);
+        }
+        else {
+            msg << "Address model: " << (int) (sizeof(void*) * CHAR_BIT) << "-bit\n";
+            onVersion(msg.str());
+        }
+        return false;
+    }
+    validateOptions(allOpts, parsed, values);
+    return true;
 }
-
-void Application::printVersion() {
-    printVersion(out_);
-    out_.get().flush();
-}
-void Application::printVersion(std::ostream& os) {
-    os << getName() << " version " << getVersion()
-       << "\n"
-          "Address model: "
-       << (int) (sizeof(void*) * CHAR_BIT) << "-bit\n";
-}
-
-void Application::printUsage() {
-    printUsage(out_);
-    out_.get().flush();
-}
-
-void Application::printUsage(std::ostream& os) { os << "usage: " << getName() << " " << getUsage() << "\n"; }
 
 unsigned Application::verbose() const { return verbose_; }
 void     Application::setVerbose(unsigned v) { verbose_ = v; }

@@ -50,11 +50,21 @@ public:
     void validateOptions(const OptionContext&, const ParsedOptions&, const ParsedValues&) override {}
     void setup() override {}
     void run() override;
-    void printVersion(std::ostream& os) override {
-        Potassco::Application::printVersion(os);
-        os << "libpotassco version " << LIB_POTASSCO_VERSION
-           << "\nCopyright (C) Benjamin Kaufmann\n"
-              "License: The MIT License <https://opensource.org/licenses/MIT>\n";
+    void onHelp(const std::string& info, Potassco::ProgramOptions::DescriptionLevel) override {
+        std::cout << info << "\n";
+    }
+    void onVersion(const std::string& info) override {
+        std::cout << info << "\nlibpotassco version " << LIB_POTASSCO_VERSION
+                  << "\nCopyright (C) Benjamin Kaufmann\n"
+                     "License: The MIT License <https://opensource.org/licenses/MIT>\n";
+    }
+    bool onUnhandledException(const char* msg) override {
+        std::cerr << msg << "\n";
+        return false;
+    }
+    void flush() override {
+        std::cout.flush();
+        std::cerr.flush();
     }
 
 private:
