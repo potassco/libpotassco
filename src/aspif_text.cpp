@@ -416,7 +416,7 @@ struct AspifTextOutput::Data {
                 return true; // identical name, ignore duplicate
             }
             convertToOutput(node); // drop assignment
-            if (!theoryAtom) {
+            if (not theoryAtom) {
                 return false;
             }
         }

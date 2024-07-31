@@ -24,10 +24,6 @@
 //       see: www.boost.org/libs/program_options
 //
 #pragma once
-#ifdef _MSC_VER
-#pragma warning(disable : 4786)
-#pragma warning(disable : 4503)
-#endif
 #include <cstddef>
 #include <memory>
 #include <string>

@@ -25,11 +25,6 @@
 //
 #pragma once
 
-#ifdef _MSC_VER
-#pragma warning(disable : 4786)
-#pragma warning(disable : 4503)
-#pragma warning(disable : 4200)
-#endif
 #include <potassco/program_opts/errors.h>
 #include <potassco/program_opts/string_convert.h>
 #include <potassco/program_opts/value.h>
