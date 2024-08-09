@@ -323,8 +323,8 @@ inline namespace Ops {
 //! Opt-in heterogeneous comparison operators for scoped enums.
 /*!
  * \note To enable comparison operators for some scoped enum Foo defined in namespace X, declare a consteval function
- *       <tt>void enable_cmp_ops(std::type_identity<Foo>)</tt> in namespace X. Furthermore, if X is different from
- *       Potassco, then also add <tt>using namespace Potassco::Ops</tt> to namespace X.
+ *       <tt>Potassco::CmpOps enable_ops(std::type_identity<Foo>)</tt> in namespace X. Furthermore, if X is different
+ *       from Potassco, then also add <tt>using namespace Potassco::Ops</tt> to namespace X.
  */
 ///@{
 template <Potassco::ScopedEnum T>
@@ -341,8 +341,8 @@ requires(Potassco::detail::HasCmpOps<T>)
 //! Opt-in bit operations for enums.
 /*!
  * \note To enable bit operations for some scoped enum Foo defined in namespace X, declare a consteval function
- *       <tt>void enable_bit_ops(std::type_identity<Foo>)</tt> in namespace X. Furthermore, if X is different from
- *       Potassco, then also add <tt>using namespace Potassco::Ops</tt> to namespace X.
+ *       <tt>Potassco::BitOps enable_ops(std::type_identity<Foo>)</tt> in namespace X. Furthermore, if X is different
+ *       from Potassco, then also add <tt>using namespace Potassco::Ops</tt> to namespace X.
  */
 ///@{
 template <Potassco::ScopedEnum T>
