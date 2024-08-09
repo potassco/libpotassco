@@ -46,6 +46,7 @@
 #define POTASSCO_WARNING_BEGIN_RELAXED  POTASSCO_WARNING_PUSH() POTASSCO_WARNING_IGNORE_MSVC(4200)
 #define POTASSCO_WARNING_END_RELAXED    POTASSCO_WARNING_POP()
 #define POTASSCO_ATTRIBUTE_FORMAT(fp, ap)
+#define POTASSCO_ATTR_INLINE [[msvc::forceinline]]
 
 #elif defined(__GNUC__) || defined(__clang__)
 #if not defined(__STDC_FORMAT_MACROS)
@@ -67,6 +68,7 @@
 #define POTASSCO_WARNING_IGNORE_CLANG(X) _Pragma(POTASSCO_STRING(clang diagnostic ignored X))
 #define POTASSCO_WARNING_BEGIN_RELAXED   POTASSCO_WARNING_PUSH() POTASSCO_WARNING_IGNORE_CLANG("-Wzero-length-array")
 #define POTASSCO_WARNING_END_RELAXED     POTASSCO_WARNING_POP()
+#define POTASSCO_ATTR_INLINE             [[clang::always_inline]]
 #else
 #pragma GCC diagnostic push
 #pragma GCC system_header
@@ -79,13 +81,17 @@
     POTASSCO_WARNING_IGNORE_GCC("-pedantic")                                                                           \
     POTASSCO_WARNING_IGNORE_GCC("-Wsign-conversion")
 #define POTASSCO_WARNING_END_RELAXED POTASSCO_WARNING_POP()
+#define POTASSCO_ATTR_INLINE         [[gnu::always_inline]]
 #endif
 #else
 #define POTASSCO_FUNC_NAME __FILE__
 #define POTASSCO_WARNING_BEGIN_RELAXED
 #define POTASSCO_WARNING_END_RELAXED
 #define POTASSCO_ATTRIBUTE_FORMAT(fp, ap)
+#define POTASSCO_ATTR_INLINE
 #endif
+
+#define POTASSCO_FORCE_INLINE POTASSCO_ATTR_INLINE inline
 
 #if not defined(POTASSCO_ENABLE_PRAGMA_TODO) || POTASSCO_ENABLE_PRAGMA_TODO == 0
 #undef POTASSCO_PRAGMA_TODO
