@@ -21,6 +21,8 @@
 //
 #pragma once
 
+#include <potassco/platform.h>
+
 #include <algorithm>
 #include <array>
 #include <compare>
@@ -319,7 +321,7 @@ constexpr auto enum_cast(std::underlying_type_t<EnumT> n) -> std::optional<EnumT
 //! Returns whether @c x is a superset of @c y.
 template <typename T>
 requires(std::is_enum_v<T>)
-[[nodiscard]] constexpr bool test(T x, T y) noexcept {
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr bool test(T x, T y) noexcept {
     return (to_underlying(x) & to_underlying(y)) == to_underlying(y);
 }
 ///@}
@@ -348,31 +350,31 @@ template <Potassco::HasCmpOps T>
  */
 ///@{
 template <Potassco::HasBitOps T>
-[[nodiscard]] constexpr auto operator~(T a) noexcept -> T {
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator~(T a) noexcept -> T {
     return static_cast<T>(~Potassco::to_underlying(a));
 }
 template <Potassco::HasBitOps T>
-[[nodiscard]] constexpr auto operator|(T a, T b) noexcept -> T {
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator|(T a, T b) noexcept -> T {
     return static_cast<T>(Potassco::to_underlying(a) | Potassco::to_underlying(b));
 }
 template <Potassco::HasBitOps T>
-constexpr auto operator|=(T& a, T b) noexcept -> T& {
+POTASSCO_FORCE_INLINE constexpr auto operator|=(T& a, T b) noexcept -> T& {
     return a = a | b;
 }
 template <Potassco::HasBitOps T>
-[[nodiscard]] constexpr auto operator&(T a, T b) noexcept -> T {
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator&(T a, T b) noexcept -> T {
     return static_cast<T>(Potassco::to_underlying(a) & Potassco::to_underlying(b));
 }
 template <Potassco::HasBitOps T>
-constexpr auto operator&=(T& a, T b) noexcept -> T& {
+POTASSCO_FORCE_INLINE constexpr auto operator&=(T& a, T b) noexcept -> T& {
     return a = a & b;
 }
 template <Potassco::HasBitOps T>
-[[nodiscard]] constexpr auto operator^(T a, T b) noexcept -> T {
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator^(T a, T b) noexcept -> T {
     return static_cast<T>(Potassco::to_underlying(a) ^ Potassco::to_underlying(b));
 }
 template <Potassco::HasBitOps T>
-constexpr auto operator^=(T& a, T b) noexcept -> T& {
+POTASSCO_FORCE_INLINE constexpr auto operator^=(T& a, T b) noexcept -> T& {
     return a = a ^ b;
 }
 ///@}
