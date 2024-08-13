@@ -94,10 +94,6 @@ template <typename T, typename Op>
 concept HasOps = requires(T) {
     { enable_ops(c_type<T>) } -> std::convertible_to<Op>;
 };
-template <typename T>
-concept HasCmpOps = HasOps<T, CmpOps>;
-template <typename T>
-concept HasBitOps = HasOps<T, BitOps>;
 
 template <std::size_t N>
 struct FixedString {
@@ -250,6 +246,14 @@ concept HasEnumMeta = std::is_enum_v<EnumT> && detail::EnumMeta<EnumT>::value;
 template <typename EnumT>
 concept HasEnumEntries = HasEnumMeta<EnumT> && detail::EnumMeta<EnumT>::meta_entries;
 
+//! Concept for enums with support for heterogeneous comparison operators.
+template <typename T>
+concept HasCmpOps = ScopedEnum<T> && detail::HasOps<T, CmpOps>;
+
+//! Concept for enums with support for bit operations.
+template <typename T>
+concept HasBitOps = std::is_enum_v<T> && detail::HasOps<T, BitOps>;
+
 //! Returns the elements of the given enum as an array of (name, "name")-pairs.
 /*!
  * \tparam EnumT An enum type with full meta data.
@@ -327,13 +331,11 @@ inline namespace Ops {
  *       from Potassco, then also add <tt>using namespace Potassco::Ops</tt> to namespace X.
  */
 ///@{
-template <Potassco::ScopedEnum T>
-requires(Potassco::detail::HasCmpOps<T>)
+template <Potassco::HasCmpOps T>
 [[nodiscard]] constexpr auto operator==(T lhs, std::underlying_type_t<T> rhs) noexcept -> bool {
     return Potassco::to_underlying(lhs) == rhs;
 }
-template <Potassco::ScopedEnum T>
-requires(Potassco::detail::HasCmpOps<T>)
+template <Potassco::HasCmpOps T>
 [[nodiscard]] constexpr decltype(auto) operator<=>(T lhs, std::underlying_type_t<T> rhs) noexcept {
     return Potassco::to_underlying(lhs) <=> rhs;
 }
@@ -345,39 +347,32 @@ requires(Potassco::detail::HasCmpOps<T>)
  *       from Potassco, then also add <tt>using namespace Potassco::Ops</tt> to namespace X.
  */
 ///@{
-template <Potassco::ScopedEnum T>
-requires(Potassco::detail::HasBitOps<T>)
+template <Potassco::HasBitOps T>
 [[nodiscard]] constexpr auto operator~(T a) noexcept -> T {
     return static_cast<T>(~Potassco::to_underlying(a));
 }
-template <Potassco::ScopedEnum T>
-requires(Potassco::detail::HasBitOps<T>)
+template <Potassco::HasBitOps T>
 [[nodiscard]] constexpr auto operator|(T a, T b) noexcept -> T {
     return static_cast<T>(Potassco::to_underlying(a) | Potassco::to_underlying(b));
 }
-template <Potassco::ScopedEnum T>
-requires(Potassco::detail::HasBitOps<T>)
-[[nodiscard]] constexpr auto operator|=(T& a, T b) noexcept -> T& {
+template <Potassco::HasBitOps T>
+constexpr auto operator|=(T& a, T b) noexcept -> T& {
     return a = a | b;
 }
-template <Potassco::ScopedEnum T>
-requires(Potassco::detail::HasBitOps<T>)
+template <Potassco::HasBitOps T>
 [[nodiscard]] constexpr auto operator&(T a, T b) noexcept -> T {
     return static_cast<T>(Potassco::to_underlying(a) & Potassco::to_underlying(b));
 }
-template <Potassco::ScopedEnum T>
-requires(Potassco::detail::HasBitOps<T>)
-[[nodiscard]] constexpr auto operator&=(T& a, T b) noexcept -> T& {
+template <Potassco::HasBitOps T>
+constexpr auto operator&=(T& a, T b) noexcept -> T& {
     return a = a & b;
 }
-template <Potassco::ScopedEnum T>
-requires(Potassco::detail::HasBitOps<T>)
+template <Potassco::HasBitOps T>
 [[nodiscard]] constexpr auto operator^(T a, T b) noexcept -> T {
     return static_cast<T>(Potassco::to_underlying(a) ^ Potassco::to_underlying(b));
 }
-template <Potassco::ScopedEnum T>
-requires(Potassco::detail::HasBitOps<T>)
-[[nodiscard]] constexpr auto operator^=(T& a, T b) noexcept -> T& {
+template <Potassco::HasBitOps T>
+constexpr auto operator^=(T& a, T b) noexcept -> T& {
     return a = a ^ b;
 }
 ///@}
