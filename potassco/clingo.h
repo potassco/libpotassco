@@ -226,7 +226,7 @@ public:
     [[nodiscard]] virtual Statistics_t type(Key_t key) const = 0;
     //! Returns the child count of the object with the given key or 0 if it is a value.
     [[nodiscard]] virtual size_t size(Key_t key) const = 0;
-    //! Returns whether or not the object with the given key can be updated.
+    //! Returns whether the object with the given key can be updated.
     [[nodiscard]] virtual bool writable(Key_t key) const = 0;
 
     /*!
@@ -243,7 +243,7 @@ public:
     //! Appends a statistic object to the end of the given array.
     /*!
      * \pre writable(arr).
-     * \param array The array object to which the statistic object should be added.
+     * \param arr The array object to which the statistic object should be added.
      * \param type The type of the statistic object to append.
      * \return The key of the created statistic object.
      *
@@ -271,7 +271,7 @@ public:
      * \param mapK    The map object to search.
      * \param element The element to search for.
      * \param outKey  An optional out parameter for storing the key of the element if found.
-     * \return Whether or not element was found.
+     * \return Whether element was found.
      * \post !find(mapK, element, outKey) || !outKey || *outKey == get(mapK, element).
      */
     [[nodiscard]] virtual bool find(Key_t mapK, const char* element, Key_t* outKey) const = 0;
@@ -286,7 +286,7 @@ public:
      *
      * \note If a statistic object with the given name already exists in map,
      *       the function either returns its key provided that the types match,
-     *       or otherwise signals failure by throwing an std::logic_error.
+     *       or otherwise signals failure by throwing a std::logic_error.
      */
     virtual Key_t add(Key_t mapK, const char* name, Statistics_t type) = 0;
     //@}

@@ -68,7 +68,7 @@ struct AtScopeExit {
     ActionT action;
 };
 template <typename ActionT>
-AtScopeExit(ActionT) -> AtScopeExit<ActionT>;
+AtScopeExit(ActionT) -> AtScopeExit<ActionT>; // NOLINT
 
 //! Helper macro for executing actions on scope exit.
 /*!

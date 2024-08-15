@@ -26,7 +26,6 @@
 #include <potassco/basic_types.h>
 #include <potassco/error.h>
 
-#include <iterator>
 #include <new>
 #include <utility>
 
@@ -275,18 +274,18 @@ public:
     };
     //! Possible visitation modes.
     /*!
-     * Mode visit_current ignores atoms, elements, or terms
+     * Mode @c VisitCurrent ignores atoms, elements, or terms
      * that were added in previous steps, i.e. before the last call to update().
      */
-    enum VisitMode { visit_all, visit_current };
+    enum VisitMode { VisitAll, VisitCurrent };
     //! Calls <tt>out.visit(*this, a)</tt> for all theory atoms.
-    void accept(Visitor& out, VisitMode m = visit_current) const;
+    void accept(Visitor& out, VisitMode m = VisitCurrent) const;
     //! Visits terms and elements of the given atom.
-    void accept(const TheoryAtom& a, Visitor& out, VisitMode m = visit_all) const;
+    void accept(const TheoryAtom& a, Visitor& out, VisitMode m = VisitAll) const;
     //! Visits terms of the given element.
-    void accept(const TheoryElement& e, Visitor& out, VisitMode m = visit_all) const;
+    void accept(const TheoryElement& e, Visitor& out, VisitMode m = VisitAll) const;
     //! If given term is a compound term, visits its sub terms.
-    void accept(const TheoryTerm& t, Visitor& out, VisitMode m = visit_all) const;
+    void accept(const TheoryTerm& t, Visitor& out, VisitMode m = VisitAll) const;
 
 private:
     struct DestroyT;
@@ -297,8 +296,8 @@ private:
     void        resizeAtoms(uint32_t n);
     void        destroyAtom(TheoryAtom*);
     // NOLINTBEGIN(modernize-use-nodiscard)
-    bool doVisitTerm(VisitMode m, Id_t id) const { return m == visit_all || isNewTerm(id); }
-    bool doVisitElem(VisitMode m, Id_t id) const { return m == visit_all || isNewElement(id); }
+    bool doVisitTerm(VisitMode m, Id_t id) const { return m == VisitAll || isNewTerm(id); }
+    bool doVisitElem(VisitMode m, Id_t id) const { return m == VisitAll || isNewElement(id); }
     // NOLINTEND(modernize-use-nodiscard)
     struct Data;
     std::unique_ptr<Data> data_;

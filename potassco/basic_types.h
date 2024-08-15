@@ -310,7 +310,7 @@ private:
     uint32_t cap_;
     uint32_t size_;
 };
-inline void swap(DynamicBuffer& lhs, DynamicBuffer& rhs) { lhs.swap(rhs); }
+inline void swap(DynamicBuffer& lhs, DynamicBuffer& rhs) noexcept { lhs.swap(rhs); }
 
 class RuleBuilder;
 
@@ -328,7 +328,7 @@ public:
     //! Creates an empty string.
     constexpr ConstString() noexcept {
         if (std::is_constant_evaluated()) {
-            std::fill(std::begin(storage_) + 1, std::end(storage_), char(0));
+            std::fill(std::begin(storage_) + 1, std::end(storage_), static_cast<char>(0));
         }
         storage_[0]          = 0;
         storage_[c_maxSmall] = static_cast<char>(c_maxSmall);

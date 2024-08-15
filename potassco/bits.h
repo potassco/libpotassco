@@ -165,7 +165,7 @@ static_assert(left_most_bit(0b00000000u) == 0b00000000u && left_most_bit(0b00010
 //! Returns the log2 of @c x.
 template <std::unsigned_integral T>
 POTASSCO_FORCE_INLINE constexpr unsigned log2(T x) noexcept {
-    return static_cast<unsigned>(std::bit_width(x)) - unsigned(x != 0u);
+    return static_cast<unsigned>(std::bit_width(x)) - static_cast<unsigned>(x != 0u);
 }
 static_assert(log2(0u) == 0u && log2(1u) == 0u && log2(2u) == 1u && log2(4u) == 2u && log2(255u) == 7u);
 ///@}

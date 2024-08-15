@@ -65,7 +65,7 @@ void AbstractProgram::endStep() {}
 // BufferedStream
 /////////////////////////////////////////////////////////////////////////////////////////
 BufferedStream::BufferedStream(std::istream& str) : str_(str), rpos_(0), line_(1) {
-    buf_ = new char[ALLOC_SIZE];
+    buf_ = new char[alloc_size];
     underflow();
 }
 BufferedStream::~BufferedStream() { delete[] buf_; }
@@ -103,7 +103,7 @@ void BufferedStream::underflow(bool upPos) {
         buf_[0] = buf_[rpos_ - 1];
         rpos_   = 1;
     }
-    auto n = static_cast<std::streamsize>(ALLOC_SIZE - (1 + rpos_));
+    auto n = static_cast<std::streamsize>(alloc_size - (1 + rpos_));
     str_.read(buf_ + rpos_, n);
     auto r          = static_cast<std::size_t>(str_.gcount());
     buf_[r + rpos_] = 0;
@@ -117,8 +117,8 @@ bool BufferedStream::unget(char c) {
     return true;
 }
 bool BufferedStream::match(std::string_view w) {
-    if (auto bLen = BUF_SIZE - rpos_; bLen < w.length()) {
-        POTASSCO_ASSERT(w.length() <= BUF_SIZE, "Token too long - Increase BUF_SIZE!");
+    if (auto bLen = buf_size - rpos_; bLen < w.length()) {
+        POTASSCO_ASSERT(w.length() <= buf_size, "Token too long - Increase BUF_SIZE!");
         std::memcpy(buf_, buf_ + rpos_, bLen);
         rpos_ = bLen;
         underflow(false);
@@ -153,7 +153,7 @@ bool BufferedStream::readInt(int64_t& res) {
 std::size_t BufferedStream::read(std::span<char> outBuf) {
     std::size_t os = 0;
     for (auto n = outBuf.size(); n && peek();) {
-        auto  b   = (ALLOC_SIZE - rpos_) - 1;
+        auto  b   = (alloc_size - rpos_) - 1;
         auto  m   = std::min(n, b);
         auto* out = outBuf.data() + os;
         std::copy(buf_ + rpos_, buf_ + rpos_ + m, out);

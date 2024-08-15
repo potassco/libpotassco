@@ -93,10 +93,7 @@ struct SmodelsConvert::SmData {
         Output(SymTab::iterator it) : atom(it->first), type(Name), name(&it->second) {}
         Output(Atom_t a, int32_t s, int32_t t) : atom(a), type(Edge), edge{s, t} {}
         std::string_view makePred(ScratchType& scratch) const {
-            if (type == Name)
-                return name->view();
-            else
-                return SmData::makePred(scratch, "_edge"sv, edge.s, edge.t);
+            return type == Name ? name->view() : SmData::makePred(scratch, "_edge"sv, edge.s, edge.t);
         }
         uint32_t atom : 31;
         uint32_t type : 1;
@@ -121,10 +118,10 @@ struct SmodelsConvert::SmData {
         unsigned endPos;
     };
     static_assert(amc::is_trivially_relocatable_v<Minimize>);
-    using MinSet = amc::vector<Minimize>;
+    using MinSet                      = amc::vector<Minimize>;
+    static constexpr Atom_t falseAtom = 1;
     SmData() : next_(2) {}
     Atom_t newAtom() { return next_++; }
-    Atom_t falseAtom() { return 1; }
     bool   mapped(Atom_t a) const { return a < atoms_.size() && atoms_[a].smId != 0; }
     Atom&  mapAtom(Atom_t a) {
         if (mapped(a)) {
@@ -153,7 +150,7 @@ struct SmodelsConvert::SmData {
         rule_.clear().start(ht);
         for (auto a : h) { rule_.addHead(mapHeadAtom(a)); }
         if (h.empty()) {
-            rule_.addHead(falseAtom());
+            rule_.addHead(falseAtom);
         }
         return rule_;
     }
@@ -164,8 +161,8 @@ struct SmodelsConvert::SmData {
     }
     SymTab::iterator addOutput(Atom_t atom, const std::string_view& str) {
         auto [it, added] = symTab_.try_emplace(atom, str);
-        POTASSCO_CHECK_PRE(added, "Redefinition: atom '%u:%.*s' already shown as '%s'", atom, int(str.size()),
-                           str.data(), it->second.c_str());
+        POTASSCO_CHECK_PRE(added, "Redefinition: atom '%u:%.*s' already shown as '%s'", atom,
+                           static_cast<int>(str.size()), str.data(), it->second.c_str());
         output_.emplace_back(it);
         return it;
     }
@@ -294,7 +291,7 @@ void SmodelsConvert::flush() {
     flushExternal();
     flushHeuristic();
     flushSymbols();
-    Lit_t f = -static_cast<Lit_t>(data_->falseAtom());
+    auto f = -static_cast<Lit_t>(SmData::falseAtom);
     out_.assume({&f, 1});
     data_->flushStep();
 }
@@ -368,7 +365,7 @@ void SmodelsConvert::flushHeuristic() {
 void SmodelsConvert::flushSymbols() {
     SmData::ScratchType scratch;
     std::sort(data_->output_.begin(), data_->output_.end(),
-              [](const auto& lhs, const auto& rhs) { return lhs.atom < rhs.atom; });
+              [](const SmData::Output& lhs, const SmData::Output& rhs) { return lhs.atom < rhs.atom; });
     for (const auto& sym : data_->output_) {
         auto x = static_cast<Lit_t>(sym.atom);
         out_.output(sym.makePred(scratch), {&x, 1});

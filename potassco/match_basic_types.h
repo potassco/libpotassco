@@ -30,7 +30,6 @@
 #include <ios>
 #include <iosfwd>
 #include <limits>
-#include <stdexcept>
 
 namespace Potassco {
 
@@ -43,7 +42,7 @@ namespace Potassco {
 //! integers.
 class BufferedStream {
 public:
-    static constexpr auto BUF_SIZE = std::streamsize(4096);
+    static constexpr auto buf_size = static_cast<std::streamsize>(4096);
     //! Returns whether the given character is a decimal digit.
     static constexpr bool isDigit(char c) { return c >= '0' && c <= '9'; }
     //! Converts the given character to a decimal digit.
@@ -67,7 +66,7 @@ public:
     //! Attempts to extract the given string from the input stream.
     /*!
      * If the function returns false, no characters were extracted from the stream.
-     * \pre <tt>tok.length() <= BUF_SIZE</tt>
+     * \pre <tt>tok.length() <= buf_size</tt>
      */
     bool match(std::string_view tok);
     //! Discards leading whitespace from the input stream.
@@ -81,7 +80,7 @@ public:
     [[nodiscard]] unsigned line() const;
 
 private:
-    static constexpr auto ALLOC_SIZE = BUF_SIZE + 1;
+    static constexpr auto alloc_size = buf_size + 1;
     using BufferType                 = char*;
 
     char pop();
@@ -170,7 +169,7 @@ protected:
     //! Extracts a literal (i.e. positive or negative atom) or fails with an std::exception.
     Lit_t matchLit(const char* error = "literal expected") {
         auto res = matchInt(-static_cast<Lit_t>(varMax_), static_cast<Lit_t>(varMax_), error);
-        require(res != 0, error);
+        (void) require(res != 0, error);
         return static_cast<Lit_t>(res);
     }
     //! Extracts a weight or fails with an std::exception.

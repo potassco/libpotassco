@@ -24,7 +24,6 @@
 #include <potassco/platform.h>
 #include <potassco/program_opts/program_options.h>
 
-#include <functional>
 #include <span>
 #include <string>
 #include <utility>
@@ -166,13 +165,12 @@ private:
     static void        resetInstance(Application& app);
     static void        sigHandler(int sig);
 
-    int                 exitCode_;  // application's exit code
-    unsigned            timeout_;   // active time limit or 0 for no limit
-    unsigned            verbose_;   // active verbosity level
-    bool                fastExit_;  // force fast exit?
-    volatile long       blocked_;   // temporarily block signals?
-    volatile long       pending_;   // pending signal or 0 if no pending signal
-    static Application* instance_s; // running instance (only valid during run()).
+    int           exitCode_; // application's exit code
+    unsigned      timeout_;  // active time limit or 0 for no limit
+    unsigned      verbose_;  // active verbosity level
+    bool          fastExit_; // force fast exit?
+    volatile long blocked_;  // temporarily block signals?
+    volatile long pending_;  // pending signal or 0 if no pending signal
 };
 
 } // namespace Potassco

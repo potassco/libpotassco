@@ -25,7 +25,6 @@
 
 #include <algorithm>
 #include <array>
-#include <compare>
 #include <optional>
 #include <source_location>
 #include <string_view>
@@ -42,7 +41,8 @@ requires(std::is_enum_v<EnumT>)
     return static_cast<std::underlying_type_t<EnumT>>(e);
 }
 #endif
-namespace detail {
+namespace detail { /* NOLINT */
+// NOLINTBEGIN
 template <typename T>
 inline constexpr auto c_type = std::type_identity<T>{};
 
@@ -141,7 +141,7 @@ constexpr void addEntry(std::pair<EnumT, std::string_view>*& out) {
         *out++ = {V, enum_name<EnumT, V>()};
     }
 }
-
+// NOLINTEND
 } // namespace detail
 
 /*!
@@ -154,7 +154,7 @@ using detail::CmpOps;
 
 //! Meta type for simple (consecutive) enums with @c Count elements starting at @c First.
 /*!
- * To associate default meta data for some enum Foo defined in namespace X, define a consteval function
+ * To associate default metadata for some enum Foo defined in namespace X, define a consteval function
  * <tt>auto enable_meta(std::type_identity<Foo>) { return Potassco::DefaultEnum{...}; }</tt> in namespace X.
  */
 template <typename EnumT, std::size_t Count, std::underlying_type_t<EnumT> First = 0>
@@ -168,28 +168,28 @@ struct DefaultEnum {
 
 //! Meta type for enums with @c N explicit elements, where each element is an enumerator and its (stringified) name.
 /*!
- * To associate entry meta data for some enum Foo defined in namespace X, define a consteval function
+ * To associate entry metadata for some enum Foo defined in namespace X, define a consteval function
  * <tt>auto enable_meta(std::type_identity<Foo>) { return Potassco::EnumEntries{...}; }</tt> in namespace X.
  * \note Enumerators shall have unique numeric values.
  */
 template <typename EnumT, std::size_t N>
 struct EnumEntries {
-    using element_type   = std::pair<EnumT, std::string_view>;
-    using container_type = std::array<element_type, N>;
-    using UT             = std::underlying_type_t<EnumT>;
+    using element_type   = std::pair<EnumT, std::string_view>; // NOLINT
+    using container_type = std::array<element_type, N>;        // NOLINT
+    using UT             = std::underlying_type_t<EnumT>;      // NOLINT
     template <typename... Args>
-    constexpr EnumEntries(Args... args) {
+    explicit constexpr EnumEntries(Args... args) {
         static_assert(N != 0 && sizeof...(Args) == N * 2);
-        add(vals_.data(), args...);
-        std::sort(vals_.begin(), vals_.end(), [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+        add(vals.data(), args...);
+        std::sort(vals.begin(), vals.end(), [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
     }
-    constexpr EnumEntries(const element_type* base) {
-        for (std::size_t i = 0; i != N; ++i) { vals_[i] = base[i]; }
-        std::sort(vals_.begin(), vals_.end(), [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    explicit constexpr EnumEntries(const element_type* base) {
+        for (std::size_t i = 0; i != N; ++i) { vals[i] = base[i]; }
+        std::sort(vals.begin(), vals.end(), [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
     }
-    [[nodiscard]] constexpr auto min() const noexcept { return to_underlying(vals_[0].first); }
-    [[nodiscard]] constexpr auto max() const noexcept { return to_underlying(vals_[N - 1].first); }
-    [[nodiscard]] constexpr auto count() const noexcept { return N; }
+    [[nodiscard]] constexpr auto min() const noexcept { return to_underlying(vals[0].first); }
+    [[nodiscard]] constexpr auto max() const noexcept { return to_underlying(vals[N - 1].first); }
+    [[nodiscard]] constexpr auto count() const noexcept { return N; } /* NOLINT */
     [[nodiscard]] constexpr auto trivial() const noexcept {
         return min() == 0 && static_cast<std::size_t>(max()) == count() - 1;
     }
@@ -200,15 +200,13 @@ struct EnumEntries {
     }
     [[nodiscard]] constexpr const element_type* find(EnumT e) const noexcept {
         if (trivial()) {
-            return to_underlying(e) >= min() && to_underlying(e) <= max() ? vals_.data() + to_underlying(e) : nullptr;
+            return to_underlying(e) >= min() && to_underlying(e) <= max() ? vals.data() + to_underlying(e) : nullptr;
         }
-        else {
-            auto it = std::lower_bound(vals_.begin(), vals_.end(), e,
-                                       [](const auto& lhs, EnumT rhs) { return lhs.first < rhs; });
-            return it != vals_.end() && it->first == e ? &*it : nullptr;
-        }
+        auto it =
+            std::lower_bound(vals.begin(), vals.end(), e, [](const auto& lhs, EnumT rhs) { return lhs.first < rhs; });
+        return it != vals.end() && it->first == e ? &*it : nullptr;
     }
-    constexpr const container_type& entries() const noexcept { return vals_; }
+    constexpr const container_type& entries() const noexcept { return vals; }
     template <typename... Args>
     constexpr void add(element_type* out, EnumT e1, std::string_view s1, Args... rest) {
         *out++ = element_type{e1, s1};
@@ -217,7 +215,7 @@ struct EnumEntries {
         }
     }
 
-    container_type vals_{};
+    container_type vals{};
 };
 
 template <typename EnumT, typename... Args>
@@ -240,11 +238,11 @@ constexpr auto reflectEntries() {
 template <typename EnumT>
 concept ScopedEnum = std::is_enum_v<EnumT> && not std::is_convertible_v<EnumT, std::underlying_type_t<EnumT>>;
 
-//! Concept for enums with meta data
+//! Concept for enums with metadata.
 template <typename EnumT>
 concept HasEnumMeta = std::is_enum_v<EnumT> && detail::EnumMeta<EnumT>::value;
 
-//! Concept for enums whose meta data includes individual entries.
+//! Concept for enums whose metadata includes individual entries.
 template <typename EnumT>
 concept HasEnumEntries = HasEnumMeta<EnumT> && detail::EnumMeta<EnumT>::meta_entries;
 
@@ -258,7 +256,7 @@ concept HasBitOps = std::is_enum_v<T> && detail::HasOps<T, BitOps>;
 
 //! Returns the elements of the given enum as an array of (name, "name")-pairs.
 /*!
- * \tparam EnumT An enum type with full meta data.
+ * \tparam EnumT An enum type with full metadata.
  */
 template <HasEnumEntries EnumT>
 consteval decltype(auto) enum_entries() {
@@ -267,7 +265,7 @@ consteval decltype(auto) enum_entries() {
 
 //! Returns the number of enumerators in the given enum type.
 /*!
- * \tparam EnumT An enum type with meta data.
+ * \tparam EnumT An enum type with metadata.
  * \return Number of enumerators.
  */
 template <HasEnumMeta EnumT>
@@ -277,7 +275,7 @@ consteval auto enum_count() -> std::size_t {
 
 //! Returns the minimal valid numeric value for the given enum type.
 /*!
- * If EnumT has associated meta data, the minimal value is determined based on that data.
+ * If EnumT has associated metadata, the minimal value is determined based on that data.
  * Otherwise, the minimal value is the minimal value of the enum's underlying type.
  */
 template <typename EnumT>
@@ -288,7 +286,7 @@ constexpr auto enum_min() -> std::underlying_type_t<EnumT> {
 
 //! Returns the maximal valid numeric value for the given enum type.
 /*!
- * If EnumT has associated meta data, the maximal value is determined based on that data.
+ * If EnumT has associated metadata, the maximal value is determined based on that data.
  * Otherwise, the maximal value is the maximal value of the enum's underlying type.
  */
 template <typename EnumT>
@@ -299,7 +297,7 @@ constexpr auto enum_max() -> std::underlying_type_t<EnumT> {
 
 //! Returns the name of the given enumerator @c e.
 /*!
- * \tparam EnumT An enum type with full meta data.
+ * \tparam EnumT An enum type with full metadata.
  * \param e Enumerator for which the name should be returned.
  * \return The stringified name of @c e or an empty string_view if @c e is not a named enumerator of EnumT.
  */
@@ -310,7 +308,7 @@ constexpr auto enum_name(EnumT e) -> std::string_view {
 
 //! Tries to convert the given integral value into an enumerator of EnumT.
 /*!
- * \tparam EnumT An enum type with meta data.
+ * \tparam EnumT An enum type with metadata.
  * \return An enumerator of EnumT with integral value @n or an empty optional if no such enumerator exists in EnumT.
  */
 template <HasEnumMeta EnumT>
@@ -382,3 +380,12 @@ POTASSCO_FORCE_INLINE constexpr auto operator^=(T& a, T b) noexcept -> T& {
 } // namespace Ops
 
 } // namespace Potassco
+using Potassco::Ops::operator&;
+using Potassco::Ops::operator|;
+using Potassco::Ops::operator^;
+using Potassco::Ops::operator~;
+using Potassco::Ops::operator&=;
+using Potassco::Ops::operator|=;
+using Potassco::Ops::operator^=;
+using Potassco::Ops::operator==;
+using Potassco::Ops::operator<=>;

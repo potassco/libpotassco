@@ -866,12 +866,12 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
             }
             void visit(const TheoryData& data, Id_t, const TheoryElement& e) override {
                 out << '{';
-                data.accept(e, *this, TheoryData::visit_all);
+                data.accept(e, *this, TheoryData::VisitAll);
                 out << '}';
             }
             void visit(const TheoryData& data, const TheoryAtom& a) override {
                 out << '&';
-                data.accept(a, *this, TheoryData::visit_all);
+                data.accept(a, *this, TheoryData::VisitAll);
             }
             void function(const TheoryData& data, const TheoryTerm& t) {
                 out << data.getTerm(t.function()).symbol() << '(';

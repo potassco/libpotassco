@@ -25,7 +25,6 @@
 #include <potassco/match_basic_types.h>
 #include <potassco/theory_data.h>
 
-#include <cstring>
 #include <memory>
 
 namespace Potassco {
@@ -43,7 +42,7 @@ public:
 protected:
     //! Checks whether stream starts with a valid token.
     bool doAttach(bool& inc) override;
-    //! Attempts to parses the current step or throws an exception on error.
+    //! Attempts to parse the current step or throws an exception on error.
     /*!
      * The function calls beginStep()/endStep() on the associated
      * output object before/after parsing the current step.

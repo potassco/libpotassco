@@ -261,7 +261,7 @@ const TheoryElement& TheoryData::getElement(Id_t id) const {
     return *data_->elems[id];
 }
 void TheoryData::accept(Visitor& out, VisitMode m) const {
-    for (atom_iterator aIt = m == visit_current ? currBegin() : begin(), aEnd = end(); aIt != aEnd; ++aIt) {
+    for (atom_iterator aIt = m == VisitCurrent ? currBegin() : begin(), aEnd = end(); aIt != aEnd; ++aIt) {
         out.visit(*this, **aIt);
     }
 }
