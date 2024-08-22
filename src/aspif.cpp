@@ -69,51 +69,51 @@ bool AspifInput::doParse() {
     data_      = &data;
     auto& rule = data.rule;
     out_.beginStep();
-    for (Directive_t rt; (rt = matchEnum<Directive_t>("rule type or 0 expected")) != Directive_t::End; rule.clear()) {
+    for (Directive_t rt; (rt = matchEnum<Directive_t>("rule type or 0 expected")) != Directive_t::end; rule.clear()) {
         switch (rt) {
             default:
-                require(rt == Directive_t::Comment, "unrecognized rule type");
+                require(rt == Directive_t::comment, "unrecognized rule type");
                 skipLine();
                 break;
-            case Directive_t::Rule: {
+            case Directive_t::rule: {
                 rule.start(matchEnum<Head_t>("invalid head type"));
                 matchAtoms();
-                if (auto bt = matchEnum<Body_t>("invalid body type"); bt == Body_t::Normal) {
+                if (auto bt = matchEnum<Body_t>("invalid body type"); bt == Body_t::normal) {
                     matchLits();
                 }
                 else {
-                    require(bt == Body_t::Sum, "unexpected body type");
+                    require(bt == Body_t::sum, "unexpected body type");
                     rule.startSum(matchWeight());
                     matchWLits(true);
                 }
                 rule.end(&out_);
                 break;
             }
-            case Directive_t::Minimize:
+            case Directive_t::minimize:
                 rule.startMinimize(matchWeight(false, "priority expected"));
                 matchWLits(false);
                 rule.end(&out_);
                 break;
-            case Directive_t::Project:
+            case Directive_t::project:
                 matchAtoms();
                 out_.project(rule.head());
                 break;
-            case Directive_t::Output: {
+            case Directive_t::output: {
                 matchString();
                 matchLits();
                 out_.output(data.sym.view(), rule.body());
                 break;
             }
-            case Directive_t::External:
+            case Directive_t::external:
                 if (auto atom = matchAtom()) {
                     out_.external(atom, matchEnum<Value_t>("value expected"));
                 }
                 break;
-            case Directive_t::Assume:
+            case Directive_t::assume:
                 matchLits();
                 out_.assume(rule.body());
                 break;
-            case Directive_t::Heuristic: {
+            case Directive_t::heuristic: {
                 auto type = matchEnum<Heuristic_t>("invalid heuristic modifier");
                 auto atom = matchAtom();
                 auto bias = matchInt();
@@ -122,14 +122,14 @@ bool AspifInput::doParse() {
                 out_.heuristic(atom, type, bias, prio, rule.body());
                 break;
             }
-            case Directive_t::Edge: {
+            case Directive_t::edge: {
                 auto start = matchInt("invalid edge, start node expected");
                 auto end   = matchInt("invalid edge, end node expected");
                 matchLits();
                 out_.acycEdge(start, end, rule.body());
                 break;
             }
-            case Directive_t::Theory: matchTheory(static_cast<Theory_t>(matchUint())); break;
+            case Directive_t::theory: matchTheory(static_cast<Theory_t>(matchUint())); break;
         }
     }
     out_.endStep();
@@ -161,28 +161,28 @@ void AspifInput::matchTheory(Theory_t rt) {
     auto tId = matchId();
     switch (rt) {
         default              : error("unrecognized theory directive type"); return;
-        case Theory_t::Number: out_.theoryTerm(tId, matchInt()); break;
-        case Theory_t::Symbol:
+        case Theory_t::number: out_.theoryTerm(tId, matchInt()); break;
+        case Theory_t::symbol:
             matchString();
             out_.theoryTerm(tId, data_->sym.view());
             break;
-        case Theory_t::Compound: {
+        case Theory_t::compound: {
             auto type = matchInt("unrecognized compound term type");
             matchIds();
             out_.theoryTerm(tId, type, data_->ids);
             break;
         }
-        case Theory_t::Element: {
+        case Theory_t::element: {
             matchIds();
             matchLits();
             out_.theoryElement(tId, data_->ids, data_->rule.body());
             break;
         }
-        case Theory_t::Atom: // fall through
-        case Theory_t::AtomWithGuard: {
+        case Theory_t::atom: // fall through
+        case Theory_t::atom_with_guard: {
             auto termId = matchId();
             matchIds();
-            if (static_cast<Theory_t>(rt) == Theory_t::Atom) {
+            if (rt == Theory_t::atom) {
                 out_.theoryAtom(tId, termId, data_->ids);
             }
             else {
@@ -206,15 +206,17 @@ static std::ostream& operator<<(std::ostream& os, WeightLit_t wl) { return os <<
 AspifOutput::AspifOutput(std::ostream& os) : os_(os) {}
 
 AspifOutput& AspifOutput::startDir(Directive_t r) {
-    os_ << static_cast<unsigned>(r);
+    os_ << to_underlying(r);
     return *this;
 }
 template <typename T>
 AspifOutput& AspifOutput::add(T x) {
-    if constexpr (std::is_enum_v<T>)
+    if constexpr (std::is_enum_v<T>) {
         os_ << " " << to_underlying(x);
-    else
+    }
+    else {
         os_ << " " << x;
+    }
     return *this;
 }
 template <typename T>
@@ -234,49 +236,50 @@ AspifOutput& AspifOutput::endDir() {
 }
 void AspifOutput::initProgram(bool inc) {
     os_ << "asp 1 0 0";
-    if (inc)
+    if (inc) {
         os_ << " incremental";
+    }
     os_ << '\n';
 }
 void AspifOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
-    startDir(Directive_t::Rule).add(ht).add(head).add(Body_t::Normal).add(body).endDir();
+    startDir(Directive_t::rule).add(ht).add(head).add(Body_t::normal).add(body).endDir();
 }
 void AspifOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
-    startDir(Directive_t::Rule).add(ht).add(head).add(Body_t::Sum).add(bound).add(body).endDir();
+    startDir(Directive_t::rule).add(ht).add(head).add(Body_t::sum).add(bound).add(body).endDir();
 }
 void AspifOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
-    startDir(Directive_t::Minimize).add(prio).add(lits).endDir();
+    startDir(Directive_t::minimize).add(prio).add(lits).endDir();
 }
 void AspifOutput::output(const std::string_view& str, const LitSpan& cond) {
-    startDir(Directive_t::Output).add(str).add(cond).endDir();
+    startDir(Directive_t::output).add(str).add(cond).endDir();
 }
-void AspifOutput::external(Atom_t a, Value_t v) { startDir(Directive_t::External).add(a).add(v).endDir(); }
-void AspifOutput::assume(const LitSpan& lits) { startDir(Directive_t::Assume).add(lits).endDir(); }
-void AspifOutput::project(const AtomSpan& atoms) { startDir(Directive_t::Project).add(atoms).endDir(); }
+void AspifOutput::external(Atom_t a, Value_t v) { startDir(Directive_t::external).add(a).add(v).endDir(); }
+void AspifOutput::assume(const LitSpan& lits) { startDir(Directive_t::assume).add(lits).endDir(); }
+void AspifOutput::project(const AtomSpan& atoms) { startDir(Directive_t::project).add(atoms).endDir(); }
 void AspifOutput::acycEdge(int s, int t, const LitSpan& cond) {
-    startDir(Directive_t::Edge).add(s).add(t).add(cond).endDir();
+    startDir(Directive_t::edge).add(s).add(t).add(cond).endDir();
 }
 void AspifOutput::heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& cond) {
-    startDir(Directive_t::Heuristic).add(t).add(a).add(bias).add(prio).add(cond).endDir();
+    startDir(Directive_t::heuristic).add(t).add(a).add(bias).add(prio).add(cond).endDir();
 }
 void AspifOutput::theoryTerm(Id_t termId, int number) {
-    startDir(Directive_t::Theory).add(Theory_t::Number).add(termId).add(number).endDir();
+    startDir(Directive_t::theory).add(Theory_t::number).add(termId).add(number).endDir();
 }
 void AspifOutput::theoryTerm(Id_t termId, const std::string_view& name) {
-    startDir(Directive_t::Theory).add(Theory_t::Symbol).add(termId).add(name).endDir();
+    startDir(Directive_t::theory).add(Theory_t::symbol).add(termId).add(name).endDir();
 }
 void AspifOutput::theoryTerm(Id_t termId, int cId, const IdSpan& args) {
-    startDir(Directive_t::Theory).add(Theory_t::Compound).add(termId).add(cId).add(args).endDir();
+    startDir(Directive_t::theory).add(Theory_t::compound).add(termId).add(cId).add(args).endDir();
 }
 void AspifOutput::theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond) {
-    startDir(Directive_t::Theory).add(Theory_t::Element).add(elementId).add(terms).add(cond).endDir();
+    startDir(Directive_t::theory).add(Theory_t::element).add(elementId).add(terms).add(cond).endDir();
 }
 void AspifOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) {
-    startDir(Directive_t::Theory).add(Theory_t::Atom).add(atomOrZero).add(termId).add(elements).endDir();
+    startDir(Directive_t::theory).add(Theory_t::atom).add(atomOrZero).add(termId).add(elements).endDir();
 }
 void AspifOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) {
-    startDir(Directive_t::Theory)
-        .add(uint32_t(Theory_t::AtomWithGuard))
+    startDir(Directive_t::theory)
+        .add(Theory_t::atom_with_guard)
         .add(atomOrZero)
         .add(termId)
         .add(elements)

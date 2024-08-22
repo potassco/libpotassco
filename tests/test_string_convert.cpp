@@ -33,8 +33,9 @@ namespace Potassco::Test {
 template <typename T>
 static std::optional<T> string_cast(const std::string& in) {
     T out;
-    if (auto ec = Potassco::stringTo(in, out); ec != std::errc{})
+    if (auto ec = Potassco::stringTo(in, out); ec != std::errc{}) {
         return std::nullopt;
+    }
     return out;
 }
 
@@ -143,7 +144,7 @@ TEST_CASE("String conversion", "[string]") {
 
     SECTION("double converts to string") { REQUIRE(Potassco::toString(10.2) == "10.2"); }
     SECTION("double conversion is reversible") {
-        const double d = 0.00000001;
+        constexpr double d = 0.00000001;
         REQUIRE(string_cast<double>(Potassco::toString(d)) == d);
 
         float x;
@@ -151,7 +152,7 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(Potassco::toString(x) == "0.8");
     }
     SECTION("Pairs can be converted") {
-        const std::pair<int, bool> p(10, false);
+        constexpr std::pair p(10, false);
         REQUIRE(Potassco::toString(p) == "10,false");
         REQUIRE((string_cast<std::pair<int, bool>>("10,false") == p));
 

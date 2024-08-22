@@ -30,9 +30,9 @@ AbstractHeuristic::~AbstractHeuristic()   = default;
 AbstractStatistics::~AbstractStatistics() = default;
 
 auto AbstractAssignment::isTotal() const -> bool { return unassigned() == 0u; }
-auto AbstractAssignment::isFixed(Lit_t lit) const -> bool { return value(lit) != Value_t::Free && level(lit) == 0; }
-auto AbstractAssignment::isTrue(Lit_t lit) const -> bool { return value(lit) == Value_t::True; }
-auto AbstractAssignment::isFalse(Lit_t lit) const -> bool { return value(lit) == Value_t::False; }
+auto AbstractAssignment::isFixed(Lit_t lit) const -> bool { return value(lit) != Value_t::free && level(lit) == 0; }
+auto AbstractAssignment::isTrue(Lit_t lit) const -> bool { return value(lit) == Value_t::true_; }
+auto AbstractAssignment::isFalse(Lit_t lit) const -> bool { return value(lit) == Value_t::false_; }
 auto AbstractAssignment::trailEnd(uint32_t lev) const -> uint32_t {
     return lev < level() ? trailBegin(lev + 1) : trailSize();
 }

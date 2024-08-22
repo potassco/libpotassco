@@ -19,7 +19,7 @@ const char* ExpressionInfo::relativeFileName(const std::source_location& loc) {
 
 static void append(std::span<char>& s, std::string_view view) {
     auto n = std::min(view.size(), s.size());
-    std::copy(view.begin(), view.begin() + n, s.begin());
+    std::copy_n(view.begin(), n, s.begin());
     s = s.subspan(n);
 }
 
@@ -44,8 +44,9 @@ static void appendExpression(std::span<char>& span, const ExpressionInfo& info, 
         append(span, " "sv);
     }
     append(span, "failed."sv);
-    if (more)
+    if (more) {
         append(span, "\nmessage: "sv);
+    }
 }
 
 constinit AbortHandler g_abortHandler = nullptr;
@@ -59,20 +60,23 @@ extern void failAbort(const ExpressionInfo& info, const char* fmt, ...) {
     if (hasMessage) {
         va_list args;
         va_start(args, fmt);
-        if (auto r = std::vsnprintf(span.data(), span.size(), fmt, args); r > 0)
+        if (auto r = std::vsnprintf(span.data(), span.size(), fmt, args); r > 0) {
             span = span.subspan(static_cast<size_t>(std::min(r, static_cast<int>(span.size()))));
+        }
         va_end(args);
     }
     *span.data() = 0;
-    if (g_abortHandler)
+    if (g_abortHandler) {
         g_abortHandler(message);
+    }
     fprintf(stderr, "%s\n", message);
     std::abort();
 }
 
 extern void failThrow(Errc ec, const ExpressionInfo& info, const char* fmt, ...) {
-    if (ec == Errc::bad_alloc)
+    if (ec == Errc::bad_alloc) {
         throw std::bad_alloc();
+    }
 
     char            message[1024];
     std::span<char> span(message, std::size(message) - 1);
@@ -84,8 +88,9 @@ extern void failThrow(Errc ec, const ExpressionInfo& info, const char* fmt, ...)
     if (hasMessage) {
         va_list args;
         va_start(args, fmt);
-        if (auto r = std::vsnprintf(span.data(), span.size(), fmt, args); r > 0)
+        if (auto r = std::vsnprintf(span.data(), span.size(), fmt, args); r > 0) {
             span = span.subspan(static_cast<size_t>(std::min(r, static_cast<int>(span.size()))));
+        }
         va_end(args);
         next = ": "sv;
     }

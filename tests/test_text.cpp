@@ -235,9 +235,9 @@ TEST_CASE("Text writer ", "[text]") {
     }
     SECTION("classical negation") {
         out.beginStep();
-        out.rule(Head_t::Choice, std::vector{Atom_t(1)}, {});
-        out.output("-a", std::vector{Lit_t(1)});
-        out.output("-8", std::vector{Lit_t(1)});
+        out.rule(Head_t::choice, std::vector{static_cast<Atom_t>(1)}, {});
+        out.output("-a", std::vector{static_cast<Lit_t>(1)});
+        out.output("-8", std::vector{static_cast<Lit_t>(1)});
         out.endStep();
         REQUIRE(output.str() == "{-a}.\n#show -8 : -a.\n");
     }
@@ -246,9 +246,9 @@ TEST_CASE("Text writer ", "[text]") {
         Lit_t               cond1(1);
         Lit_t               cond2(2);
         out.beginStep();
-        out.rule(Head_t::Choice, head, {});
-        out.output("-a", {&cond1, 1});
-        out.output("x_1", {&cond2, 1});
+        out.rule(Head_t::choice, head, {});
+        out.output("-a", toSpan(cond1));
+        out.output("x_1", toSpan(cond2));
         out.endStep();
         REQUIRE(output.str() == "{-a;x_2}.\n#show x_1 : x_2.\n#show -a/0.\n");
     }
@@ -404,7 +404,7 @@ TEST_CASE("Text writer ", "[text]") {
             out.beginStep();
             std::vector<Atom_t> head;
             std::vector<Lit_t>  cond;
-            out.rule(Head_t::Choice, head = {1, 2}, {}); // {1;2}.
+            out.rule(Head_t::choice, head = {1, 2}, {}); // {1;2}.
             out.output("x_3", cond = {1});               // #show x_3 : 1.
             out.output("x_2", cond = {2});               // #show x_2 : 2.
             out.endStep();
@@ -415,7 +415,7 @@ TEST_CASE("Text writer ", "[text]") {
                                     "#show.\n");
             output.str("");
             out.beginStep();
-            out.rule(Head_t::Choice, head = {3}, cond = {1, 2}); // {3} :- 1, 2.
+            out.rule(Head_t::choice, head = {3}, cond = {1, 2}); // {3} :- 1, 2.
             out.endStep();
             REQUIRE(output.str() == "% #program step(1).\n"
                                     "{x_3} :- x_1, x_2.\n");
@@ -426,15 +426,15 @@ TEST_CASE("Text writer ", "[text]") {
         out.beginStep();
         Atom_t a  = 1;
         auto   al = lit(a);
-        out.rule(Head_t::Choice, {&a, 1}, {}); // {x_1}.
-        out.output("x_1", {&al, 1});           // #show x_1 : x_1. NOTE: uses reserved name "x_1"
-        out.output("a", {&al, 1});             // #show a : x_1.
+        out.rule(Head_t::choice, toSpan(a), {}); // {x_1}.
+        out.output("x_1", toSpan(al));           // #show x_1 : x_1. NOTE: uses reserved name "x_1"
+        out.output("a", toSpan(al));             // #show a : x_1.
         SECTION("unique alternative") {
             out.endStep();
             REQUIRE(output.str() == "{x_1}.\n#show x_1 : x_1.\n#show a : x_1.\n#show.\n");
         }
         SECTION("two alternatives") {
-            out.output("b", {&al, 1}); // #show b : x_1.
+            out.output("b", toSpan(al)); // #show b : x_1.
             out.endStep();
             REQUIRE(output.str() == "{x_1}.\n#show x_1 : x_1.\n#show a : x_1.\n#show b : x_1.\n#show.\n");
         }
@@ -444,7 +444,7 @@ TEST_CASE("Text writer ", "[text]") {
         std::vector<Lit_t>  cond;
         out.initProgram(false);
         out.beginStep();
-        out.rule(Head_t::Choice, head = {1, 2, 3, 4, 5}, {});
+        out.rule(Head_t::choice, head = {1, 2, 3, 4, 5}, {});
         out.output("a", cond = {1});
         out.output("a(1,2,3,4,5,6,7,8,9,10,11,12)", cond = {2});
         out.output("b(t(1,2,3))", cond = {3});
@@ -458,7 +458,7 @@ TEST_CASE("Text writer ", "[text]") {
         std::vector<Lit_t>  cond;
         out.initProgram(false);
         out.beginStep();
-        out.rule(Head_t::Choice, head = {1}, {});
+        out.rule(Head_t::choice, head = {1}, {});
         SECTION("missing close") { REQUIRE_THROWS_AS(out.output("a(", cond = {1}), std::invalid_argument); }
         SECTION("missing arg") { REQUIRE_THROWS_AS(out.output("a(1,", cond = {1}), std::invalid_argument); }
         SECTION("missing arg on close") { REQUIRE_THROWS_AS(out.output("a(1,)", cond = {1}), std::invalid_argument); }
@@ -580,9 +580,9 @@ TEST_CASE("Text writer writes theory", "[text]") {
     out.beginStep();
     SECTION("parens") {
         using namespace std::literals;
-        CHECK(parens(Tuple_t::Paren) == "()"sv);
-        CHECK(parens(Tuple_t::Brace) == "{}"sv);
-        CHECK(parens(Tuple_t::Bracket) == "[]"sv);
+        CHECK(parens(Tuple_t::paren) == "()"sv);
+        CHECK(parens(Tuple_t::brace) == "{}"sv);
+        CHECK(parens(Tuple_t::bracket) == "[]"sv);
     }
 
     SECTION("write empty atom") {
@@ -612,15 +612,15 @@ TEST_CASE("Text writer writes theory", "[text]") {
         auto ids  = std::vector<Id_t>{};
         REQUIRE_THROWS(out.theoryTerm(3, -4, (ids = {1, 2})));
         SECTION("tuple") {
-            comp = int(Tuple_t::Paren);
+            comp = static_cast<int>(Tuple_t::paren);
             sep  = std::make_pair("("s, ")"s);
         }
         SECTION("set") {
-            comp = int(Tuple_t::Brace);
+            comp = static_cast<int>(Tuple_t::brace);
             sep  = std::make_pair("{"s, "}"s);
         }
         SECTION("list") {
-            comp = int(Tuple_t::Bracket);
+            comp = static_cast<int>(Tuple_t::bracket);
             sep  = std::make_pair("["s, "]"s);
         }
         SECTION("func") {
@@ -664,7 +664,7 @@ TEST_CASE("Text writer writes theory", "[text]") {
     SECTION("Use theory atom in rule") {
         Atom_t head = 2;
         Lit_t  body = 1;
-        out.rule(Head_t::Disjunctive, {&head, 1}, {&body, 1});
+        out.rule(Head_t::disjunctive, toSpan(head), toSpan(body));
         out.theoryTerm(0, "atom");
         out.theoryTerm(1, "x");
         out.theoryTerm(2, "y");
@@ -686,8 +686,8 @@ TEST_CASE("Text writer writes theory", "[text]") {
         std::vector<Atom_t> head;
         std::vector<Id_t>   ids;
         std::vector<Lit_t>  body;
-        out.rule(Head_t::Choice, (head = {1, 2}), {});
-        out.rule(Head_t::Disjunctive, (head = {4}), (body = {3}));
+        out.rule(Head_t::choice, (head = {1, 2}), {});
+        out.rule(Head_t::disjunctive, (head = {4}), (body = {3}));
         out.theoryTerm(0, "atom");
         out.theoryTerm(1, "elem");
         out.theoryTerm(2, "p");
@@ -757,7 +757,7 @@ TEST_CASE("Text writer writes theory", "[text]") {
         out.theoryTerm(0, "t");
         std::vector<Atom_t> head;
         std::vector<Lit_t>  body;
-        out.rule(Head_t::Choice, (head = {1, 2}), {});
+        out.rule(Head_t::choice, (head = {1, 2}), {});
         out.output("a", (body = {1}));
         out.output("b", (body = {2}));
         out.endStep();
@@ -767,7 +767,7 @@ TEST_CASE("Text writer writes theory", "[text]") {
         output.str("");
         out.beginStep();
         out.theoryAtom(2, 0, {});
-        out.rule(Head_t::Choice, (head = {4}), (body = {2}));
+        out.rule(Head_t::choice, (head = {4}), (body = {2}));
         REQUIRE_THROWS_AS(out.endStep(), std::logic_error);
     }
 }

@@ -41,7 +41,7 @@ requires(std::is_enum_v<EnumT>)
     return static_cast<std::underlying_type_t<EnumT>>(e);
 }
 #endif
-namespace detail { /* NOLINT */
+namespace Detail {
 // NOLINTBEGIN
 template <typename T>
 inline constexpr auto c_type = std::type_identity<T>{};
@@ -119,7 +119,7 @@ template <auto V>
 
 enum class _enum { VALUE };
 struct EnumMetaBase {
-    static constexpr auto needle = std::string_view{"Potassco::detail::_enum::VALUE"};
+    static constexpr auto needle = std::string_view{"Potassco::Detail::_enum::VALUE"};
     static constexpr auto name   = fn<_enum::VALUE>();
     static constexpr auto start  = name.find(needle);
     static constexpr auto rest   = std::size(name) - (start + needle.size());
@@ -142,15 +142,15 @@ constexpr void addEntry(std::pair<EnumT, std::string_view>*& out) {
     }
 }
 // NOLINTEND
-} // namespace detail
+} // namespace Detail
 
 /*!
  * \addtogroup BasicTypes
  */
 ///@{
-using detail::AllOps;
-using detail::BitOps;
-using detail::CmpOps;
+using Detail::AllOps;
+using Detail::BitOps;
+using Detail::CmpOps;
 
 //! Meta type for simple (consecutive) enums with @c Count elements starting at @c First.
 /*!
@@ -159,7 +159,7 @@ using detail::CmpOps;
  */
 template <typename EnumT, std::size_t Count, std::underlying_type_t<EnumT> First = 0>
 struct DefaultEnum {
-    using UT = std::underlying_type_t<EnumT>;
+    using UT = std::underlying_type_t<EnumT>; // NOLINT
     [[nodiscard]] static constexpr auto min() { return First; }
     [[nodiscard]] static constexpr auto max() { return static_cast<UT>(count() - (count() != 0)) + min(); }
     [[nodiscard]] static constexpr auto count() { return Count; }
@@ -228,7 +228,7 @@ constexpr auto reflectEntries() {
     constexpr auto all = []<auto... Is>(std::index_sequence<Is...>) {
         std::array<std::pair<EnumT, std::string_view>, sizeof...(Is)> r;
         auto*                                                         p = r.data();
-        (detail::addEntry<EnumT, static_cast<EnumT>(static_cast<std::underlying_type_t<EnumT>>(Is) + Min)>(p), ...);
+        (Detail::addEntry<EnumT, static_cast<EnumT>(static_cast<std::underlying_type_t<EnumT>>(Is) + Min)>(p), ...);
         return std::pair{r, static_cast<std::size_t>(p - r.data())};
     }(std::make_index_sequence<(Max - Min) + 1>());
     return EnumEntries<EnumT, all.second>{all.first.data()};
@@ -240,19 +240,19 @@ concept ScopedEnum = std::is_enum_v<EnumT> && not std::is_convertible_v<EnumT, s
 
 //! Concept for enums with metadata.
 template <typename EnumT>
-concept HasEnumMeta = std::is_enum_v<EnumT> && detail::EnumMeta<EnumT>::value;
+concept HasEnumMeta = std::is_enum_v<EnumT> && Detail::EnumMeta<EnumT>::value;
 
 //! Concept for enums whose metadata includes individual entries.
 template <typename EnumT>
-concept HasEnumEntries = HasEnumMeta<EnumT> && detail::EnumMeta<EnumT>::meta_entries;
+concept HasEnumEntries = HasEnumMeta<EnumT> && Detail::EnumMeta<EnumT>::meta_entries;
 
 //! Concept for enums with support for heterogeneous comparison operators.
 template <typename T>
-concept HasCmpOps = ScopedEnum<T> && detail::HasOps<T, CmpOps>;
+concept HasCmpOps = ScopedEnum<T> && Detail::HasOps<T, CmpOps>;
 
 //! Concept for enums with support for bit operations.
 template <typename T>
-concept HasBitOps = std::is_enum_v<T> && detail::HasOps<T, BitOps>;
+concept HasBitOps = std::is_enum_v<T> && Detail::HasOps<T, BitOps>;
 
 //! Returns the elements of the given enum as an array of (name, "name")-pairs.
 /*!
@@ -260,7 +260,7 @@ concept HasBitOps = std::is_enum_v<T> && detail::HasOps<T, BitOps>;
  */
 template <HasEnumEntries EnumT>
 consteval decltype(auto) enum_entries() {
-    return detail::EnumMeta<EnumT>::c_meta.entries();
+    return Detail::EnumMeta<EnumT>::c_meta.entries();
 }
 
 //! Returns the number of enumerators in the given enum type.
@@ -270,7 +270,7 @@ consteval decltype(auto) enum_entries() {
  */
 template <HasEnumMeta EnumT>
 consteval auto enum_count() -> std::size_t {
-    return detail::EnumMeta<EnumT>::count();
+    return Detail::EnumMeta<EnumT>::count();
 }
 
 //! Returns the minimal valid numeric value for the given enum type.
@@ -281,7 +281,7 @@ consteval auto enum_count() -> std::size_t {
 template <typename EnumT>
 requires(std::is_enum_v<EnumT>)
 constexpr auto enum_min() -> std::underlying_type_t<EnumT> {
-    return detail::EnumMeta<EnumT>::min();
+    return Detail::EnumMeta<EnumT>::min();
 }
 
 //! Returns the maximal valid numeric value for the given enum type.
@@ -292,7 +292,7 @@ constexpr auto enum_min() -> std::underlying_type_t<EnumT> {
 template <typename EnumT>
 requires(std::is_enum_v<EnumT>)
 constexpr auto enum_max() -> std::underlying_type_t<EnumT> {
-    return detail::EnumMeta<EnumT>::max();
+    return Detail::EnumMeta<EnumT>::max();
 }
 
 //! Returns the name of the given enumerator @c e.
@@ -303,7 +303,7 @@ constexpr auto enum_max() -> std::underlying_type_t<EnumT> {
  */
 template <HasEnumEntries EnumT>
 constexpr auto enum_name(EnumT e) -> std::string_view {
-    return detail::EnumMeta<EnumT>().name(e);
+    return Detail::EnumMeta<EnumT>().name(e);
 }
 
 //! Tries to convert the given integral value into an enumerator of EnumT.
@@ -313,7 +313,7 @@ constexpr auto enum_name(EnumT e) -> std::string_view {
  */
 template <HasEnumMeta EnumT>
 constexpr auto enum_cast(std::underlying_type_t<EnumT> n) -> std::optional<EnumT> {
-    return detail::EnumMeta<EnumT>::valid(n) ? std::optional{static_cast<EnumT>(n)} : std::optional<EnumT>{};
+    return Detail::EnumMeta<EnumT>::valid(n) ? std::optional{static_cast<EnumT>(n)} : std::optional<EnumT>{};
 }
 
 //! Returns whether @c x is a superset of @c y.
@@ -331,11 +331,11 @@ inline namespace Ops {
  *       from Potassco, then also add <tt>using namespace Potassco::Ops</tt> to namespace X.
  */
 ///@{
-template <Potassco::HasCmpOps T>
+template <HasCmpOps T>
 [[nodiscard]] constexpr auto operator==(T lhs, std::underlying_type_t<T> rhs) noexcept -> bool {
     return Potassco::to_underlying(lhs) == rhs;
 }
-template <Potassco::HasCmpOps T>
+template <HasCmpOps T>
 [[nodiscard]] constexpr decltype(auto) operator<=>(T lhs, std::underlying_type_t<T> rhs) noexcept {
     return Potassco::to_underlying(lhs) <=> rhs;
 }
@@ -347,31 +347,31 @@ template <Potassco::HasCmpOps T>
  *       from Potassco, then also add <tt>using namespace Potassco::Ops</tt> to namespace X.
  */
 ///@{
-template <Potassco::HasBitOps T>
+template <HasBitOps T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator~(T a) noexcept -> T {
     return static_cast<T>(~Potassco::to_underlying(a));
 }
-template <Potassco::HasBitOps T>
+template <HasBitOps T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator|(T a, T b) noexcept -> T {
     return static_cast<T>(Potassco::to_underlying(a) | Potassco::to_underlying(b));
 }
-template <Potassco::HasBitOps T>
+template <HasBitOps T>
 POTASSCO_FORCE_INLINE constexpr auto operator|=(T& a, T b) noexcept -> T& {
     return a = a | b;
 }
-template <Potassco::HasBitOps T>
+template <HasBitOps T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator&(T a, T b) noexcept -> T {
     return static_cast<T>(Potassco::to_underlying(a) & Potassco::to_underlying(b));
 }
-template <Potassco::HasBitOps T>
+template <HasBitOps T>
 POTASSCO_FORCE_INLINE constexpr auto operator&=(T& a, T b) noexcept -> T& {
     return a = a & b;
 }
-template <Potassco::HasBitOps T>
+template <HasBitOps T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator^(T a, T b) noexcept -> T {
     return static_cast<T>(Potassco::to_underlying(a) ^ Potassco::to_underlying(b));
 }
-template <Potassco::HasBitOps T>
+template <HasBitOps T>
 POTASSCO_FORCE_INLINE constexpr auto operator^=(T& a, T b) noexcept -> T& {
     return a = a ^ b;
 }

@@ -25,8 +25,6 @@
 
 #include <potassco/basic_types.h>
 
-#include <new>
-
 namespace Potassco {
 /*!
  * \addtogroup BasicTypes
@@ -40,7 +38,7 @@ struct Sum_t {
 };
 //! A type that can represent an aspif rule.
 struct Rule_t {
-    Rule_t() : ht(Head_t::Disjunctive), bt(Body_t::Normal), cond() {}
+    Rule_t() : ht{Head_t::disjunctive}, bt{Body_t::normal}, cond{} {}
 
     Head_t   ht;   //!< Head type of the rule.
     AtomSpan head; //!< Head atoms of the rule.
@@ -56,9 +54,9 @@ struct Rule_t {
     //! Named constructor for creating a sum rule.
     static Rule_t sum(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits);
     //! Returns whether the rule has a normal body, i.e. whether the body is a conjunction of literals.
-    [[nodiscard]] bool normal() const { return bt == Body_t::Normal; }
+    [[nodiscard]] bool normal() const { return bt == Body_t::normal; }
     //! Returns whether the body of the rule is a sum aggregate.
-    [[nodiscard]] bool sum() const { return bt != Body_t::Normal; }
+    [[nodiscard]] bool sum() const { return bt != Body_t::normal; }
 };
 
 //! A builder class for creating a rule.
@@ -72,7 +70,7 @@ public:
     RuleBuilder& operator=(RuleBuilder&& other) noexcept;
     void         swap(RuleBuilder& other) noexcept;
     /*!
-     * \name Start functions
+     * \name Start functions.
      * Functions for starting the definition of a rule's head or body.
      * If the active rule is frozen (i.e. end() was called), the active rule is discarded.
      * \note The body of a rule can be defined before or after its head is defined but definitions
@@ -80,7 +78,7 @@ public:
      */
     //@{
     //! Start definition of the rule's head, which can be either disjunctive or a choice.
-    RuleBuilder& start(Head_t ht = Head_t::Disjunctive);
+    RuleBuilder& start(Head_t ht = Head_t::disjunctive);
     //! Start definition of a minimize rule. No head allowed.
     RuleBuilder& startMinimize(Weight_t prio);
     //! Start definition of a conjunction to be used as the rule's body.
@@ -92,13 +90,13 @@ public:
     //@}
 
     /*!
-     * \name Update functions
+     * \name Update functions.
      * Functions for adding elements to the active rule.
      * \note Update functions shall not be called once a rule is frozen.
      * \note Calling an update function implicitly starts the definition of the corresponding rule part.
      */
     //@{
-    //! Add @c a to the rule's head.
+    //! Add given atom @c a to the rule's head.
     RuleBuilder& addHead(Atom_t a);
     //! Add lit to the rule's body.
     RuleBuilder& addGoal(Lit_t lit);
@@ -121,39 +119,37 @@ public:
     RuleBuilder& weaken(Body_t to, bool resetWeights = true);
 
     /*!
-     * \name Query functions
+     * \name Query functions.
      * Functions for accessing parts of the active rule.
      * \note The result of these functions is only valid until the next call to an update function.
      */
     //@{
-    [[nodiscard]] Head_t   headType() const;
-    [[nodiscard]] AtomSpan head() const;
-    [[nodiscard]] Atom_t*  head_begin() const;
-    [[nodiscard]] Atom_t*  head_end() const;
-    [[nodiscard]] bool     isMinimize() const;
-    [[nodiscard]] Body_t   bodyType() const;
-    [[nodiscard]] LitSpan  body() const;
-    [[nodiscard]] Sum_t    sum() const;
-    [[nodiscard]] Rule_t   rule() const;
-    [[nodiscard]] bool     frozen() const;
-    // low-level access:
-    [[nodiscard]] Lit_t*       lits_begin() const;
-    [[nodiscard]] Lit_t*       lits_end() const;
-    [[nodiscard]] WeightLit_t* wlits_begin() const;
-    [[nodiscard]] WeightLit_t* wlits_end() const;
-    [[nodiscard]] Weight_t     bound() const;
+    [[nodiscard]] auto headType() const -> Head_t;
+    [[nodiscard]] auto head() const -> AtomSpan;
+    [[nodiscard]] auto isMinimize() const -> bool;
+    [[nodiscard]] auto bodyType() const -> Body_t;
+    [[nodiscard]] auto body() const -> LitSpan;
+    [[nodiscard]] auto bound() const -> Weight_t;
+    [[nodiscard]] auto sumLits() const -> std::span<WeightLit_t>;
+    [[nodiscard]] auto findSumLit(Lit_t lit) const -> WeightLit_t*;
+    [[nodiscard]] auto sum() const -> Sum_t;
+    [[nodiscard]] auto rule() const -> Rule_t;
+    [[nodiscard]] auto frozen() const -> bool;
     //@}
 private:
     struct Range {
-        enum : uint32_t { sbit = 0u, ebit = 1u, mask = 3u };
+        static constexpr auto  start_bit = 0u;
+        static constexpr auto  end_bit   = 1u;
+        static constexpr auto  mask      = 3u;
         [[nodiscard]] uint32_t start() const { return clear_mask(start_type, mask); }
         [[nodiscard]] uint32_t end() const { return clear_mask(end_flag, mask); }
         [[nodiscard]] uint32_t type() const { return clear_mask(start_type, ~mask); }
-        [[nodiscard]] bool     started() const { return test_bit(end_flag, sbit); }
-        [[nodiscard]] bool     finished() const { return test_bit(end_flag, ebit); }
+        [[nodiscard]] bool     started() const { return test_bit(end_flag, start_bit); }
+        [[nodiscard]] bool     finished() const { return test_bit(end_flag, end_bit); }
         [[nodiscard]] bool     open() const { return not test_any(end_flag, mask); }
-        uint32_t               start_type = 0; // 4-byte aligned, align-bits = type
-        uint32_t               end_flag   = 0; // 4-byte aligned, align-bits = flags
+
+        uint32_t start_type = 0; // 4-byte aligned, align-bits = type
+        uint32_t end_flag   = 0; // 4-byte aligned, align-bits = flags
     };
     void start(Range& r, uint32_t type, const Weight_t* bound = nullptr);
     void clear(Range& r);

@@ -24,10 +24,9 @@
 //       see: www.boost.org/libs/program_options
 //
 #pragma once
-#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
-#include <typeinfo>
 
 namespace Potassco::ProgramOptions {
 
@@ -83,7 +82,7 @@ public:
 
     //! Sets an alias name for the corresponding option.
     Value* alias(char c) {
-        optAlias_ = static_cast<byte_t>(c);
+        optAlias_ = static_cast<uint8_t>(c);
         return this;
     }
     [[nodiscard]] char alias() const { return static_cast<char>(optAlias_); }
@@ -94,13 +93,13 @@ public:
      * certain options when generating option descriptions.
      */
     Value* level(DescriptionLevel lev) {
-        level_ = static_cast<byte_t>(lev);
+        level_ = static_cast<uint8_t>(lev);
         return this;
     }
     //! Returns the description level of the corresponding option.
-    [[nodiscard]] DescriptionLevel level() const { return DescriptionLevel(level_); }
+    [[nodiscard]] DescriptionLevel level() const { return static_cast<DescriptionLevel>(level_); }
 
-    //! Returns true if this is the value of an negatable option.
+    //! Returns true if this is the value of a negatable option.
     /*!
      * If an option '--option' is negatable, passing '--no-option'
      * on the command-line will set the value of '--option' to 'no'.
@@ -189,7 +188,7 @@ protected:
 
     bool state(bool b, State s) {
         if (b) {
-            state_ = static_cast<byte_t>(s);
+            state_ = static_cast<uint8_t>(s);
         }
         return b;
     }
@@ -198,19 +197,18 @@ protected:
     virtual bool doParse(const std::string& name, const std::string& value) = 0;
 
 private:
-    using byte_t                    = unsigned char;
     static constexpr auto desc_pack = 8u;
     union ValueDesc {       // optional value descriptions either
         const char*  value; // a single value or
         const char** pack;  // a pointer to a full pack
     } desc_;
-    byte_t state_;         // state: one of State
-    byte_t descFlag_;      // either desc_pack or one of DescType
-    byte_t optAlias_;      // alias name of option
-    byte_t implicit_  : 1; // implicit value?
-    byte_t flag_      : 1; // implicit and type bool?
-    byte_t composing_ : 1; // multiple values allowed?
-    byte_t negatable_ : 1; // negatable form allowed?
-    byte_t level_     : 4; // help level
+    uint8_t state_;         // state: one of State
+    uint8_t descFlag_;      // either desc_pack or one of DescType
+    uint8_t optAlias_;      // alias name of option
+    uint8_t implicit_  : 1; // implicit value?
+    uint8_t flag_      : 1; // implicit and type bool?
+    uint8_t composing_ : 1; // multiple values allowed?
+    uint8_t negatable_ : 1; // negatable form allowed?
+    uint8_t level_     : 4; // help level
 };
 } // namespace Potassco::ProgramOptions

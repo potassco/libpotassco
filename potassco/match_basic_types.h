@@ -38,7 +38,7 @@ namespace Potassco {
  */
 ///@{
 
-//! A wrapper around an std::istream that provides buffering and a simple interface for extracting characters and
+//! A wrapper around std::istream that provides buffering and a simple interface for extracting characters and
 //! integers.
 class BufferedStream {
 public:
@@ -96,7 +96,7 @@ private:
 class ProgramReader {
 public:
     //! Enumeration type for supported read modes.
-    enum ReadMode { Incremental, Complete };
+    enum ReadMode { read_incremental, read_complete };
     //! Creates a reader that is not yet associated with any input stream.
     ProgramReader() = default;
     virtual ~ProgramReader();
@@ -111,7 +111,7 @@ public:
      * Depending on the given read mode, the function either parses the complete program
      * or only the next incremental step.
      */
-    bool parse(ReadMode r = Incremental);
+    bool parse(ReadMode r = read_incremental);
     //! Returns whether the input stream has more data or is exhausted.
     bool more();
     //! Resets this object to the state after default construction.
@@ -121,11 +121,11 @@ public:
     //! Sets the largest possible variable number.
     /*!
      * The given value is used when matching atoms or literals.
-     * If a larger value is found in the input stream, an std::exception is raised.
+     * If a larger value is found in the input stream, a std::exception is raised.
      */
     void setMaxVar(Atom_t v) { varMax_ = v; }
 
-    //! Unconditionally throws an std::exception with the current line and given message.
+    //! Unconditionally throws a std::exception with the current line and given message.
     void error(const char* msg) const;
 
 protected:
@@ -150,50 +150,50 @@ protected:
     [[nodiscard]] char peek() const;
     //! Returns the next character in the input stream.
     char get();
-    //! Throws an std::exception with the current line and given message if cnd is false.
+    //! Throws a std::exception with the current line and given message if cnd is false.
     bool require(bool cnd, const char* msg) const { return cnd || (error(msg), false); }
     //! Attempts to match the given string.
     bool match(const std::string_view& word) { return stream()->match(word); }
-    //! Extracts the given character or fails with an std::exception.
+    //! Extracts the given character or fails with a std::exception.
     void matchChar(char c);
-    //! Extracts an atom (i.e. a positive integer > 0) or fails with an std::exception.
+    //! Extracts an atom (i.e. a positive integer > 0) or fails with a std::exception.
     Atom_t matchAtom(const char* error = "atom expected") {
-        return static_cast<Atom_t>(matchUint(atomMin, varMax_, error));
+        return static_cast<Atom_t>(matchUint(atom_min, varMax_, error));
     }
-    //! Extracts an atom or zero or fails with an std::exception.
+    //! Extracts an atom or zero or fails with a std::exception.
     Atom_t matchAtomOrZero(const char* error = "atom or zero expected") {
         return static_cast<Atom_t>(matchUint(0u, varMax_, error));
     }
-    //! Extracts an id or fails with an std::exception.
-    Id_t matchId(const char* error = "id expected") { return static_cast<Id_t>(matchUint(0u, idMax, error)); }
-    //! Extracts a literal (i.e. positive or negative atom) or fails with an std::exception.
+    //! Extracts an id or fails with a std::exception.
+    Id_t matchId(const char* error = "id expected") { return static_cast<Id_t>(matchUint(0u, id_max, error)); }
+    //! Extracts a literal (i.e. positive or negative atom) or fails with a std::exception.
     Lit_t matchLit(const char* error = "literal expected") {
         auto res = matchInt(-static_cast<Lit_t>(varMax_), static_cast<Lit_t>(varMax_), error);
         (void) require(res != 0, error);
         return static_cast<Lit_t>(res);
     }
-    //! Extracts a weight or fails with an std::exception.
+    //! Extracts a weight or fails with a std::exception.
     Weight_t matchWeight(bool requirePositive = false, const char* error = "weight expected") {
         return static_cast<Weight_t>(matchInt(requirePositive ? 0 : INT_MIN, INT_MAX, error));
     }
-    //! Extracts a weight literal or fails with an std::exception.
+    //! Extracts a weight literal or fails with a std::exception.
     WLit_t matchWLit(bool requirePositive = false, const char* error = "weight literal expected") {
         return {.lit = matchLit(error), .weight = matchWeight(requirePositive, error)};
     }
-    //! Extracts an unsigned integer or fails with an std::exception.
+    //! Extracts an unsigned integer or fails with a std::exception.
     unsigned matchUint(const char* error = "non-negative integer expected") { return matchUint(0u, UINT_MAX, error); }
-    //! Extracts a signed integer or fails with an std::exception.
+    //! Extracts a signed integer or fails with a std::exception.
     int matchInt(const char* err = "integer expected") { return matchInt(INT_MIN, INT_MAX, err); }
 
-    //! Extracts an unsigned integer in the range [minV, maxV] or fails with an std::exception.
+    //! Extracts an unsigned integer in the range [minV, maxV] or fails with a std::exception.
     unsigned matchUint(unsigned minV, unsigned maxV, const char* error = "non-negative integer expected") {
         return static_cast<unsigned>(matchNum(minV, maxV, error));
     }
-    //! Extracts a signed integer in the range [minV, maxV] or fails with an std::exception.
+    //! Extracts a signed integer in the range [minV, maxV] or fails with a std::exception.
     int matchInt(int minV, int maxV, const char* error = "integer expected") {
         return static_cast<int>(matchNum(minV, maxV, error));
     }
-    //! Extracts a number in the range of the given enum or fails with an std::exception.
+    //! Extracts a number in the range of the given enum or fails with a std::exception.
     template <typename EnumT>
     requires std::is_enum_v<EnumT>
     EnumT matchEnum(const char* error) {
@@ -209,7 +209,7 @@ protected:
 
 private:
     StreamType* str_    = nullptr;
-    Atom_t      varMax_ = atomMax;
+    Atom_t      varMax_ = atom_max;
     bool        inc_    = false;
 };
 

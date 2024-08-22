@@ -35,7 +35,7 @@ class Application {
 public:
     //! Application specific exception type.
     struct Error : std::runtime_error {
-        Error(const char* msg) : std::runtime_error(msg) {}
+        explicit Error(const char* msg) : std::runtime_error(msg) {}
         Error(const char* msg, std::string i, std::string d)
             : std::runtime_error(msg)
             , info(std::move(i))
@@ -77,31 +77,39 @@ public:
     void setExitCode(int n);
     //! Returns the application's exit code.
     [[nodiscard]] int getExitCode() const;
+    //! Returns the application's current verbosity level.
+    [[nodiscard]] unsigned getVerbose() const;
     //! Returns the application object that is running.
     static Application* getInstance();
 
-    enum MessageType { MsgError, MsgWarning, MsgInfo };
+    enum MessageType { message_error, message_warning, message_info };
     //! Writes a (null-terminated) message of given type to the provided buffer.
     /*!
      * The message format is: '***' <type-prefix> (<app-name>): <formatted-message>
      *
-     * \param buffer Buffer for storing the formatted message.
-     * \param type   Type of message.
-     * @param fmt    A printf-style format string.
-     * @param ...    Arguments to the format string.
-     * @return The number of bytes written not counting the null-terminator. If the message exceeds the given buffer,
+     * \param[out] buffer Buffer for storing the formatted message.
+     * \param type Type of message.
+     * \param fmt  A printf-style format string.
+     * \param ...  Arguments matching the format string.
+     * \return The number of bytes written not counting the null-terminator. If the message exceeds the given buffer,
      *         output is truncated but still null-terminated. If buffer.size() is 0, the function has no effect and
      *         returns 0.
      */
     std::size_t formatMessage(std::span<char> buffer, MessageType type, const char* fmt, ...) const
-        POTASSCO_ATTRIBUTE_FORMAT(4, 5);
+        POTASSCO_ATTRIBUTE_FORMAT(4, 5); // NOLINT
 
-    //! Returns an io-manipulator that writes the given messages formatted as MsgError to a stream.
-    [[nodiscard]] auto error(const char* msg = "") const { return Prefix{.app = this, .msg = msg, .type = MsgError}; }
-    //! Returns an io-manipulator that writes the given messages formatted as MsgWarning to a stream.
-    [[nodiscard]] auto warn(const char* msg = "") const { return Prefix{.app = this, .msg = msg, .type = MsgWarning}; }
-    //! Returns an io-manipulator that writes the given messages formatted as MsgInfo to a stream.
-    [[nodiscard]] auto info(const char* msg = "") const { return Prefix{.app = this, .msg = msg, .type = MsgInfo}; }
+    //! Returns an io-manipulator that writes the given messages formatted as @c message_error to a stream.
+    [[nodiscard]] auto error(const char* msg = "") const {
+        return Prefix{.app = this, .msg = msg, .type = message_error};
+    }
+    //! Returns an io-manipulator that writes the given messages formatted as @c message_warning to a stream.
+    [[nodiscard]] auto warn(const char* msg = "") const {
+        return Prefix{.app = this, .msg = msg, .type = message_warning};
+    }
+    //! Returns an io-manipulator that writes the given messages formatted as @c message_info to a stream.
+    [[nodiscard]] auto info(const char* msg = "") const {
+        return Prefix{.app = this, .msg = msg, .type = message_info};
+    }
 
     //@}
 protected:
@@ -138,8 +146,7 @@ protected:
 
     Application();
     virtual ~Application();
-    [[nodiscard]] unsigned verbose() const;
-    [[noreturn]] void      exit(int exitCode);
+    [[noreturn]] void exit(int exitCode);
 
     void setVerbose(unsigned v);
     void setAlarm(unsigned sec);
@@ -162,7 +169,7 @@ private:
     bool               applyOptions(int argc, char** argv);
     [[nodiscard]] bool formatActiveException(std::span<char> buffer) const;
     static void        initInstance(Application& app);
-    static void        resetInstance(Application& app);
+    static void        resetInstance(const Application& app);
     static void        sigHandler(int sig);
 
     int           exitCode_; // application's exit code

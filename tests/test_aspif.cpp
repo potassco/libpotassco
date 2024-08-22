@@ -37,20 +37,20 @@
 #include <sstream>
 
 namespace Potassco::Test::Aspif {
-const Weight_t BOUND_NONE = -1;
-static void    finalize(std::stringstream& str) { str << "0\n"; }
-static void    rule(std::ostream& os, const Rule& r) {
-    os << (unsigned) Directive_t::Rule << " " << (unsigned) r.ht << " ";
+constexpr Weight_t bound_none = -1;
+static void        finalize(std::stringstream& str) { str << "0\n"; }
+static void        rule(std::ostream& os, const Rule& r) {
+    os << static_cast<unsigned>(Directive_t::rule) << " " << static_cast<unsigned>(r.ht) << " ";
     os << r.head.size();
     for (auto x : r.head) { os << " " << x; }
-    os << " " << (unsigned) r.bt << " ";
-    if (r.bt == Body_t::Sum) {
+    os << " " << static_cast<unsigned>(r.bt) << " ";
+    if (r.bt == Body_t::sum) {
         os << r.bnd << " " << r.body.size();
-        std::for_each(begin(r.body), end(r.body), [&os](WeightLit_t x) { os << " " << x.lit << " " << x.weight; });
+        std::ranges::for_each(r.body, [&os](WeightLit_t x) { os << " " << x.lit << " " << x.weight; });
     }
     else {
         os << r.body.size();
-        std::for_each(begin(r.body), end(r.body), [&os](WeightLit_t x) { os << " " << x.lit; });
+        std::ranges::for_each(r.body, [&os](WeightLit_t x) { os << " " << x.lit; });
     }
     os << "\n";
 }
@@ -78,15 +78,19 @@ static std::ostream& operator<<(std::ostream& os, const Heuristic& h) {
 static std::ostream& operator<<(std::ostream& os, const Edge& e) {
     return os << "e(" << e.s << "," << e.t << ") " << stringify(std::span{e.cond}) << ".";
 }
+template <Potassco::ScopedEnum E>
+[[maybe_unused]] static std::ostream& operator<<(std::ostream& os, E e) {
+    return os << Potassco::to_underlying(e);
+}
 class ReadObserver : public Test::ReadObserver {
 public:
     void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override {
-        rules.push_back({ht, {begin(head), end(head)}, Body_t::Normal, BOUND_NONE, {}});
+        rules.push_back({ht, {begin(head), end(head)}, Body_t::normal, bound_none, {}});
         Vec<WeightLit_t>& wb = rules.back().body;
-        std::for_each(begin(body), end(body), [&wb](Lit_t x) { wb.push_back({x, 1}); });
+        std::ranges::for_each(body, [&wb](Lit_t x) { wb.push_back({x, 1}); });
     }
     void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override {
-        rules.push_back({ht, {begin(head), end(head)}, Body_t::Sum, bound, {begin(body), end(body)}});
+        rules.push_back({ht, {begin(head), end(head)}, Body_t::sum, bound, {begin(body), end(body)}});
     }
     void minimize(Weight_t prio, const WeightLitSpan& lits) override {
         min.push_back({prio, {begin(lits), end(lits)}});
@@ -131,7 +135,7 @@ static unsigned compareRead(std::stringstream& input, ReadObserver& observer, co
         return static_cast<unsigned>(observer.rules.size());
     }
     for (unsigned i = 0; i != subset.second; ++i) {
-        if (!(rules[subset.first + i] == observer.rules[i])) {
+        if (rules[subset.first + i] != observer.rules[i]) {
             return i;
         }
     }
@@ -267,8 +271,9 @@ TEST_CASE("Test ConstString", "[rule]") {
             REQUIRE(s.size() == v.size());
             REQUIRE(std::strcmp(s.c_str(), v.c_str()) == 0);
             REQUIRE(static_cast<std::string_view>(s) == v);
-            if (not s.small())
+            if (not s.small()) {
                 break;
+            }
         }
         REQUIRE(v.size() == 24);
     }
@@ -290,14 +295,14 @@ TEST_CASE("Test ConstString", "[rule]") {
     }
     SECTION("shallow copy") {
         std::string_view sv("small");
-        ConstString      s(sv, ConstString::Shared);
+        ConstString      s(sv, ConstString::create_shared);
         ConstString      s2(s);
         REQUIRE(s == sv);
         REQUIRE_FALSE(s.shareable());
         REQUIRE(s2 == sv);
         REQUIRE((void*) s.c_str() != (void*) s2.c_str());
         std::string large(32, 'x');
-        ConstString s3(large, ConstString::Shared);
+        ConstString s3(large, ConstString::create_shared);
         ConstString s4(s3);
         REQUIRE(s3.shareable());
         REQUIRE(s4.shareable());
@@ -313,11 +318,11 @@ TEST_CASE("Test ConstString", "[rule]") {
         REQUIRE(s2 == sv);
         std::string large(32, 'x');
         ConstString s3(large);
-        auto        old = (void*) s3.c_str();
+        auto        old = static_cast<const void*>(s3.c_str());
         ConstString s4(std::move(s3));
         REQUIRE(s3 == std::string_view{});
         REQUIRE(s4 == std::string_view(large));
-        REQUIRE((void*) s4.c_str() == old);
+        REQUIRE(s4.c_str() == old);
 
         SECTION("assign") {
             s = std::move(s2);
@@ -365,34 +370,22 @@ static bool spanEq(const T& lhs, const U& rhs) {
     return false;
 }
 
-template <typename T>
-static bool spanEq(const std::span<const T>& lhs, T* f, T* e) {
-    if (lhs.data() != f) {
-        UNSCOPED_INFO("Mismatch: begin does not match span begin");
-        return false;
-    }
-    if (lhs.data() + lhs.size() != e) {
-        UNSCOPED_INFO("Mismatch: end does not match span end");
-        return false;
-    }
-    return true;
-}
-
 TEST_CASE("Test Basic", "[rule]") {
     SECTION("atom") {
         static_assert(std::is_same_v<Atom_t, uint32_t>);
-        static_assert(atomMin > 0);
-        static_assert(atomMin < UINT32_MAX);
-        auto x = Atom_t(7);
+        static_assert(atom_min > 0);
+        static_assert(atom_min < UINT32_MAX);
+        auto x = static_cast<Atom_t>(7);
         CHECK(weight(x) == 1);
-        CHECK(validAtom(atomMin));
-        CHECK(validAtom(atomMax));
-        CHECK_FALSE(validAtom(atomMin - 1));
-        CHECK_FALSE(validAtom(atomMax + 1));
+        CHECK(validAtom(atom_min));
+        CHECK(validAtom(atom_max));
+        CHECK_FALSE(validAtom(atom_min - 1));
+        CHECK_FALSE(validAtom(atom_max + 1));
+        CHECK_FALSE(validAtom(-400));
     }
     SECTION("literal") {
         static_assert(std::is_same_v<Lit_t, int32_t>);
-        auto x = Lit_t(7);
+        auto x = static_cast<Lit_t>(7);
         CHECK(weight(x) == 1);
         CHECK(atom(x) == 7);
         CHECK(neg(x) == -7);
@@ -432,15 +425,15 @@ TEST_CASE("Test Basic", "[rule]") {
         CHECK(enum_min<Value_t>() == 0);
         CHECK(enum_max<Value_t>() == 3);
         CHECK(enum_count<Value_t>() == 4);
-        static_assert(enum_name(Value_t::False) == "false"sv);
-        static_assert(enum_name(Value_t::Release) == "release"sv);
+        static_assert(enum_name(Value_t::false_) == "false"sv);
+        static_assert(enum_name(Value_t::release) == "release"sv);
 
         CHECK(enum_min<Heuristic_t>() == 0);
         CHECK(enum_max<Heuristic_t>() == 5);
         CHECK(enum_count<Heuristic_t>() == 6);
 
-        static_assert(enum_name(Heuristic_t::Init) == "init"sv);
-        static_assert(enum_name(Heuristic_t::Level) == "level"sv);
+        static_assert(enum_name(Heuristic_t::init) == "init"sv);
+        static_assert(enum_name(Heuristic_t::level) == "level"sv);
 
         CHECK(enum_min<Theory_t>() == 0);
         CHECK(enum_max<Theory_t>() == 6);
@@ -468,102 +461,99 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
     SECTION("simple rule") {
         rb.start().addHead(1).addGoal(2).addGoal(-3).end();
         REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
-        REQUIRE(rb.bodyType() == Body_t::Normal);
+        REQUIRE(rb.bodyType() == Body_t::normal);
         REQUIRE(spanEq(rb.body(), std::vector{2, -3}));
-        REQUIRE(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
     }
     SECTION("simple constraint") {
         SECTION("head first") { rb.start().addGoal(2).addGoal(-3).end(); }
         SECTION("body first") { rb.startBody().addGoal(2).addGoal(-3).start().end(); }
         CHECK(spanEq(rb.head(), std::vector<Atom_t>{}));
-        CHECK(rb.bodyType() == Body_t::Normal);
+        CHECK(rb.bodyType() == Body_t::normal);
         CHECK(spanEq(rb.body(), std::vector{2, -3}));
-        CHECK(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
     }
     SECTION("simple choice") {
-        SECTION("head first") { rb.start(Head_t::Choice).addHead(1).addHead(2).startBody().end(); }
-        SECTION("body first") { rb.startBody().start(Head_t::Choice).addHead(1).addHead(2).end(); }
+        SECTION("head first") { rb.start(Head_t::choice).addHead(1).addHead(2).startBody().end(); }
+        SECTION("body first") { rb.startBody().start(Head_t::choice).addHead(1).addHead(2).end(); }
         CHECK(spanEq(rb.head(), std::vector<Atom_t>{1, 2}));
-        CHECK(rb.bodyType() == Body_t::Normal);
+        CHECK(rb.bodyType() == Body_t::normal);
         CHECK(spanEq(rb.body(), std::vector<Lit_t>{}));
-        CHECK(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
     }
     SECTION("simple weight rule") {
         rb.start().addHead(1).startSum(2).addGoal(2, 1).addGoal(-3, 1).addGoal(4, 2).end();
         REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
-        REQUIRE(rb.bodyType() == Body_t::Sum);
+        REQUIRE(rb.bodyType() == Body_t::sum);
         REQUIRE(rb.bound() == 2);
-        REQUIRE(spanEq(rb.sum().lits, std::vector<WeightLit_t>{{2, 1}, {-3, 1}, {4, 2}}));
-        REQUIRE(spanEq(rb.sum().lits, rb.wlits_begin(), rb.wlits_end()));
+        REQUIRE(spanEq(rb.sumLits(), std::vector<WeightLit_t>{{2, 1}, {-3, 1}, {4, 2}}));
+        REQUIRE(spanEq(rb.sum().lits, rb.sumLits()));
+        REQUIRE(rb.findSumLit(4)->weight == 2);
+        REQUIRE(rb.findSumLit(-4) == nullptr);
 
         auto r = rb.rule();
         REQUIRE(spanEq(r.head, rb.head()));
-        REQUIRE(r.bt == Body_t::Sum);
+        REQUIRE(r.bt == Body_t::sum);
         REQUIRE(r.agg.bound == 2);
         REQUIRE(spanEq(r.agg.lits, rb.sum().lits));
     }
     SECTION("update bound") {
         rb.start().addHead(1).startSum(2).addGoal(2, 1).addGoal(-3, 1).addGoal(4, 2).setBound(3);
-        REQUIRE(rb.bodyType() == Body_t::Sum);
+        REQUIRE(rb.bodyType() == Body_t::sum);
         REQUIRE(rb.bound() == 3);
         rb.clear();
         rb.startSum(2).addGoal(2, 1).addGoal(-3, 1).addGoal(4, 2).addHead(1).setBound(4);
-        REQUIRE(rb.bodyType() == Body_t::Sum);
+        REQUIRE(rb.bodyType() == Body_t::sum);
         REQUIRE(rb.bound() == 4);
         rb.clear();
         rb.startSum(2).addGoal(2, 1).addGoal(-3, 1).addGoal(4, 2).addHead(1).end();
         REQUIRE_THROWS_AS(rb.setBound(4), std::logic_error);
     }
     SECTION("weakean to cardinality rule") {
-        rb.start().addHead(1).startSum(2).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).weaken(Body_t::Count).end();
+        rb.start().addHead(1).startSum(2).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).weaken(Body_t::count).end();
         REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
-        REQUIRE(rb.bodyType() == Body_t::Count);
+        REQUIRE(rb.bodyType() == Body_t::count);
         REQUIRE(rb.bound() == 1);
-        REQUIRE(spanEq(rb.sum().lits, std::vector<WeightLit_t>{{2, 1}, {-3, 1}, {4, 1}}));
-        REQUIRE(spanEq(rb.sum().lits, rb.wlits_begin(), rb.wlits_end()));
+        REQUIRE(spanEq(rb.sumLits(), std::vector<WeightLit_t>{{2, 1}, {-3, 1}, {4, 1}}));
+        REQUIRE(spanEq(rb.sum().lits, rb.sumLits()));
         auto r = rb.rule();
         REQUIRE(spanEq(r.head, rb.head()));
-        REQUIRE(r.bt == Body_t::Count);
+        REQUIRE(r.bt == Body_t::count);
         REQUIRE(r.agg.bound == 1);
         REQUIRE(spanEq(r.agg.lits, rb.sum().lits));
     }
     SECTION("weaken to normal rule") {
-        rb.start().addHead(1).startSum(3).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).weaken(Body_t::Normal).end();
+        rb.start().addHead(1).startSum(3).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).weaken(Body_t::normal).end();
         REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
-        REQUIRE(rb.bodyType() == Body_t::Normal);
+        REQUIRE(rb.bodyType() == Body_t::normal);
         REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{2, -3, 4}));
-        REQUIRE(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
 
         auto r = rb.rule();
         REQUIRE(spanEq(r.head, rb.head()));
-        REQUIRE(r.bt == Body_t::Normal);
+        REQUIRE(r.bt == Body_t::normal);
         REQUIRE(spanEq(r.cond, rb.body()));
     }
     SECTION("weak to normal rule - inverse order") {
-        rb.startSum(3).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).start().addHead(1).weaken(Body_t::Normal).end();
+        rb.startSum(3).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).start().addHead(1).weaken(Body_t::normal).end();
         REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
-        REQUIRE(rb.bodyType() == Body_t::Normal);
+        REQUIRE(rb.bodyType() == Body_t::normal);
         REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{2, -3, 4}));
-        REQUIRE(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
     }
     SECTION("minimize rule") {
         SECTION("implicit body") {
             rb.startMinimize(1).addGoal(-3, 2).addGoal(4, 1).addGoal(5).end();
             REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{}));
             REQUIRE(rb.isMinimize());
-            REQUIRE(rb.bodyType() == Body_t::Sum);
+            REQUIRE(rb.bodyType() == Body_t::sum);
             REQUIRE(rb.bound() == 1);
-            REQUIRE(spanEq(rb.sum().lits, std::vector<WeightLit_t>{{-3, 2}, {4, 1}, {5, 1}}));
-            REQUIRE(spanEq(rb.sum().lits, rb.wlits_begin(), rb.wlits_end()));
+            REQUIRE(spanEq(rb.sumLits(), std::vector<WeightLit_t>{{-3, 2}, {4, 1}, {5, 1}}));
+            REQUIRE(spanEq(rb.sum().lits, rb.sumLits()));
         }
         SECTION("explicit body") {
             rb.startMinimize(1).startSum(0).addGoal(-3, 2).addGoal(4, 1).addGoal(5).end();
             REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{}));
             REQUIRE(rb.isMinimize());
-            REQUIRE(rb.bodyType() == Body_t::Sum);
+            REQUIRE(rb.bodyType() == Body_t::sum);
             REQUIRE(rb.bound() == 1);
-            REQUIRE(spanEq(rb.sum().lits, std::vector<WeightLit_t>{{-3, 2}, {4, 1}, {5, 1}}));
-            REQUIRE(spanEq(rb.sum().lits, rb.wlits_begin(), rb.wlits_end()));
+            REQUIRE(spanEq(rb.sumLits(), std::vector<WeightLit_t>{{-3, 2}, {4, 1}, {5, 1}}));
+            REQUIRE(spanEq(rb.sum().lits, rb.sumLits()));
         }
     }
     SECTION("clear body") {
@@ -578,9 +568,8 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
             .addGoal(5)
             .end();
         REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
-        REQUIRE(rb.bodyType() == Body_t::Normal);
+        REQUIRE(rb.bodyType() == Body_t::normal);
         REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{5}));
-        REQUIRE(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
 
         rb.start()
             .addHead(1)
@@ -593,9 +582,8 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
             .addGoal(5)
             .end();
         REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
-        REQUIRE(rb.bodyType() == Body_t::Normal);
+        REQUIRE(rb.bodyType() == Body_t::normal);
         REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{5}));
-        REQUIRE(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
     }
     SECTION("clear head") {
         rb.startSum(3)
@@ -609,9 +597,9 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
             .addHead(5)
             .end();
         REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{5}));
-        REQUIRE(rb.bodyType() == Body_t::Sum);
-        REQUIRE(spanEq(rb.sum().lits, std::vector<WeightLit_t>{{2, 2}, {-3, 2}, {4, 2}}));
-        REQUIRE(spanEq(rb.sum().lits, rb.wlits_begin(), rb.wlits_end()));
+        REQUIRE(rb.bodyType() == Body_t::sum);
+        REQUIRE(spanEq(rb.sumLits(), std::vector<WeightLit_t>{{2, 2}, {-3, 2}, {4, 2}}));
+        REQUIRE(spanEq(rb.sum().lits, rb.sumLits()));
 
         rb.start()
             .addHead(1)
@@ -624,9 +612,9 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
             .addHead(5)
             .end();
         REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{5}));
-        REQUIRE(rb.bodyType() == Body_t::Sum);
-        REQUIRE(spanEq(rb.sum().lits, std::vector<WeightLit_t>{{2, 2}, {-3, 2}, {4, 2}}));
-        REQUIRE(spanEq(rb.sum().lits, rb.wlits_begin(), rb.wlits_end()));
+        REQUIRE(rb.bodyType() == Body_t::sum);
+        REQUIRE(spanEq(rb.sumLits(), std::vector<WeightLit_t>{{2, 2}, {-3, 2}, {4, 2}}));
+        REQUIRE(spanEq(rb.sum().lits, rb.sumLits()));
     }
 
     SECTION("copy and move") {
@@ -639,39 +627,35 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
         }
         REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
         REQUIRE(rb.sum().bound == 25);
-        REQUIRE(spanEq(rb.sum().lits, exp));
-        REQUIRE(spanEq(rb.sum().lits, rb.wlits_begin(), rb.wlits_end()));
+        REQUIRE(spanEq(rb.sumLits(), exp));
+        REQUIRE(spanEq(rb.sum().lits, rb.sumLits()));
 
         SECTION("copy") {
             RuleBuilder copy(rb);
             REQUIRE(spanEq(copy.head(), std::vector<Atom_t>{1}));
             REQUIRE(copy.sum().bound == 25);
-            REQUIRE(spanEq(copy.sum().lits, exp));
-            REQUIRE(spanEq(copy.sum().lits, copy.wlits_begin(), copy.wlits_end()));
+            REQUIRE(spanEq(copy.sumLits(), exp));
 
             auto newLit = WeightLit_t{4711, 31};
             copy.addGoal(newLit);
-            REQUIRE(spanEq(rb.sum().lits, exp));
+            REQUIRE(spanEq(rb.sumLits(), exp));
 
             exp.push_back(newLit);
-            REQUIRE(spanEq(copy.sum().lits, exp));
-            REQUIRE(spanEq(copy.sum().lits, copy.wlits_begin(), copy.wlits_end()));
+            REQUIRE(spanEq(copy.sumLits(), exp));
         }
         SECTION("move") {
             RuleBuilder mv(std::move(rb));
             REQUIRE(spanEq(mv.head(), std::vector<Atom_t>{1}));
             REQUIRE(mv.sum().bound == 25);
-            REQUIRE(spanEq(mv.sum().lits, exp));
-            REQUIRE(spanEq(mv.sum().lits, mv.wlits_begin(), mv.wlits_end()));
+            REQUIRE(spanEq(mv.sumLits(), exp));
 
-            REQUIRE(rb.head().size() == 0);
-            REQUIRE(rb.body().size() == 0);
+            REQUIRE(rb.head().empty());
+            REQUIRE(rb.body().empty());
 
             rb.start().addHead(1).addGoal(2).addGoal(-3).end();
             REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
-            REQUIRE(rb.bodyType() == Body_t::Normal);
+            REQUIRE(rb.bodyType() == Body_t::normal);
             REQUIRE(spanEq(rb.body(), std::vector{2, -3}));
-            REQUIRE(spanEq(rb.body(), rb.lits_begin(), rb.lits_end()));
         }
     }
 
@@ -704,9 +688,9 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
     SECTION("grow bug") {
         for (int i = 0; i != 12; ++i) { rb.addHead(static_cast<Atom_t>(i + 1)); }
         rb.startSum(22).addGoal(47, 11).addGoal(18, 15).addGoal(17, 7).end();
-        REQUIRE(rb.bodyType() == Body_t::Sum);
+        REQUIRE(rb.bodyType() == Body_t::sum);
         REQUIRE(rb.bound() == 22);
-        REQUIRE(spanEq(rb.sum().lits, std::vector<WeightLit_t>{{47, 11}, {18, 15}, {17, 7}}));
+        REQUIRE(spanEq(rb.sumLits(), std::vector<WeightLit_t>{{47, 11}, {18, 15}, {17, 7}}));
     }
 }
 TEST_CASE("Intermediate Format Reader ", "[aspif]") {
@@ -720,7 +704,7 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         REQUIRE(observer.incremental == false);
     }
     SECTION("read empty rule") {
-        rule(input, {Head_t::Disjunctive, {}, Body_t::Normal, BOUND_NONE, {}});
+        rule(input, {Head_t::disjunctive, {}, Body_t::normal, bound_none, {}});
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
         REQUIRE(observer.rules.size() == 1);
@@ -728,18 +712,18 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         REQUIRE(observer.rules[0].body.empty());
     }
     SECTION("read rules") {
-        Rule rules[] = {{Head_t::Disjunctive, {1}, Body_t::Normal, BOUND_NONE, {{-2, 1}, {3, 1}, {-4, 1}}},
-                        {Head_t::Disjunctive, {1, 2, 3}, Body_t::Normal, BOUND_NONE, {{5, 1}, {-6, 1}}},
-                        {Head_t::Disjunctive, {}, Body_t::Normal, BOUND_NONE, {{1, 1}, {2, 1}}},
-                        {Head_t::Choice, {1, 2, 3}, Body_t::Normal, BOUND_NONE, {{5, 1}, {-6, 1}}},
+        Rule rules[] = {{Head_t::disjunctive, {1}, Body_t::normal, bound_none, {{-2, 1}, {3, 1}, {-4, 1}}},
+                        {Head_t::disjunctive, {1, 2, 3}, Body_t::normal, bound_none, {{5, 1}, {-6, 1}}},
+                        {Head_t::disjunctive, {}, Body_t::normal, bound_none, {{1, 1}, {2, 1}}},
+                        {Head_t::choice, {1, 2, 3}, Body_t::normal, bound_none, {{5, 1}, {-6, 1}}},
                         // weight
-                        {Head_t::Disjunctive, {1}, Body_t::Sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
-                        {Head_t::Disjunctive, {2}, Body_t::Sum, 1, {{3, 1}, {-4, 1}, {5, 1}}},
+                        {Head_t::disjunctive, {1}, Body_t::sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
+                        {Head_t::disjunctive, {2}, Body_t::sum, 1, {{3, 1}, {-4, 1}, {5, 1}}},
                         // mixed
-                        {Head_t::Choice, {1, 2}, Body_t::Sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
-                        {Head_t::Disjunctive, {}, Body_t::Sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
+                        {Head_t::choice, {1, 2}, Body_t::sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
+                        {Head_t::disjunctive, {}, Body_t::sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
                         // negative weights
-                        {Head_t::Disjunctive, {1}, Body_t::Sum, 1, {{2, 1}, {-3, -2}, {-4, 3}, {5, 1}}}};
+                        {Head_t::disjunctive, {1}, Body_t::sum, 1, {{2, 1}, {-3, -2}, {-4, 3}, {5, 1}}}};
         using Pair   = std::pair<unsigned, unsigned>;
         Pair basic(0, 4);
         Pair weight(4, 2);
@@ -757,8 +741,8 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         }
     }
     SECTION("read minimize rule") {
-        input << (unsigned) Directive_t::Minimize << " -1 3 4 5 6 1 3 2\n";
-        input << (unsigned) Directive_t::Minimize << " 10 3 4 -52 -6 36 3 -20\n";
+        input << Directive_t::minimize << " -1 3 4 5 6 1 3 2\n";
+        input << Directive_t::minimize << " 10 3 4 -52 -6 36 3 -20\n";
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
         REQUIRE(observer.min.size() == 2);
@@ -772,8 +756,8 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         REQUIRE(mr2.second == lits);
     }
     SECTION("read output") {
-        input << (unsigned) Directive_t::Output << " 1 a 1 1\n";
-        input << (unsigned) Directive_t::Output << " 10 Hallo Welt 2 1 -2\n";
+        input << Directive_t::output << " 1 a 1 1\n";
+        input << Directive_t::output << " 10 Hallo Welt 2 1 -2\n";
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
         REQUIRE(observer.shows.size() == 2);
@@ -785,32 +769,30 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         REQUIRE(s2.second == Vec<Lit_t>({1, -2}));
     }
     SECTION("read projection") {
-        input << (unsigned) Directive_t::Project << " 3 1 2 987232\n";
-        input << (unsigned) Directive_t::Project << " 1 17\n";
+        input << Directive_t::project << " 3 1 2 987232\n";
+        input << Directive_t::project << " 1 17\n";
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
         REQUIRE(observer.projects == Vec<Atom_t>({1, 2, 987232, 17}));
     }
     SECTION("read external") {
         std::pair<Atom_t, Value_t> exp[] = {
-            {1, Value_t::Free}, {2, Value_t::True}, {3, Value_t::False}, {4, Value_t::Release}};
-        for (auto&& e : exp) {
-            input << (unsigned) Directive_t::External << " " << e.first << " " << (unsigned) e.second << "\n";
-        }
+            {1, Value_t::free}, {2, Value_t::true_}, {3, Value_t::false_}, {4, Value_t::release}};
+        for (auto&& e : exp) { input << Directive_t::external << " " << e.first << " " << e.second << "\n"; }
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
         REQUIRE(spanEq(observer.externals, std::span{exp, std::size(exp)}));
     }
     SECTION("read assumptions") {
-        input << (unsigned) Directive_t::Assume << " 2 1 987232\n";
-        input << (unsigned) Directive_t::Assume << " 1 -2\n";
+        input << Directive_t::assume << " 2 1 987232\n";
+        input << Directive_t::assume << " 1 -2\n";
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
         REQUIRE(observer.assumes == Vec<Lit_t>({1, 987232, -2}));
     }
     SECTION("read edges") {
-        input << (unsigned) Directive_t::Edge << " 0 1 2 1 -2\n";
-        input << (unsigned) Directive_t::Edge << " 1 0 1 3\n";
+        input << Directive_t::edge << " 0 1 2 1 -2\n";
+        input << Directive_t::edge << " 1 0 1 3\n";
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
         REQUIRE(observer.edges.size() == 2);
@@ -822,13 +804,13 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         REQUIRE(observer.edges[1].cond == Vec<Lit_t>({3}));
     }
     SECTION("read heuristic") {
-        Heuristic exp[] = {{1, Heuristic_t::Sign, -1, 1, {10}},
-                           {2, Heuristic_t::Level, 10, 3, {-1, 10}},
-                           {1, Heuristic_t::Init, 20, 1, {}},
-                           {1, Heuristic_t::Factor, 2, 2, {}}};
+        Heuristic exp[] = {{1, Heuristic_t::sign, -1, 1, {10}},
+                           {2, Heuristic_t::level, 10, 3, {-1, 10}},
+                           {1, Heuristic_t::init, 20, 1, {}},
+                           {1, Heuristic_t::factor, 2, 2, {}}};
         for (auto&& r : exp) {
-            input << (unsigned) Directive_t::Heuristic << " " << (unsigned) r.type << " " << r.atom << " " << r.bias
-                  << " " << r.prio << " " << r.cond.size();
+            input << Directive_t::heuristic << " " << r.type << " " << r.atom << " " << r.bias << " " << r.prio << " "
+                  << r.cond.size();
             for (auto&& p : r.cond) { input << " " << p; }
             input << "\n";
         }
@@ -837,19 +819,19 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         REQUIRE(spanEq(observer.heuristics, std::span{exp, std::size(exp)}));
     }
     SECTION("read theory") {
-        input << (unsigned) Directive_t::Theory << " 0 1 200\n"
-              << (unsigned) Directive_t::Theory << " 0 6 1\n"
-              << (unsigned) Directive_t::Theory << " 0 11 2\n"
-              << (unsigned) Directive_t::Theory << " 1 0 4 diff\n"
-              << (unsigned) Directive_t::Theory << " 1 2 2 <=\n"
-              << (unsigned) Directive_t::Theory << " 1 4 1 -\n"
-              << (unsigned) Directive_t::Theory << " 1 5 3 end\n"
-              << (unsigned) Directive_t::Theory << " 1 8 5 start\n"
-              << (unsigned) Directive_t::Theory << " 2 10 4 2 7 9\n"
-              << (unsigned) Directive_t::Theory << " 2 7 5 1 6\n"
-              << (unsigned) Directive_t::Theory << " 2 9 8 1 6\n"
-              << (unsigned) Directive_t::Theory << " 4 0 1 10 0\n"
-              << (unsigned) Directive_t::Theory << " 6 0 0 1 0 2 1\n";
+        input << Directive_t::theory << " 0 1 200\n"
+              << Directive_t::theory << " 0 6 1\n"
+              << Directive_t::theory << " 0 11 2\n"
+              << Directive_t::theory << " 1 0 4 diff\n"
+              << Directive_t::theory << " 1 2 2 <=\n"
+              << Directive_t::theory << " 1 4 1 -\n"
+              << Directive_t::theory << " 1 5 3 end\n"
+              << Directive_t::theory << " 1 8 5 start\n"
+              << Directive_t::theory << " 2 10 4 2 7 9\n"
+              << Directive_t::theory << " 2 7 5 1 6\n"
+              << Directive_t::theory << " 2 9 8 1 6\n"
+              << Directive_t::theory << " 4 0 1 10 0\n"
+              << Directive_t::theory << " 6 0 0 1 0 2 1\n";
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
         REQUIRE(observer.theory.numAtoms() == 1);
@@ -857,21 +839,24 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         class AtomVisitor : public TheoryData::Visitor {
         public:
             void visit(const TheoryData& data, Id_t, const TheoryTerm& t) override {
-                if (auto type = t.type(); type == Theory_t::Number)
+                if (auto type = t.type(); type == Theory_t::number) {
                     out << t.number();
-                else if (type == Theory_t::Symbol)
+                }
+                else if (type == Theory_t::symbol) {
                     out << t.symbol();
-                else if (t.isFunction())
+                }
+                else if (t.isFunction()) {
                     function(data, t);
+                }
             }
             void visit(const TheoryData& data, Id_t, const TheoryElement& e) override {
                 out << '{';
-                data.accept(e, *this, TheoryData::VisitAll);
+                data.accept(e, *this, TheoryData::visit_all);
                 out << '}';
             }
             void visit(const TheoryData& data, const TheoryAtom& a) override {
                 out << '&';
-                data.accept(a, *this, TheoryData::VisitAll);
+                data.accept(a, *this, TheoryData::visit_all);
             }
             void function(const TheoryData& data, const TheoryTerm& t) {
                 out << data.getTerm(t.function()).symbol() << '(';
@@ -889,7 +874,7 @@ TEST_CASE("Intermediate Format Reader ", "[aspif]") {
         REQUIRE(vis.out.str() == "&diff{-(end(1),start(1))}<=200");
     }
     SECTION("ignore comments") {
-        input << (unsigned) Directive_t::Comment << "Hello World" << "\n";
+        input << Directive_t::comment << "Hello World" << "\n";
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
     }
@@ -906,9 +891,9 @@ TEST_CASE("Intermediate Format Reader supports incremental programs", "[aspif]")
         REQUIRE(observer.nStep == 2);
     }
     SECTION("read rules in each steps") {
-        rule(input, {Head_t::Disjunctive, {1, 2}, Body_t::Normal, BOUND_NONE, {}});
+        rule(input, {Head_t::disjunctive, {1, 2}, Body_t::normal, bound_none, {}});
         finalize(input);
-        rule(input, {Head_t::Disjunctive, {3, 4}, Body_t::Normal, BOUND_NONE, {}});
+        rule(input, {Head_t::disjunctive, {3, 4}, Body_t::normal, bound_none, {}});
         finalize(input);
         REQUIRE(readAspif(input, observer) == 0);
         REQUIRE(observer.incremental == true);
@@ -941,23 +926,22 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
     writer.beginStep();
     SECTION("Writer writes rules") {
         Rule rules[] = {
-            {Head_t::Disjunctive, {1}, Body_t::Normal, BOUND_NONE, {{-2, 1}, {3, 1}, {-4, 1}}},
-            {Head_t::Disjunctive, {1, 2, 3}, Body_t::Normal, BOUND_NONE, {{5, 1}, {-6, 1}}},
-            {Head_t::Disjunctive, {}, Body_t::Normal, BOUND_NONE, {{1, 1}, {2, 1}}},
-            {Head_t::Choice, {1, 2, 3}, Body_t::Normal, BOUND_NONE, {{5, 1}, {-6, 1}}},
+            {Head_t::disjunctive, {1}, Body_t::normal, bound_none, {{-2, 1}, {3, 1}, {-4, 1}}},
+            {Head_t::disjunctive, {1, 2, 3}, Body_t::normal, bound_none, {{5, 1}, {-6, 1}}},
+            {Head_t::disjunctive, {}, Body_t::normal, bound_none, {{1, 1}, {2, 1}}},
+            {Head_t::choice, {1, 2, 3}, Body_t::normal, bound_none, {{5, 1}, {-6, 1}}},
             // weight
-            {Head_t::Disjunctive, {1}, Body_t::Sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
-            {Head_t::Disjunctive, {2}, Body_t::Sum, 1, {{3, 1}, {-4, 1}, {5, 1}}},
+            {Head_t::disjunctive, {1}, Body_t::sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
+            {Head_t::disjunctive, {2}, Body_t::sum, 1, {{3, 1}, {-4, 1}, {5, 1}}},
             // mixed
-            {Head_t::Choice, {1, 2}, Body_t::Sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
-            {Head_t::Disjunctive, {}, Body_t::Sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
+            {Head_t::choice, {1, 2}, Body_t::sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
+            {Head_t::disjunctive, {}, Body_t::sum, 1, {{2, 1}, {-3, 2}, {-4, 3}, {5, 1}}},
         };
         Vec<Lit_t> temp;
         for (auto&& r : rules) {
-            if (r.bt == Body_t::Normal) {
+            if (r.bt == Body_t::normal) {
                 temp.clear();
-                std::transform(r.body.begin(), r.body.end(), std::back_inserter(temp),
-                               [](const WeightLit_t& x) { return x.lit; });
+                std::ranges::transform(r.body, std::back_inserter(temp), [](const WeightLit_t& x) { return x.lit; });
                 writer.rule(r.ht, r.head, temp);
             }
             else {
@@ -994,7 +978,7 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
     }
     SECTION("Writer writes external") {
         std::pair<Atom_t, Value_t> exp[] = {
-            {1, Value_t::Free}, {2, Value_t::True}, {3, Value_t::False}, {4, Value_t::Release}};
+            {1, Value_t::free}, {2, Value_t::true_}, {3, Value_t::false_}, {4, Value_t::release}};
         for (auto&& e : exp) { writer.external(e.first, e.second); }
         writer.endStep();
         readAspif(out, observer);
@@ -1026,10 +1010,10 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
         REQUIRE(spanEq(observer.edges, std::span{exp, std::size(exp)}));
     }
     SECTION("Writer writes heuristics") {
-        Heuristic exp[] = {{1, Heuristic_t::Sign, -1, 1, {10}},
-                           {2, Heuristic_t::Level, 10, 3, {-1, 10}},
-                           {1, Heuristic_t::Init, 20, 1, {}},
-                           {1, Heuristic_t::Factor, 2, 2, {}}};
+        Heuristic exp[] = {{1, Heuristic_t::sign, -1, 1, {10}},
+                           {2, Heuristic_t::level, 10, 3, {-1, 10}},
+                           {1, Heuristic_t::init, 20, 1, {}},
+                           {1, Heuristic_t::factor, 2, 2, {}}};
         for (auto&& h : exp) { writer.heuristic(h.atom, h.type, h.bias, h.prio, h.cond); }
         writer.endStep();
         readAspif(out, observer);
@@ -1046,7 +1030,7 @@ TEST_CASE("TheoryData", "[aspif]") {
     SECTION("Term 0 is ok") {
         data.addTerm(0, 0);
         REQUIRE(data.hasTerm(0));
-        REQUIRE(data.getTerm(0).type() == Theory_t::Number);
+        REQUIRE(data.getTerm(0).type() == Theory_t::number);
     }
 
     SECTION("Visit theory") {
@@ -1077,10 +1061,10 @@ TEST_CASE("TheoryData", "[aspif]") {
         data.addTerm(e[3] = tId++, o[0], {args, 2}); // (4 * z)
         // elements
         Id_t elems[4];
-        data.addElement(elems[0] = 0, {&e[0], 1}, 0u); // (element 1*x(1):)
-        data.addElement(elems[1] = 1, {&e[1], 1}, 0u); // (element 2*x(2):)
-        data.addElement(elems[2] = 2, {&e[2], 1}, 0u); // (element 3*x(3):)
-        data.addElement(elems[3] = 3, {&e[3], 1}, 0u); // (element 4*z:)
+        data.addElement(elems[0] = 0, toSpan(e[0]), 0u); // (element 1*x(1):)
+        data.addElement(elems[1] = 1, toSpan(e[1]), 0u); // (element 2*x(2):)
+        data.addElement(elems[2] = 2, toSpan(e[2]), 0u); // (element 3*x(3):)
+        data.addElement(elems[3] = 3, toSpan(e[3]), 0u); // (element 4*z:)
 
         // atom
         data.addTerm(s[2] = tId++, "sum");             // (string sum)
@@ -1090,12 +1074,13 @@ TEST_CASE("TheoryData", "[aspif]") {
 
         struct Visitor : public TheoryData::Visitor {
             void visit(const TheoryData& data, Id_t termId, const TheoryTerm& t) override {
-                if (out.hasTerm(termId))
+                if (out.hasTerm(termId)) {
                     return;
+                }
                 switch (t.type()) {
-                    case Potassco::Theory_t::Number: out.addTerm(termId, t.number()); break;
-                    case Potassco::Theory_t::Symbol: out.addTerm(termId, t.symbol()); break;
-                    case Potassco::Theory_t::Compound:
+                    case Potassco::Theory_t::number: out.addTerm(termId, t.number()); break;
+                    case Potassco::Theory_t::symbol: out.addTerm(termId, t.symbol()); break;
+                    case Potassco::Theory_t::compound:
                         data.accept(t, *this);
                         if (t.isFunction()) {
                             out.addTerm(termId, t.function(), t.terms());
@@ -1108,8 +1093,9 @@ TEST_CASE("TheoryData", "[aspif]") {
                 }
             }
             void visit(const TheoryData& data, Id_t elemId, const TheoryElement& e) override {
-                if (out.hasElement(elemId))
+                if (out.hasElement(elemId)) {
                     return;
+                }
                 data.accept(e, *this);
                 out.addElement(elemId, e.terms(), e.condition());
             }

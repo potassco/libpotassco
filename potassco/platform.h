@@ -66,9 +66,11 @@
 #define POTASSCO_WARNING_PUSH()          _Pragma("clang diagnostic push")
 #define POTASSCO_WARNING_POP()           _Pragma("clang diagnostic pop")
 #define POTASSCO_WARNING_IGNORE_CLANG(X) _Pragma(POTASSCO_STRING(clang diagnostic ignored X))
-#define POTASSCO_WARNING_BEGIN_RELAXED   POTASSCO_WARNING_PUSH() POTASSCO_WARNING_IGNORE_CLANG("-Wzero-length-array")
-#define POTASSCO_WARNING_END_RELAXED     POTASSCO_WARNING_POP()
-#define POTASSCO_ATTR_INLINE             [[clang::always_inline]]
+#define POTASSCO_WARNING_BEGIN_RELAXED                                                                                 \
+    POTASSCO_WARNING_PUSH()                                                                                            \
+    POTASSCO_WARNING_IGNORE_CLANG("-Wzero-length-array") POTASSCO_WARNING_IGNORE_CLANG("-Wsign-conversion")
+#define POTASSCO_WARNING_END_RELAXED POTASSCO_WARNING_POP()
+#define POTASSCO_ATTR_INLINE         [[clang::always_inline]]
 #else
 #pragma GCC diagnostic push
 #pragma GCC system_header

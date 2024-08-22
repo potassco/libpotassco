@@ -26,9 +26,6 @@
 #include <potassco/basic_types.h>
 #include <potassco/error.h>
 
-#include <new>
-#include <utility>
-
 namespace Potassco {
 
 class TheoryData;
@@ -38,18 +35,18 @@ class TheoryData;
  */
 ///@{
 //! Supported aspif theory directives.
-enum class Theory_t { Number = 0, Symbol = 1, Compound = 2, Reserved = 3, Element = 4, Atom = 5, AtomWithGuard = 6 };
+enum class Theory_t { number = 0, symbol = 1, compound = 2, reserved = 3, element = 4, atom = 5, atom_with_guard = 6 };
 [[maybe_unused]] consteval auto enable_meta(std::type_identity<Theory_t>) { return DefaultEnum<Theory_t, 7u>(); }
 
 //! Supported aspif theory tuple types.
-enum class Tuple_t { Bracket = -3, Brace = -2, Paren = -1 };
+enum class Tuple_t { bracket = -3, brace = -2, paren = -1 };
 [[maybe_unused]] consteval auto enable_meta(std::type_identity<Tuple_t>) { return DefaultEnum<Theory_t, 3u, -3>(); }
 [[nodiscard]] constexpr auto    parens(Tuple_t t) -> std::string_view {
     using namespace std::literals;
     switch (t) {
-        case Tuple_t::Bracket: return "[]"sv;
-        case Tuple_t::Brace  : return "{}"sv;
-        case Tuple_t::Paren  : return "()"sv;
+        case Tuple_t::bracket: return "[]"sv;
+        case Tuple_t::brace  : return "{}"sv;
+        case Tuple_t::paren  : return "()"sv;
     }
     POTASSCO_ASSERT_NOT_REACHED("unexpected tuple type");
 }
@@ -59,7 +56,7 @@ class TheoryTerm {
 public:
     TheoryTerm() noexcept = default;
     //! Iterator type for iterating over arguments of a compound term.
-    using iterator = const Id_t*;
+    using iterator = const Id_t*; // NOLINT
     //! Returns the type of this term.
     [[nodiscard]] Theory_t type() const;
     //! Returns the number stored in this or throws if type() != Number.
@@ -101,7 +98,7 @@ public:
     TheoryElement& operator=(const TheoryElement&) = delete;
 
     //! Iterator type for iterating over the terms of an element.
-    using iterator = const Id_t*;
+    using iterator = const Id_t*; // NOLINT
     //! Returns the number of terms belonging to this element.
     [[nodiscard]] uint32_t size() const { return nTerms_; }
     //! Returns an iterator pointing to the first term of this element.
@@ -130,7 +127,7 @@ public:
     TheoryAtom(const TheoryAtom&)            = delete;
     TheoryAtom& operator=(const TheoryAtom&) = delete;
     //! Iterator type for iterating over the elements of a theory atom.
-    using iterator = const Id_t*;
+    using iterator = const Id_t*; // NOLINT
     //! Returns the associated program atom or 0 if this originated from a directive.
     [[nodiscard]] Id_t atom() const { return static_cast<Id_t>(atom_); }
     //! Returns the term that is associated with this atom.
@@ -139,7 +136,7 @@ public:
     [[nodiscard]] uint32_t size() const { return nTerms_; }
     //! Returns an iterator pointing to the first element of this atom.
     [[nodiscard]] iterator begin() const { return term_; }
-    //! Returns an iterator marking the end of elements of this atoms.
+    //! Returns an iterator marking the end of elements of this atom.
     [[nodiscard]] iterator end() const { return begin() + size(); }
     //! Returns the range [begin(), end()).
     [[nodiscard]] IdSpan elements() const { return {begin(), size()}; }
@@ -164,7 +161,7 @@ private:
 class TheoryData {
 public:
     //! Iterator type for iterating over the theory atoms of a TheoryData object.
-    using atom_iterator = const TheoryAtom* const*;
+    using atom_iterator = const TheoryAtom* const*; // NOLINT
     using Term          = TheoryTerm;
     using Element       = TheoryElement;
     TheoryData();
@@ -172,7 +169,7 @@ public:
     TheoryData(TheoryData&&) = delete;
 
     //! Sentinel for marking a condition to be set later.
-    static constexpr auto COND_DEFERRED = static_cast<Id_t>(-1);
+    static constexpr auto cond_deferred = static_cast<Id_t>(-1);
 
     //! Resets this object to the state after default construction.
     void reset();
@@ -192,12 +189,12 @@ public:
     /*!
      * Each element in terms shall be an id of a theory term
      * eventually added via one of the addTerm() overloads.
-     * \note If cond is @c COND_DEFERRED, the condition may later be changed via a call to @c setCondition().
+     * \note If cond is @c cond_deferred, the condition may later be changed via a call to @c setCondition().
      */
-    void addElement(Id_t elementId, const IdSpan& terms, Id_t cond = COND_DEFERRED);
+    void addElement(Id_t elementId, const IdSpan& terms, Id_t cond = cond_deferred);
     //! Changes the condition of the element with the given id.
     /*!
-     * \pre The element was previously added with condition @c COND_DEFERRED.
+     * \pre The element was previously added with condition @c cond_deferred.
      */
     void setCondition(Id_t elementId, Id_t newCond);
 
@@ -233,17 +230,17 @@ public:
     //! Returns an iterator marking the end of the range of theory atoms.
     [[nodiscard]] atom_iterator end() const;
     //! Returns whether this object stores a term with the given id.
-    [[nodiscard]] bool hasTerm(Id_t t) const;
+    [[nodiscard]] bool hasTerm(Id_t id) const;
     //! Returns whether the given term was added after last call to update.
-    [[nodiscard]] bool isNewTerm(Id_t t) const;
+    [[nodiscard]] bool isNewTerm(Id_t id) const;
     //! Returns whether this object stores an atom element with the given id.
-    [[nodiscard]] bool hasElement(Id_t e) const;
+    [[nodiscard]] bool hasElement(Id_t id) const;
     //! Returns whether the given element was added after last call to update.
-    [[nodiscard]] bool isNewElement(Id_t e) const;
+    [[nodiscard]] bool isNewElement(Id_t id) const;
     //! Returns the term with the given id or throws if no such term exists.
-    [[nodiscard]] Term getTerm(Id_t t) const;
+    [[nodiscard]] Term getTerm(Id_t id) const;
     //! Returns the element with the given id or throws if no such element exists.
-    [[nodiscard]] const Element& getElement(Id_t e) const;
+    [[nodiscard]] const Element& getElement(Id_t id) const;
 
     //! Removes all theory atoms @c a for which @c f(a) returns true.
     template <class F>
@@ -269,23 +266,23 @@ public:
         virtual void visit(const TheoryData& data, Id_t termId, const TheoryTerm& t) = 0;
         //! Visit a theory element. Should call <tt>data.accept(e, *this)</tt> to visit the terms of the element.
         virtual void visit(const TheoryData& data, Id_t elemId, const TheoryElement& e) = 0;
-        //! Visit the theory atom. Should call <tt>data.accept(a, *this)</tt> to visit the elements of the atom.
-        virtual void visit(const TheoryData& data, const TheoryAtom& a) = 0;
+        //! Visit the theory atom. Should call <tt>data.accept(atom, *this)</tt> to visit the elements of the atom.
+        virtual void visit(const TheoryData& data, const TheoryAtom& atom) = 0;
     };
     //! Possible visitation modes.
     /*!
-     * Mode @c VisitCurrent ignores atoms, elements, or terms
+     * Mode @c visit_current ignores atoms, elements, or terms
      * that were added in previous steps, i.e. before the last call to update().
      */
-    enum VisitMode { VisitAll, VisitCurrent };
+    enum VisitMode { visit_all, visit_current };
     //! Calls <tt>out.visit(*this, a)</tt> for all theory atoms.
-    void accept(Visitor& out, VisitMode m = VisitCurrent) const;
+    void accept(Visitor& out, VisitMode m = visit_current) const;
     //! Visits terms and elements of the given atom.
-    void accept(const TheoryAtom& a, Visitor& out, VisitMode m = VisitAll) const;
+    void accept(const TheoryAtom& a, Visitor& out, VisitMode m = visit_all) const;
     //! Visits terms of the given element.
-    void accept(const TheoryElement& e, Visitor& out, VisitMode m = VisitAll) const;
+    void accept(const TheoryElement& e, Visitor& out, VisitMode m = visit_all) const;
     //! If given term is a compound term, visits its sub terms.
-    void accept(const TheoryTerm& t, Visitor& out, VisitMode m = VisitAll) const;
+    void accept(const TheoryTerm& t, Visitor& out, VisitMode m = visit_all) const;
 
 private:
     struct DestroyT;
@@ -294,10 +291,10 @@ private:
 
     TheoryTerm& setTerm(Id_t);
     void        resizeAtoms(uint32_t n);
-    void        destroyAtom(TheoryAtom*);
+    static void destroyAtom(TheoryAtom*);
     // NOLINTBEGIN(modernize-use-nodiscard)
-    bool doVisitTerm(VisitMode m, Id_t id) const { return m == VisitAll || isNewTerm(id); }
-    bool doVisitElem(VisitMode m, Id_t id) const { return m == VisitAll || isNewElement(id); }
+    bool doVisitTerm(VisitMode m, Id_t id) const { return m == visit_all || isNewTerm(id); }
+    bool doVisitElem(VisitMode m, Id_t id) const { return m == visit_all || isNewElement(id); }
     // NOLINTEND(modernize-use-nodiscard)
     struct Data;
     std::unique_ptr<Data> data_;
@@ -305,9 +302,9 @@ private:
 
 inline void print(AbstractProgram& out, Id_t termId, const TheoryTerm& term) {
     switch (term.type()) {
-        case Potassco::Theory_t::Number  : out.theoryTerm(termId, term.number()); break;
-        case Potassco::Theory_t::Symbol  : out.theoryTerm(termId, term.symbol()); break;
-        case Potassco::Theory_t::Compound: out.theoryTerm(termId, term.compound(), term.terms()); break;
+        case Potassco::Theory_t::number  : out.theoryTerm(termId, term.number()); break;
+        case Potassco::Theory_t::symbol  : out.theoryTerm(termId, term.symbol()); break;
+        case Potassco::Theory_t::compound: out.theoryTerm(termId, term.compound(), term.terms()); break;
         default                          : break;
     }
 }

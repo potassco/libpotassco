@@ -27,7 +27,7 @@
 
 #include <utility>
 
-namespace Potassco::ProgramOptions::detail {
+namespace Potassco::ProgramOptions::Detail {
 
 class RefCountable {
 public:
@@ -43,7 +43,7 @@ private:
 template <typename T>
 class IntrusiveSharedPtr {
 public:
-    using element_type = T;
+    using element_type = T; // NOLINT
     constexpr explicit IntrusiveSharedPtr(T* p = nullptr) noexcept : ptr_(p) {}
     constexpr IntrusiveSharedPtr(const IntrusiveSharedPtr& o) noexcept : ptr_(o.ptr_) { addRef(); }
     constexpr IntrusiveSharedPtr(IntrusiveSharedPtr&& o) noexcept : ptr_(std::exchange(o.ptr_, nullptr)) {}
@@ -63,8 +63,9 @@ public:
 
 private:
     constexpr void addRef() const noexcept {
-        if (ptr_)
+        if (ptr_) {
             ptr_->addRef();
+        }
     }
     constexpr void release() noexcept {
         if (auto* prev = std::exchange(ptr_, nullptr); prev && prev->release() == 0) {
@@ -75,4 +76,4 @@ private:
     T* ptr_;
 };
 
-} // namespace Potassco::ProgramOptions::detail
+} // namespace Potassco::ProgramOptions::Detail

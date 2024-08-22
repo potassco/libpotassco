@@ -18,6 +18,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
+
 #include <potassco/program_opts/typed_value.h>
 
 #include <catch2/catch_test_macros.hpp>
@@ -136,8 +137,10 @@ TEST_CASE("Test custom value", "[value]") {
     REQUIRE(m["v2"] == 342);
 }
 
+// ReSharper disable CppInconsistentNaming
 enum class Color { RED = 2, GREEN = 10, BLUE = 20 };
 enum class Mode { DEF, IMP, EXP };
+// ReSharper restore CppInconsistentNaming
 
 TEST_CASE("Test enum value", "[value]") {
     int  x;

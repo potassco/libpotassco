@@ -33,7 +33,7 @@ Rule_t Rule_t::normal(Head_t ht, const AtomSpan& head, const LitSpan& body) {
     Rule_t r;
     r.ht   = ht;
     r.head = head;
-    r.bt   = Body_t::Normal;
+    r.bt   = Body_t::normal;
     r.cond = body;
     return r;
 }
@@ -41,7 +41,7 @@ Rule_t Rule_t::sum(Head_t ht, const AtomSpan& head, const Sum_t& sum) {
     Rule_t r;
     r.ht   = ht;
     r.head = head;
-    r.bt   = Body_t::Sum;
+    r.bt   = Body_t::sum;
     r.agg  = sum;
     return r;
 }
@@ -87,7 +87,7 @@ void RuleBuilder::start(Range& r, uint32_t type, const Weight_t* bound) {
     if (not frozen()) {
         POTASSCO_CHECK_PRE(r.open(), "%s already started", (&r == &head_ ? "Head" : "Body"));
         if (auto& other = &r == &head_ ? body_ : head_; not other.open()) {
-            store_set_bit(other.end_flag, Range::ebit);
+            store_set_bit(other.end_flag, Range::end_bit);
         }
     }
     else {
@@ -98,19 +98,21 @@ void RuleBuilder::start(Range& r, uint32_t type, const Weight_t* bound) {
     }
     auto pos = mem_.size();
     POTASSCO_ASSERT(not test_any(pos, Range::mask), "unexpected alignment");
-    r = Range{.start_type = set_mask(pos, type), .end_flag = set_bit(pos, Range::sbit)};
+    r = Range{.start_type = set_mask(pos, type), .end_flag = set_bit(pos, Range::start_bit)};
 }
 template <typename T>
 void RuleBuilder::extend(Range& r, const T& elem, const char* what) {
-    if (not r.started())
+    if (not r.started()) {
         start(r, 0u);
+    }
     POTASSCO_CHECK_PRE(not r.finished(), "%s already frozen", what);
     new (mem_.alloc(sizeof(T)).data()) T(elem);
     r.end_flag += sizeof(T);
 }
 void RuleBuilder::clear(Range& r) {
-    if (const auto& other = &r == &head_ ? body_ : head_; r.start() >= other.end())
+    if (const auto& other = &r == &head_ ? body_ : head_; r.start() >= other.end()) {
         mem_.pop(mem_.size() - other.end());
+    }
     r = {};
 }
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -130,35 +132,33 @@ RuleBuilder& RuleBuilder::clearHead() {
 }
 Head_t   RuleBuilder::headType() const { return static_cast<Head_t>(head_.type()); }
 AtomSpan RuleBuilder::head() const { return makeSpan<Atom_t>(mem_, head_); }
-Atom_t*  RuleBuilder::head_begin() const { return storage_cast<Atom_t*>(mem_, head_.start()); }
-Atom_t*  RuleBuilder::head_end() const { return storage_cast<Atom_t*>(mem_, head_.end()); }
-bool     RuleBuilder::isMinimize() const { return headType() == static_cast<Head_t>(Directive_t::Minimize); }
+bool     RuleBuilder::isMinimize() const { return headType() == static_cast<Head_t>(Directive_t::minimize); }
 /////////////////////////////////////////////////////////////////////////////////////////
 // RuleBuilder - Body management
 /////////////////////////////////////////////////////////////////////////////////////////
 static constexpr auto boundPos(uint32_t pos) { return static_cast<uint32_t>(pos - sizeof(Weight_t)); }
 RuleBuilder&          RuleBuilder::startBody() {
-    start(body_, static_cast<uint32_t>(Body_t::Normal));
+    start(body_, static_cast<uint32_t>(Body_t::normal));
     return *this;
 }
 RuleBuilder& RuleBuilder::startSum(Weight_t bound) {
     if (not isMinimize() || frozen()) {
-        start(body_, static_cast<uint32_t>(Body_t::Sum), &bound);
+        start(body_, static_cast<uint32_t>(Body_t::sum), &bound);
     }
     return *this;
 }
 RuleBuilder& RuleBuilder::startMinimize(Weight_t prio) {
-    start(head_, static_cast<uint32_t>(Directive_t::Minimize));
-    start(body_, static_cast<uint32_t>(Body_t::Sum), &prio);
+    start(head_, static_cast<uint32_t>(Directive_t::minimize));
+    start(body_, static_cast<uint32_t>(Body_t::sum), &prio);
     return *this;
 }
 RuleBuilder& RuleBuilder::addGoal(Lit_t lit) {
-    bodyType() == Body_t::Normal ? extend(body_, lit, "Body")
+    bodyType() == Body_t::normal ? extend(body_, lit, "Body")
                                  : extend(body_, WeightLit_t{.lit = lit, .weight = 1}, "Sum");
     return *this;
 }
 RuleBuilder& RuleBuilder::addGoal(WeightLit_t lit) {
-    if (bodyType() == Body_t::Normal) {
+    if (bodyType() == Body_t::normal) {
         POTASSCO_CHECK_PRE(lit.weight == 1, "non-trivial weight literal not supported in normal body");
         extend(body_, lit.lit, "Body");
     }
@@ -172,23 +172,25 @@ RuleBuilder& RuleBuilder::clearBody() {
     return *this;
 }
 RuleBuilder& RuleBuilder::setBound(Weight_t bound) {
-    POTASSCO_CHECK_PRE(bodyType() != Body_t::Normal && not frozen(), "Invalid call to setBound");
+    POTASSCO_CHECK_PRE(bodyType() != Body_t::normal && not frozen(), "Invalid call to setBound");
     *storage_cast<Weight_t*>(mem_, boundPos(body_.start())) = bound;
     return *this;
 }
 RuleBuilder& RuleBuilder::weaken(Body_t to, bool resetWeights) {
     POTASSCO_CHECK_PRE(not isMinimize(), "Invalid call to weaken");
-    if (auto t = bodyType(); t != Body_t::Normal && t != to) {
+    if (auto t = bodyType(); t != Body_t::normal && t != to) {
         auto s           = sum();
-        body_.start_type = (to == Body_t::Normal ? boundPos(body_.start()) : body_.start()) | static_cast<uint32_t>(to);
-        if (to == Body_t::Normal) { // drop bound and weights of literals
-            std::transform(s.lits.begin(), s.lits.end(), lits_begin(), [](WeightLit_t wl) { return wl.lit; });
+        body_.start_type = (to == Body_t::normal ? boundPos(body_.start()) : body_.start()) | static_cast<uint32_t>(to);
+        if (to == Body_t::normal) { // drop bound and weights of literals
+            std::ranges::transform(s.lits, storage_cast<Lit_t*>(mem_, body_.start()),
+                                   [](WeightLit_t wl) { return wl.lit; });
             auto drop = (s.lits.size() * sizeof(Weight_t)) + sizeof(Weight_t);
-            if (body_.start() > head_.start())
+            if (body_.start() > head_.start()) {
                 mem_.pop(drop);
+            }
             body_.end_flag -= static_cast<uint32_t>(drop);
         }
-        else if (not s.lits.empty() && resetWeights && to == Body_t::Count) { // set weight of all lits to 1
+        else if (not s.lits.empty() && resetWeights && to == Body_t::count) { // set weight of all lits to 1
             auto minW = s.lits[0].weight;
             for (auto& wl : s.lits) {
                 minW                                = std::min(minW, wl.weight);
@@ -201,14 +203,19 @@ RuleBuilder& RuleBuilder::weaken(Body_t to, bool resetWeights) {
 }
 Body_t   RuleBuilder::bodyType() const { return static_cast<Body_t>(body_.type()); }
 LitSpan  RuleBuilder::body() const { return makeSpan<Lit_t>(mem_, body_); }
-Lit_t*   RuleBuilder::lits_begin() const { return storage_cast<Lit_t*>(mem_, body_.start()); }
-Lit_t*   RuleBuilder::lits_end() const { return storage_cast<Lit_t*>(mem_, body_.end()); }
-Sum_t    RuleBuilder::sum() const { return {makeSpan<WeightLit_t>(mem_, body_), bound()}; }
+auto     RuleBuilder::sumLits() const -> std::span<WeightLit_t> { return makeSpan<WeightLit_t>(mem_, body_); }
 Weight_t RuleBuilder::bound() const {
-    return bodyType() != Body_t::Normal ? *storage_cast<Weight_t*>(mem_, boundPos(body_.start())) : -1;
+    return bodyType() != Body_t::normal ? *storage_cast<Weight_t*>(mem_, boundPos(body_.start())) : -1;
 }
-WeightLit_t* RuleBuilder::wlits_begin() const { return storage_cast<WeightLit_t*>(mem_, body_.start()); }
-WeightLit_t* RuleBuilder::wlits_end() const { return storage_cast<WeightLit_t*>(mem_, body_.end()); }
+Sum_t RuleBuilder::sum() const { return {sumLits(), bound()}; }
+auto  RuleBuilder::findSumLit(Lit_t lit) const -> WeightLit_t* {
+    for (auto& wl : sumLits()) {
+        if (wl.lit == lit) {
+            return &wl;
+        }
+    }
+    return nullptr;
+}
 /////////////////////////////////////////////////////////////////////////////////////////
 // RuleBuilder - Product
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -217,7 +224,7 @@ Rule_t RuleBuilder::rule() const {
     ret.ht   = headType();
     ret.head = head();
     ret.bt   = bodyType();
-    if (ret.bt == Body_t::Normal) {
+    if (ret.bt == Body_t::normal) {
         ret.cond = body();
     }
     else {
@@ -229,7 +236,7 @@ RuleBuilder& RuleBuilder::end(AbstractProgram* out) {
     store_set_mask(head_.end_flag, Range::mask);
     store_set_mask(body_.end_flag, Range::mask);
     if (out) {
-        if (bodyType() == Body_t::Normal) {
+        if (bodyType() == Body_t::normal) {
             out->rule(headType(), head(), body());
         }
         else if (auto s = sum(); isMinimize()) {

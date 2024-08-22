@@ -56,7 +56,6 @@ struct MyApp : public Potassco::Application {
         return false;
     }
     void flush() override {}
-    using Potassco::Application::verbose;
     using StringSeq = std::vector<std::string>;
     using Messages  = std::map<std::string, std::string>;
     int       foo   = {};
@@ -68,13 +67,13 @@ TEST_CASE("Test application formatting", "[app]") {
     MyApp app;
     SECTION("message") {
         char buffer[80];
-        app.formatMessage(buffer, Application::MsgError, "An error");
+        app.formatMessage(buffer, Application::message_error, "An error");
         CHECK(std::strcmp(buffer, "*** ERROR: (TestApp): An error") == 0);
 
-        app.formatMessage(buffer, Application::MsgWarning, "A warning");
+        app.formatMessage(buffer, Application::message_warning, "A warning");
         CHECK(std::strcmp(buffer, "*** Warn : (TestApp): A warning") == 0);
 
-        app.formatMessage(buffer, Application::MsgInfo, "Some info");
+        app.formatMessage(buffer, Application::message_info, "Some info");
         CHECK(std::strcmp(buffer, "*** Info : (TestApp): Some info") == 0);
     }
     SECTION("stream") {
@@ -87,11 +86,11 @@ TEST_CASE("Test application formatting", "[app]") {
 }
 TEST_CASE("Test application", "[app]") {
     MyApp app;
-    char* argv[] = {(char*) "app", (char*) "-h", (char*) "-V3", (char*) "--vers", (char*) "hallo", nullptr};
+    char* argv[] = {(char*) "app", (char*) "-h", (char*) "-V3", (char*) "--vers", (char*) "hallo", nullptr}; // NOLINT
     SECTION("args") {
         int argc = 5;
         REQUIRE(app.main(argc, argv) == EXIT_SUCCESS);
-        REQUIRE(app.verbose() == 3);
+        REQUIRE(app.getVerbose() == 3);
         REQUIRE(app.input.at(0) == "hallo");
         REQUIRE_FALSE(app.messages["help"].empty());
         REQUIRE(app.messages["version"].empty()); // help processed first
@@ -116,14 +115,14 @@ TEST_CASE("Test application", "[app]") {
         REQUIRE_FALSE(contains(help, "E1"));
     }
     SECTION("version") {
-        argv[1]  = (char*) "--vers";
+        argv[1]  = (char*) "--vers"; // NOLINT
         argv[2]  = nullptr;
         int argc = 2;
         REQUIRE(app.main(argc, argv) == EXIT_SUCCESS);
         REQUIRE(app.messages["version"].starts_with("TestApp version 1.0\nAddress model: "));
     }
     SECTION("arg error") {
-        argv[1] = (char*) "-h3";
+        argv[1] = (char*) "-h3"; // NOLINT
         argv[2] = nullptr;
         REQUIRE(app.main(2, argv) == EXIT_FAILURE);
         REQUIRE(app.messages["error"] == "*** ERROR: (TestApp): In context '<TestApp>': '3' invalid value for: 'help'\n"
@@ -146,7 +145,7 @@ TEST_CASE("Test alarm", "[app]") {
     };
 
     TimedApp app;
-    char*    argv[] = {(char*) "app", (char*) "--time-limit=1", nullptr};
+    char*    argv[] = {(char*) "app", (char*) "--time-limit=1", nullptr}; // NOLINT
     int      argc   = 2;
     app.main(argc, argv);
     REQUIRE(app.stop == 1);

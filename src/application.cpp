@@ -61,7 +61,7 @@ namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Application
 /////////////////////////////////////////////////////////////////////////////////////////
-static Application* instance_s; // running instance (only valid during run()).
+static Application* g_instance; // running instance (only valid during run()).
 Application::Application()
     : exitCode_(EXIT_FAILURE)
     , timeout_(0)
@@ -70,10 +70,10 @@ Application::Application()
     , blocked_(0)
     , pending_(0) {}
 Application::~Application() { resetInstance(*this); }
-void Application::initInstance(Application& app) { instance_s = &app; }
-void Application::resetInstance(Application& app) {
-    if (instance_s == &app) {
-        instance_s = nullptr;
+void Application::initInstance(Application& app) { g_instance = &app; }
+void Application::resetInstance(const Application& app) {
+    if (g_instance == &app) {
+        g_instance = nullptr;
     }
 }
 #if not defined(_WIN32)
@@ -143,9 +143,7 @@ int Application::main(int argc, char** argv) {
                     if (not unwinding) {
                         throw; // propagate exception from shutdown
                     }
-                    else {
-                        // swallow additional exception from shutdown
-                    }
+                    // swallow additional exception from shutdown
                 }
             }); // shutdown
             setup();
@@ -165,7 +163,7 @@ int Application::main(int argc, char** argv) {
     return exitCode_;
 }
 
-Application* Application::getInstance() { return instance_s; }
+Application* Application::getInstance() { return g_instance; }
 
 void Application::setExitCode(int n) { exitCode_ = n; }
 int  Application::getExitCode() const { return exitCode_; }
@@ -179,7 +177,7 @@ void Application::exit(int exitCode) {
 }
 
 // Temporarily disable delivery of signals.
-int Application::blockSignals() { return (int) fetch_and_inc(blocked_); }
+int Application::blockSignals() { return static_cast<int>(fetch_and_inc(blocked_)); }
 
 // Re-enable signal handling and deliver any pending signal.
 void Application::unblockSignals(bool deliverPending) {
@@ -224,10 +222,10 @@ void Application::killAlarm() {
 
 static const char* prefix(Application::MessageType t) {
     switch (t) {
-        default                     : return "<?>";
-        case Application::MsgError  : return "*** ERROR: ";
-        case Application::MsgWarning: return "*** Warn : ";
-        case Application::MsgInfo   : return "*** Info : ";
+        default                          : return "<?>";
+        case Application::message_error  : return "*** ERROR: ";
+        case Application::message_warning: return "*** Warn : ";
+        case Application::message_info   : return "*** Info : ";
     }
 }
 
@@ -251,31 +249,31 @@ bool Application::formatActiveException(std::span<char> buffer) const {
     try {
         throw;
     }
-    catch (const Potassco::ProgramOptions::Error& e) {
-        buffer = buffer.subspan(formatMessage(buffer, MsgError, "%s\n", e.what()));
-        formatMessage(buffer, MsgInfo, "Try '--help' for usage information");
+    catch (const ProgramOptions::Error& e) {
+        buffer = buffer.subspan(formatMessage(buffer, message_error, "%s\n", e.what()));
+        formatMessage(buffer, message_info, "Try '--help' for usage information");
     }
-    catch (const Potassco::RuntimeError& e) {
+    catch (const RuntimeError& e) {
         auto m = e.message();
         auto d = e.details();
-        buffer = buffer.subspan(formatMessage(buffer, MsgError, "%.*s\n", (int) m.size(), m.data()));
-        formatMessage(buffer, MsgError, "%.*s", (int) d.size(), d.data());
+        buffer = buffer.subspan(formatMessage(buffer, message_error, "%.*s\n", static_cast<int>(m.size()), m.data()));
+        formatMessage(buffer, message_error, "%.*s", static_cast<int>(d.size()), d.data());
     }
-    catch (const Application::Error& e) {
-        buffer = buffer.subspan(formatMessage(buffer, MsgError, "%s%s", e.what(), not e.info.empty() ? "\n" : ""));
+    catch (const Error& e) {
+        buffer = buffer.subspan(formatMessage(buffer, message_error, "%s%s", e.what(), not e.info.empty() ? "\n" : ""));
         if (not e.info.empty() && not buffer.empty()) {
             buffer = buffer.subspan(
-                formatMessage(buffer, MsgInfo, "%s%s", e.info.c_str(), not e.details.empty() ? "\n" : ""));
+                formatMessage(buffer, message_info, "%s%s", e.info.c_str(), not e.details.empty() ? "\n" : ""));
         }
         if (not e.details.empty() && not buffer.empty()) {
-            formatMessage(buffer, MsgInfo, "%s", e.details.c_str());
+            formatMessage(buffer, message_info, "%s", e.details.c_str());
         }
     }
     catch (const std::exception& e) {
-        formatMessage(buffer, MsgError, "%s", e.what());
+        formatMessage(buffer, message_error, "%s", e.what());
     }
     catch (...) {
-        formatMessage(buffer, MsgError, "Unknown exception");
+        formatMessage(buffer, message_error, "Unknown exception");
         return false;
     }
     return true;
@@ -323,18 +321,18 @@ bool Application::applyOptions(int argc, char** argv) {
         std::stringstream msg;
         msg << getName() << " version " << getVersion() << "\n";
         if (help) {
-            auto x = (DescriptionLevel) (help - 1);
+            auto x = static_cast<DescriptionLevel>(help - 1);
             allOpts.setActiveDescLevel(x);
             msg << "usage: " << getName() << " " << getUsage() << "\n";
-            ProgramOptions::OptionPrinter printer(msg);
+            OptionPrinter printer(msg);
             allOpts.description(printer);
             msg << "\n";
             msg << "usage: " << getName() << " " << getUsage() << "\n";
-            msg << "Default command-line:\n" << getName() << " " << allOpts.defaults(strlen(getName()) + 1) << "\n";
+            msg << "Default command-line:\n" << getName() << " " << allOpts.defaults(strlen(getName()) + 1);
             onHelp(msg.str(), x);
         }
         else {
-            msg << "Address model: " << (int) (sizeof(void*) * CHAR_BIT) << "-bit\n";
+            msg << "Address model: " << static_cast<int>(sizeof(void*) * CHAR_BIT) << "-bit";
             onVersion(msg.str());
         }
         return false;
@@ -343,7 +341,7 @@ bool Application::applyOptions(int argc, char** argv) {
     return true;
 }
 
-unsigned Application::verbose() const { return verbose_; }
+unsigned Application::getVerbose() const { return verbose_; }
 void     Application::setVerbose(unsigned v) { verbose_ = v; }
 
 } // namespace Potassco

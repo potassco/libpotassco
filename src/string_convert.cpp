@@ -23,28 +23,32 @@
 
 #include <potassco/error.h>
 
+#if not defined(_MSC_VER)
+#include <strings.h>
+#else
+inline int strcasecmp(const char* lhs, const char* rhs) { return _stricmp(lhs, rhs); }
+inline int strncasecmp(const char* lhs, const char* rhs, size_t n) { return _strnicmp(lhs, rhs, n); }
+#endif
+
 #include <sstream>
-#include <stdexcept>
 
 using namespace std;
 
 namespace Potassco {
-namespace detail {
-static int detectBase(std::string_view& x) {
+namespace Detail {
+static constexpr int detectBase(std::string_view& x) {
     if (x.starts_with("0x") || x.starts_with("0X")) {
         x.remove_prefix(2);
         return 16;
     }
-    else if (x.starts_with('0') && x.size() > 1 && x[1] >= '0' && x[1] <= '7') {
+    if (x.starts_with('0') && x.size() > 1 && x[1] >= '0' && x[1] <= '7') {
         x.remove_prefix(2);
         return 8;
     }
-    else {
-        return 10;
-    }
+    return 10;
 }
 
-static void skipws(std::string_view& in) {
+static constexpr void skipws(std::string_view& in) {
     auto p = in.find_first_not_of(" \f\n\r\t\v"sv);
     return in.remove_prefix(std::min(p, in.size()));
 }
@@ -53,8 +57,9 @@ std::from_chars_result parseChar(std::string_view in, unsigned char& out) {
     static constexpr auto c_from = "fnrtv"sv;
     static constexpr auto c_to   = "\f\n\r\t\v"sv;
 
-    if (in.empty())
+    if (in.empty()) {
         return Parse::error(in);
+    }
 
     std::string_view::size_type pos;
     if (in.size() > 1 && in.front() == '\\' && (pos = c_from.find(in[1])) != std::string_view::npos) {
@@ -69,8 +74,9 @@ std::from_chars_result parseChar(std::string_view in, unsigned char& out) {
 std::from_chars_result parseUnsigned(std::string_view in, std::uintmax_t& out, std::uintmax_t max) {
     skipws(in);
     if (in.starts_with('-')) {
-        if (not in.starts_with("-1"))
+        if (not in.starts_with("-1")) {
             return Parse::error(in);
+        }
         out = max;
         return Parse::success(in, 2);
     }
@@ -84,8 +90,9 @@ std::from_chars_result parseUnsigned(std::string_view in, std::uintmax_t& out, s
 
     auto base = detectBase(in);
 
-    if (in.empty())
+    if (in.empty()) {
         return Parse::error(in);
+    }
 
     auto r = std::from_chars(in.data(), in.data() + in.size(), out, base);
     if (Parse::ok(r) && out > max) {
@@ -105,8 +112,9 @@ std::from_chars_result parseSigned(std::string_view in, std::intmax_t& out, std:
 
     auto base = detectBase(in);
 
-    if (in.empty())
+    if (in.empty()) {
         return Parse::error(in);
+    }
 
     auto r = std::from_chars(in.data(), in.data() + in.size(), out, base);
     if (Parse::ok(r) && (out < min || out > max)) {
@@ -142,7 +150,7 @@ std::from_chars_result parseFloatImpl(std::string_view in, T& out) {
                     // NOTE: libc++ for example will fail to extract a double from "123.23Foo" while both strtod and
                     //       std::from_chars will extract "123.23" while leaving "Foo" in the input.
                     cv = cv.substr(0, pos - 1);
-                    std::istream::clear();
+                    clear();
                 }
             }
         };
@@ -163,7 +171,7 @@ std::from_chars_result parseFloat(std::string_view in, double& out, double min, 
 char* writeSigned(char* first, char* last, std::intmax_t in) {
     auto r = std::to_chars(first, last, in);
     POTASSCO_CHECK(r.ec == std::errc{}, r.ec, "std::to_chars could not convert signed integer %zd",
-                   static_cast<size_t>(in));
+                   static_cast<std::ptrdiff_t>(in));
     return r.ptr;
 }
 
@@ -181,9 +189,10 @@ char* writeFloat(char* first, char* last, double in) {
     return r.ptr;
 }
 
-} // namespace detail
+} // namespace Detail
 namespace Parse {
 bool eqIgnoreCase(const char* lhs, const char* rhs, std::size_t n) { return strncasecmp(lhs, rhs, n) == 0; }
+bool eqIgnoreCase(const char* lhs, const char* rhs) { return strcasecmp(lhs, rhs) == 0; }
 bool matchOpt(std::string_view& in, char v) {
     if (in.starts_with(v)) {
         in.remove_prefix(1);
@@ -195,8 +204,9 @@ bool matchOpt(std::string_view& in, char v) {
 } // namespace Parse
 
 std::from_chars_result fromChars(std::string_view in, bool& out) {
-    if (in.empty())
+    if (in.empty()) {
         return Parse::error(in);
+    }
 
     if (in.starts_with('0') || in.starts_with('1')) {
         out = in[0] == '1';
@@ -212,7 +222,7 @@ std::from_chars_result fromChars(std::string_view in, bool& out) {
     }
     else if (in.starts_with("false") || in.starts_with("true")) {
         out = in[0] == 't';
-        return Parse::success(in, 4u + unsigned(not out));
+        return Parse::success(in, 4u + static_cast<unsigned>(not out));
     }
     else {
         return Parse::error(in);

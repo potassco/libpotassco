@@ -34,7 +34,7 @@ struct Error_t {};
 struct Error : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
-void failThrow(Error_t, const Potassco::ExpressionInfo& info, std::string m) {
+[[noreturn]] void failThrow(Error_t, const Potassco::ExpressionInfo& info, std::string m) {
     m.append(" with failed expression: ").append(info.expression);
     throw Error(m);
 }
@@ -45,16 +45,18 @@ POTASSCO_WARNING_PUSH()
 POTASSCO_WARNING_IGNORE_MSVC(4702) // unreachable code
 TEST_CASE("Assertion and Error", "[error]") {
     namespace CM         = Catch::Matchers;
-    auto makeError       = [](std::errc ec = std::errc::invalid_argument) { return detail::translateEc(ec); };
+    auto makeError       = [](std::errc ec = std::errc::invalid_argument) { return Detail::translateEc(ec); };
     auto messageContains = [](const std::string& s) { return CM::MessageMatches(CM::ContainsSubstring(s)); };
     auto messageEquals   = [](const std::string& s) { return CM::MessageMatches(CM::Equals(s)); };
     auto makeLocation    = [](const std::source_location& loc, bool includeFile, const char* m = "") -> std::string {
         std::ostringstream os;
-        if (not includeFile)
+        if (not includeFile) {
             os << loc.function_name() << ':' << loc.line() << ": " << m;
-        else
+        }
+        else {
             os << ExpressionInfo::relativeFileName(loc) << ':' << loc.line() << ": " << loc.function_name() << ": "
                << m;
+        }
         return std::move(os).str();
     };
 
@@ -165,7 +167,7 @@ TEST_CASE("Assertion and Error", "[error]") {
         SECTION("runtime error") {
             static_assert(errcMatch(Errc::overflow_error, std::errc::value_too_large), "unexpected mapping");
             REQUIRE_THROWS_AS(failThrow(makeError(std::errc::bad_file_descriptor), e, "my message"), RuntimeError);
-            REQUIRE_THROWS_AS(failThrow(detail::translateEc(EINTR), e, "my message"), RuntimeError);
+            REQUIRE_THROWS_AS(failThrow(Detail::translateEc(EINTR), e, "my message"), RuntimeError);
 
             REQUIRE_THROWS_AS(failThrow(makeError(std::errc::value_too_large), e, "my message"), std::overflow_error);
         }

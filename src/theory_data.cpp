@@ -57,30 +57,31 @@ struct TheoryTerm::FuncData {
     POTASSCO_WARNING_END_RELAXED
 };
 
-constexpr uint64_t c_nulTerm  = static_cast<uint64_t>(-1);
-constexpr uint64_t c_typeMask = static_cast<uint64_t>(3);
-static uint64_t    assertPtr(const void* p, uint32_t mask) {
+constexpr auto  c_nul_term  = static_cast<uint64_t>(-1);
+constexpr auto  c_type_mask = static_cast<uint64_t>(3);
+static uint64_t assertPtr(const void* p, Theory_t type) {
     auto data = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(p));
+    auto mask = static_cast<uint32_t>(type);
     POTASSCO_ASSERT(not test_any(data, mask), "Invalid pointer alignment");
     return data | mask;
 }
-Theory_t TheoryTerm::type() const { return static_cast<Theory_t>(clear_mask(data_, ~c_typeMask)); }
+Theory_t TheoryTerm::type() const { return static_cast<Theory_t>(clear_mask(data_, ~c_type_mask)); }
 int      TheoryTerm::number() const {
-    POTASSCO_CHECK(type() == Theory_t::Number, Errc::invalid_argument, "Term is not a number");
+    POTASSCO_CHECK(type() == Theory_t::number, Errc::invalid_argument, "Term is not a number");
     return static_cast<int>(data_ >> 2);
 }
-uintptr_t   TheoryTerm::getPtr() const { return static_cast<uintptr_t>(clear_mask(data_, c_typeMask)); }
+uintptr_t   TheoryTerm::getPtr() const { return static_cast<uintptr_t>(clear_mask(data_, c_type_mask)); }
 const char* TheoryTerm::symbol() const {
-    POTASSCO_CHECK(type() == Theory_t::Symbol, Errc::invalid_argument, "Term is not a symbol");
+    POTASSCO_CHECK(type() == Theory_t::symbol, Errc::invalid_argument, "Term is not a symbol");
     return reinterpret_cast<const char*>(getPtr());
 }
 TheoryTerm::FuncData* TheoryTerm::func() const { return reinterpret_cast<FuncData*>(getPtr()); }
 int                   TheoryTerm::compound() const {
-    POTASSCO_CHECK(type() == Theory_t::Compound, Errc::invalid_argument, "Term is not a compound");
+    POTASSCO_CHECK(type() == Theory_t::compound, Errc::invalid_argument, "Term is not a compound");
     return func()->base;
 }
-bool TheoryTerm::isFunction() const { return type() == Theory_t::Compound && func()->base >= 0; }
-bool TheoryTerm::isTuple() const { return type() == Theory_t::Compound && func()->base < 0; }
+bool TheoryTerm::isFunction() const { return type() == Theory_t::compound && func()->base >= 0; }
+bool TheoryTerm::isTuple() const { return type() == Theory_t::compound && func()->base < 0; }
 Id_t TheoryTerm::function() const {
     POTASSCO_CHECK(isFunction(), Errc::invalid_argument, "Term is not a function");
     return static_cast<Id_t>(func()->base);
@@ -89,10 +90,10 @@ Tuple_t TheoryTerm::tuple() const {
     POTASSCO_CHECK(isTuple(), Errc::invalid_argument, "Term is not a tuple");
     return static_cast<Tuple_t>(func()->base);
 }
-uint32_t             TheoryTerm::size() const { return type() == Theory_t::Compound ? func()->size : 0; }
-TheoryTerm::iterator TheoryTerm::begin() const { return type() == Theory_t::Compound ? func()->args : nullptr; }
+uint32_t             TheoryTerm::size() const { return type() == Theory_t::compound ? func()->size : 0; }
+TheoryTerm::iterator TheoryTerm::begin() const { return type() == Theory_t::compound ? func()->args : nullptr; }
 TheoryTerm::iterator TheoryTerm::end() const {
-    return type() == Theory_t::Compound ? func()->args + func()->size : nullptr;
+    return type() == Theory_t::compound ? func()->args + func()->size : nullptr;
 }
 TheoryElement::TheoryElement(const IdSpan& terms, const Id_t* c)
     : nTerms_(static_cast<uint32_t>(terms.size()))
@@ -130,13 +131,13 @@ struct TheoryData::DestroyT {
             ::operator delete(x);
         }
     }
-    void operator()(TheoryTerm& raw) const {
-        if (raw.data_ != c_nulTerm) {
+    void operator()(const TheoryTerm& raw) const {
+        if (raw.data_ != c_nul_term) {
             // TheoryTerm term(raw);
-            if (auto type = raw.type(); type == Theory_t::Compound) {
+            if (auto type = raw.type(); type == Theory_t::compound) {
                 (*this)(raw.func());
             }
-            else if (type == Theory_t::Symbol) {
+            else if (type == Theory_t::symbol) {
                 delete[] const_cast<char*>(raw.symbol());
             }
         }
@@ -150,8 +151,8 @@ struct TheoryData::Data {
         return new (::operator new(bytes)) T(std::forward<Args>(args)...);
     }
     static char* allocCString(std::string_view in) {
-        auto str                              = new char[in.size() + 1];
-        *std::copy(in.begin(), in.end(), str) = 0;
+        auto str                        = new char[in.size() + 1];
+        *std::ranges::copy(in, str).out = 0;
         return str;
     }
     amc::vector<TheoryAtom*>    atoms;
@@ -168,11 +169,11 @@ TheoryData::TheoryData() : data_(std::make_unique<Data>()) {}
 TheoryData::~TheoryData() { reset(); }
 void TheoryData::addTerm(Id_t termId, int number) {
     auto& term = setTerm(termId);
-    term       = (static_cast<uint64_t>(number) << 2) | uint32_t(Theory_t::Number);
+    term       = (static_cast<uint64_t>(number) << 2) | to_underlying(Theory_t::number);
 }
 void TheoryData::addTerm(Id_t termId, const std::string_view& name) {
     auto& term = setTerm(termId);
-    term       = assertPtr(Data::allocCString(name), uint32_t(Theory_t::Symbol));
+    term       = assertPtr(Data::allocCString(name), Theory_t::symbol);
     POTASSCO_DEBUG_ASSERT(getTerm(termId).symbol() == name);
 }
 void TheoryData::addTerm(Id_t termId, const char* name) {
@@ -180,19 +181,19 @@ void TheoryData::addTerm(Id_t termId, const char* name) {
 }
 
 void TheoryData::addTerm(Id_t termId, Id_t funcId, const IdSpan& args) {
-    using FD   = TheoryTerm::FuncData;
+    using D    = TheoryTerm::FuncData;
     auto& term = setTerm(termId);
-    term       = assertPtr(Data::allocConstruct<FD>(static_cast<int32_t>(funcId), args), uint32_t(Theory_t::Compound));
+    term       = assertPtr(Data::allocConstruct<D>(static_cast<int32_t>(funcId), args), Theory_t::compound);
 }
 void TheoryData::addTerm(Id_t termId, Tuple_t type, const IdSpan& args) {
-    using FD   = TheoryTerm::FuncData;
+    using D    = TheoryTerm::FuncData;
     auto& term = setTerm(termId);
-    term       = assertPtr(Data::allocConstruct<FD>(static_cast<int32_t>(type), args), uint32_t(Theory_t::Compound));
+    term       = assertPtr(Data::allocConstruct<D>(static_cast<int32_t>(type), args), Theory_t::compound);
 }
 void TheoryData::removeTerm(Id_t termId) {
     if (hasTerm(termId)) {
         DestroyT()(data_->terms[termId]);
-        data_->terms[termId] = c_nulTerm;
+        data_->terms[termId] = c_nul_term;
     }
 }
 void TheoryData::addElement(Id_t id, const IdSpan& terms, Id_t cId) {
@@ -215,7 +216,7 @@ void TheoryData::addAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elems, Id_t
 
 TheoryTerm& TheoryData::setTerm(Id_t id) {
     if (not hasTerm(id)) {
-        data_->terms.resize(std::max(numTerms(), id + 1), c_nulTerm);
+        data_->terms.resize(std::max(numTerms(), id + 1), c_nul_term);
     }
     else {
         POTASSCO_CHECK_PRE(not isNewTerm(id), "Redefinition of theory term '%u'", id);
@@ -224,7 +225,7 @@ TheoryTerm& TheoryData::setTerm(Id_t id) {
     return data_->terms[id];
 }
 void TheoryData::setCondition(Id_t elementId, Id_t newCond) {
-    POTASSCO_CHECK_PRE(getElement(elementId).condition() == COND_DEFERRED);
+    POTASSCO_CHECK_PRE(getElement(elementId).condition() == cond_deferred);
     data_->elems[elementId]->setCondition(newCond);
 }
 
@@ -244,32 +245,33 @@ uint32_t                  TheoryData::numAtoms() const { return data_->atoms.siz
 uint32_t                  TheoryData::numTerms() const { return data_->terms.size(); }
 uint32_t                  TheoryData::numElems() const { return data_->elems.size(); }
 void                      TheoryData::resizeAtoms(uint32_t newSize) { data_->atoms.resize(newSize); }
-void                      TheoryData::destroyAtom(Potassco::TheoryAtom* atom) { DestroyT{}(atom); }
+void                      TheoryData::destroyAtom(TheoryAtom* atom) { DestroyT{}(atom); }
 TheoryData::atom_iterator TheoryData::begin() const { return data_->atoms.begin(); }
 TheoryData::atom_iterator TheoryData::currBegin() const { return begin() + data_->frame.atom; }
 TheoryData::atom_iterator TheoryData::end() const { return begin() + numAtoms(); }
-bool       TheoryData::hasTerm(Id_t id) const { return id < numTerms() && data_->terms[id].data_ != c_nulTerm; }
+bool       TheoryData::hasTerm(Id_t id) const { return id < numTerms() && data_->terms[id].data_ != c_nul_term; }
 bool       TheoryData::isNewTerm(Id_t id) const { return hasTerm(id) && id >= data_->frame.term; }
 bool       TheoryData::hasElement(Id_t id) const { return id < numElems() && data_->elems[id] != nullptr; }
 bool       TheoryData::isNewElement(Id_t id) const { return hasElement(id) && id >= data_->frame.elem; }
 TheoryTerm TheoryData::getTerm(Id_t id) const {
-    POTASSCO_CHECK(hasTerm(id), Errc::out_of_range, "Unknown term '%u'", unsigned(id));
+    POTASSCO_CHECK(hasTerm(id), Errc::out_of_range, "Unknown term '%u'", id);
     return data_->terms[id];
 }
 const TheoryElement& TheoryData::getElement(Id_t id) const {
-    POTASSCO_CHECK(hasElement(id), Errc::out_of_range, "Unknown element '%u'", unsigned(id));
+    POTASSCO_CHECK(hasElement(id), Errc::out_of_range, "Unknown element '%u'", id);
     return *data_->elems[id];
 }
 void TheoryData::accept(Visitor& out, VisitMode m) const {
-    for (atom_iterator aIt = m == VisitCurrent ? currBegin() : begin(), aEnd = end(); aIt != aEnd; ++aIt) {
+    for (atom_iterator aIt = m == visit_current ? currBegin() : begin(), aEnd = end(); aIt != aEnd; ++aIt) {
         out.visit(*this, **aIt);
     }
 }
 void TheoryData::accept(const TheoryTerm& t, Visitor& out, VisitMode m) const {
-    if (t.type() == Theory_t::Compound) {
+    if (t.type() == Theory_t::compound) {
         for (auto id : t) {
-            if (doVisitTerm(m, id))
+            if (doVisitTerm(m, id)) {
                 out.visit(*this, id, getTerm(id));
+            }
         }
         if (t.isFunction() && doVisitTerm(m, t.function())) {
             out.visit(*this, t.function(), getTerm(t.function()));

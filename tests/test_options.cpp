@@ -31,7 +31,7 @@ namespace Po = ProgramOptions;
 
 TEST_CASE("Test intrusive pointer", "[options]") {
     int count = 0;
-    struct Foo : Po::detail::RefCountable {
+    struct Foo : Po::Detail::RefCountable {
         constexpr explicit Foo(int& c) : count(&c) { ++*count; }
         constexpr ~Foo() { --*count; }
         Foo(const Foo&)            = delete;
@@ -40,7 +40,7 @@ TEST_CASE("Test intrusive pointer", "[options]") {
         int* count                 = nullptr;
     };
 
-    Po::detail::IntrusiveSharedPtr<Foo> ptr(new Foo(count));
+    Po::Detail::IntrusiveSharedPtr<Foo> ptr(new Foo(count));
     CHECK(ptr.count() == 1);
     CHECK(count == 1);
 
@@ -50,7 +50,7 @@ TEST_CASE("Test intrusive pointer", "[options]") {
     SECTION("copy") {
         auto ptr2 = ptr;
         CHECK(ptr2.count() == 2);
-        Po::detail::IntrusiveSharedPtr<Foo> ptr3;
+        Po::Detail::IntrusiveSharedPtr<Foo> ptr3;
         ptr3 = ptr2;
         CHECK(ptr3.count() == 3);
         ptr2 = ptr3;
@@ -63,7 +63,7 @@ TEST_CASE("Test intrusive pointer", "[options]") {
         auto ptr2 = std::move(ptr);
         CHECK(ptr2.count() == 1);
         CHECK(ptr.get() == nullptr);
-        Po::detail::IntrusiveSharedPtr<Foo> ptr3;
+        Po::Detail::IntrusiveSharedPtr<Foo> ptr3;
         ptr3 = std::move(ptr2);
         CHECK(ptr3.count() == 1);
         CHECK(ptr2.get() == nullptr);
@@ -184,13 +184,13 @@ TEST_CASE("Test parsed options", "[options]") {
         Po::ParsedValues  pv = Po::parseCommandString("--int1=2", ctx);
         po.assign(pv);
         ctx.assignDefaults(po);
-        REQUIRE(po.count("int1") != 0);
-        REQUIRE(po.count("int2") == 0);
+        REQUIRE(po.contains("int1"));
+        REQUIRE_FALSE(po.contains("int2"));
         REQUIRE(i2 == 10); // default value
         REQUIRE(i1 == 2);  // parsed value
         pv.add("int2", "20");
         po.assign(pv);
-        REQUIRE(po.count("int2") != 0);
+        REQUIRE(po.contains("int2"));
         REQUIRE(i2 == 20); // parsed value
     }
     SECTION("parsed options support exclude list") {
@@ -234,10 +234,11 @@ TEST_CASE("Test option groups", "[options]") {
 }
 
 TEST_CASE("Test context", "[options]") {
-    bool              b1, b2;
     Po::OptionGroup   g;
     Po::OptionContext ctx;
     SECTION("option context supports find") {
+        bool b1;
+        bool b2;
         g.addOptions()("help", Po::flag(b1), "")("help2", Po::flag(b2), "");
         ctx.add(g);
         REQUIRE(ctx.tryFind("help") != ctx.end());

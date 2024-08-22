@@ -35,17 +35,17 @@ namespace Potassco {
 ///@{
 //! Smodels rule types.
 enum class SmodelsRule_t : unsigned {
-    End             = 0,  //!< Not a rule, marks the end of all rules.
-    Basic           = 1,  //!< Normal rule, i.e. h :- l1, ..., ln.
-    Cardinality     = 2,  //!< Cardinality constraint, i.e. h :- lb {l1, ..., ln}.
-    Choice          = 3,  //!< Choice rule, i.e. {h1, ... hn} :- l1, ..., ln.
-    Generate        = 4,  //!< Generate rule - not supported.
-    Weight          = 5,  //!< Weight constraint, i.e. h :- lb {l1=w1, ..., ln=wn}.
-    Optimize        = 6,  //!< Optimize rule, i.e. minimize {l1=w1, ..., ln=wn}.
-    Disjunctive     = 8,  //!< Normal rule, i.e. h1 | ... | hn :- l1, ..., ln.
-    ClaspIncrement  = 90, //!< clasp extension for defining incremental programs.
-    ClaspAssignExt  = 91, //!< clasp extension for assigning/declaring external atoms.
-    ClaspReleaseExt = 92  //!< clasp extension for releasing external atoms.
+    end               = 0,  //!< Not a rule, marks the end of all rules.
+    basic             = 1,  //!< Normal rule, i.e. h :- l1, ..., ln.
+    cardinality       = 2,  //!< Cardinality constraint, i.e. h :- lb {l1, ..., ln}.
+    choice            = 3,  //!< Choice rule, i.e. {h1, ... hn} :- l1, ..., ln.
+    generate          = 4,  //!< Generate rule - not supported.
+    weight            = 5,  //!< Weight constraint, i.e. h :- lb {l1=w1, ..., ln=wn}.
+    optimize          = 6,  //!< Optimize rule, i.e. minimize {l1=w1, ..., ln=wn}.
+    disjunctive       = 8,  //!< Normal rule, i.e. h1 | ... | hn :- l1, ..., ln.
+    clasp_increment   = 90, //!< clasp extension for defining incremental programs.
+    clasp_assign_ext  = 91, //!< clasp extension for assigning/declaring external atoms.
+    clasp_release_ext = 92  //!< clasp extension for releasing external atoms.
 };
 
 //! Class for parsing logic programs in (extended) smodels format.
@@ -168,7 +168,7 @@ public:
     void rule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override;
     //! Writes the given minimize rule while ignoring its priority.
     void minimize(Weight_t prio, const WeightLitSpan& lits) override;
-    //! Writes the entry (a, str) to the symbol table provided that condition equals a.
+    //! Writes the entry (atom, str) to the symbol table provided that condition equals atom.
     /*!
      * \note Symbols shall only be added once after all rules were added.
      */
@@ -184,7 +184,7 @@ public:
     void endStep() override;
 
 protected:
-    //! Starts writing an smodels-rule of type @c rt.
+    //! Starts writing a rule of type @c rt.
     SmodelsOutput& startRule(SmodelsRule_t rt);
     //! Writes the given head.
     SmodelsOutput& add(Head_t ht, const AtomSpan& head);

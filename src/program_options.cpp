@@ -36,7 +36,6 @@
 #include <cassert>
 #include <cctype>
 #include <climits>
-#include <cstdio>
 #include <cstring>
 #include <istream> // for CfgFileParser
 #include <ostream> // for op<<
@@ -81,8 +80,9 @@ std::size_t DefaultFormat::format(std::string& buf, const Option& o, std::size_t
 std::size_t DefaultFormat::format(std::string& buf, const char* desc, const Value& val, std::size_t) {
     std::size_t minS = strlen(desc);
     const char* temp = nullptr;
-    if (not desc)
+    if (not desc) {
         desc = "";
+    }
 
     const auto startSize = buf.size();
     buf.reserve(startSize + minS + 2);
@@ -93,8 +93,9 @@ std::size_t DefaultFormat::format(std::string& buf, const char* desc, const Valu
         if (look != desc) {
             buf.append(desc, look);
         }
-        if (!*look++ || !*look)
+        if (!*look++ || !*look) {
             break;
+        }
         else if (*look == 'D') {
             temp = val.defaultsTo();
         }
@@ -129,7 +130,7 @@ std::size_t DefaultFormat::format(std::string& buffer, const OptionGroup& grp) {
 ///////////////////////////////////////////////////////////////////////////////
 Value::Value(State initial)
     : desc_()
-    , state_(static_cast<byte_t>(initial))
+    , state_(static_cast<uint8_t>(initial))
     , descFlag_(0)
     , optAlias_(0)
     , implicit_(0)
@@ -148,29 +149,31 @@ Value::~Value() {
 }
 
 const char* Value::arg() const {
-    const char* x = desc(desc_name);
-    if (x)
+    if (const char* x = desc(desc_name)) {
         return x;
+    }
     return isFlag() ? "" : "<arg>";
 }
 
 Value* Value::desc(DescType t, const char* n) {
-    if (n == nullptr)
+    if (n == nullptr) {
         return this;
+    }
     if (t == desc_implicit) {
         implicit_ = 1;
-        if (!*n)
+        if (!*n) {
             return this;
+        }
     }
     if (descFlag_ == 0 || descFlag_ == t) {
         desc_.value = n;
-        descFlag_   = static_cast<byte_t>(t);
+        descFlag_   = static_cast<uint8_t>(t);
         return this;
     }
     if (descFlag_ != desc_pack) {
         const char* oldVal = desc_.value;
         unsigned    oldKey = descFlag_ >> 1u;
-        desc_.pack         = (const char**) ::operator new(sizeof(const char* [3]));
+        desc_.pack         = static_cast<const char**>(::operator new(sizeof(const char* [3])));
         desc_.pack[0] = desc_.pack[1] = desc_.pack[2] = nullptr;
         descFlag_                                     = desc_pack;
         desc_.pack[oldKey]                            = oldVal;
@@ -186,15 +189,17 @@ const char* Value::desc(DescType t) const {
 }
 
 const char* Value::implicit() const {
-    if (implicit_ == 0)
+    if (implicit_ == 0) {
         return nullptr;
+    }
     const char* x = desc(desc_implicit);
     return x ? x : "1";
 }
 
 bool Value::parse(const std::string& name, const std::string& value, State st) {
-    if (not value.empty() || not isImplicit())
+    if (not value.empty() || not isImplicit()) {
         return state(doParse(name, value), st);
+    }
     const char* x = implicit();
     assert(x);
     return state(doParse(name, x), st);
@@ -216,8 +221,7 @@ std::size_t Option::maxColumn() const {
     if (alias()) {
         col += 3; // ,-o
     }
-    std::size_t argN = strlen(argName());
-    if (argN) {
+    if (std::size_t argN = strlen(argName())) {
         col += (argN + 1); // =arg
         if (value()->isImplicit()) {
             col += 2; // []
@@ -300,15 +304,17 @@ OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, con
         if (!*n || *x || level > desc_level_hidden) {
             throw Error(std::string("Invalid Key '").append(name).append("'"));
         }
-        val->level(DescriptionLevel(level));
+        val->level(static_cast<DescriptionLevel>(level));
     }
     if (*(longName.end() - 1) == '!') {
         bool neg = *(longName.end() - 2) != '\\';
         longName.erase(longName.end() - (1 + not neg), longName.end());
-        if (neg)
+        if (neg) {
             val->negatable();
-        else
+        }
+        else {
             longName += '!';
+        }
     }
     owner_->addOption(SharedOptPtr(new Option(longName, shortName, desc, val)));
     std::ignore = cleanup.release();
@@ -327,7 +333,7 @@ size_t             OptionContext::findGroupKey(const std::string& name) const {
             return i;
         }
     }
-    return size_t(-1);
+    return static_cast<size_t>(-1);
 }
 
 OptionContext& OptionContext::add(const OptionGroup& options) {
@@ -344,7 +350,7 @@ OptionContext& OptionContext::add(const OptionGroup& options) {
 
 OptionContext& OptionContext::addAlias(const std::string& aliasName, option_iterator option) {
     if (option != end() && not aliasName.empty()) {
-        auto k = static_cast<key_type>(option - begin());
+        auto k = static_cast<KeyType>(option - begin());
         if (not index_.insert(Name2Key::value_type(aliasName, k)).second) {
             throw DuplicateOption(caption(), aliasName);
         }
@@ -365,15 +371,16 @@ const OptionGroup* OptionContext::tryFindGroup(const std::string& name) const {
 }
 
 OptionContext& OptionContext::add(const OptionContext& other) {
-    if (this == &other)
+    if (this == &other) {
         return *this;
+    }
     for (const auto& grp : other.groups_) { add(grp); }
     return *this;
 }
 
 void OptionContext::insertOption(size_t groupId, const SharedOptPtr& opt) {
     const string& l = opt->name();
-    key_type      k(options_.size());
+    KeyType       k(options_.size());
     if (opt->alias()) {
         char        sName[2] = {'-', opt->alias()};
         std::string shortName(sName, 2);
@@ -391,7 +398,7 @@ void OptionContext::insertOption(size_t groupId, const SharedOptPtr& opt) {
 }
 
 OptionContext::option_iterator OptionContext::find(const char* key, FindType t) const {
-    return options_.begin() + static_cast<std::ptrdiff_t>(findImpl(key, t, unsigned(-1)).first->second);
+    return options_.begin() + static_cast<std::ptrdiff_t>(findImpl(key, t, static_cast<unsigned>(-1)).first->second);
 }
 
 OptionContext::option_iterator OptionContext::tryFind(const char* key, FindType t) const {
@@ -414,7 +421,7 @@ OptionContext::PrefixRange OptionContext::findImpl(const char* key, FindType t, 
             ++up;
         }
         else if ((t & find_prefix) != 0) {
-            k  += char(CHAR_MAX);
+            k  += static_cast<char>(CHAR_MAX);
             up  = index_.upper_bound(k);
             k.erase(k.end() - 1);
         }
@@ -462,7 +469,7 @@ std::string OptionContext::defaults(std::size_t n) const {
     std::string opt;
     opt.reserve(80);
     for (int g = 0; g < 2; ++g) {
-        // print all sub-groups followed by main group
+        // print all subgroups followed by main group
         for (std::size_t i = (g == 0), end = (g == 0) ? groups_.size() : 1; i < end; ++i) {
             if (groups_[i].descLevel() <= dl) {
                 for (const auto& optPtr : groups_[i]) {
@@ -494,7 +501,7 @@ std::ostream& operator<<(std::ostream& os, const OptionContext& grp) {
 void OptionContext::assignDefaults(const ParsedOptions& opts) const {
     for (const auto& optPtr : *this) {
         const Option& o = *optPtr;
-        if (opts.count(o.name()) == 0 && not o.assignDefault()) {
+        if (not opts.contains(o.name()) && not o.assignDefault()) {
             throw ValueError(caption(), ValueError::invalid_default, o.name(), o.value()->defaultsTo());
         }
     }
@@ -505,8 +512,9 @@ void OptionContext::assignDefaults(const ParsedOptions& opts) const {
 ParsedOptions::ParsedOptions() = default;
 ParsedOptions::~ParsedOptions() { parsed_.clear(); }
 bool ParsedOptions::assign(const ParsedValues& p, const ParsedOptions* exclude) {
-    if (not p.ctx)
+    if (not p.ctx) {
         return false;
+    }
     struct Assign {
         Assign(ParsedOptions* x, const ParsedOptions* exclude) : self(x), ignore(exclude) {}
         void assign(const ParsedValues& p) {
@@ -514,22 +522,21 @@ bool ParsedOptions::assign(const ParsedValues& p, const ParsedOptions* exclude) 
             // assign parsed values
             for (auto end = p.end(); it != end; ++it) {
                 const Option& o = *it->first;
-                if (ignore && ignore->count(o.name()) != 0 && not o.value()->isComposing()) {
+                if (ignore && ignore->contains(o.name()) && not o.value()->isComposing()) {
                     continue;
                 }
                 if (int ret = self->assign(o, it->second)) {
-                    throw ValueError(p.ctx ? p.ctx->caption() : "", static_cast<ValueError::Type>(ret - 1), o.name(),
-                                     it->second);
+                    throw ValueError(p.ctx->caption(), static_cast<ValueError::Type>(ret - 1), o.name(), it->second);
                 }
             }
         }
         ~Assign() {
             for (auto x = begin, end = this->it; x != end; ++x) {
                 const Option& o = *x->first;
-                assert(o.value()->state() == Value::value_fixed || self->parsed_.count(o.name()) != 0 ||
-                       ignore->count(o.name()) != 0);
+                assert(o.value()->state() == Value::value_fixed || self->parsed_.contains(o.name()) ||
+                       ignore->contains(o.name()));
                 if (o.value()->state() == Value::value_fixed) {
-                    self->parsed_.insert(x->first->name());
+                    self->parsed_.insert(o.name());
                     o.value()->state(Value::value_unassigned);
                 }
             }
@@ -545,7 +552,7 @@ bool ParsedOptions::assign(const ParsedValues& p, const ParsedOptions* exclude) 
 int ParsedOptions::assign(const Option& o, const std::string& value) {
     unsigned badState = 0;
     if (not o.value()->isComposing()) {
-        if (parsed_.count(o.name())) {
+        if (parsed_.contains(o.name())) {
             return 0;
         }
         badState = (Value::value_fixed & o.value()->state());
@@ -595,12 +602,14 @@ private:
         while ((curr = next()) != nullptr && not breakEarly) {
             switch (getOptionType(curr)) {
                 case short_opt:
-                    if (handleShortOpt(curr + 1))
+                    if (handleShortOpt(curr + 1)) {
                         curr = nullptr;
+                    }
                     break;
                 case long_opt:
-                    if (handleLongOpt(curr + 2))
+                    if (handleLongOpt(curr + 2)) {
                         curr = nullptr;
+                    }
                     break;
                 case end_opt:
                     curr       = nullptr;
@@ -711,7 +720,7 @@ private:
                 }
             }
             else if (o->value()->isFlag() && not value.empty() && not neg &&
-                     (flags & unsigned(command_line_allow_flag_value)) == 0u) {
+                     (flags & static_cast<unsigned>(command_line_allow_flag_value)) == 0u) {
                 // flags don't have values
                 throw SyntaxError(SyntaxError::extra_value, name);
             }
@@ -755,14 +764,16 @@ private:
     const char* next() override {
         // skip leading white
         while (std::isspace(static_cast<unsigned char>(*cmd_))) { ++cmd_; }
-        if (!*cmd_)
+        if (!*cmd_) {
             return nullptr;
+        }
         tok_.clear();
         // find end of current arg
         for (char c, t = ' ', n; (c = *cmd_) != 0; ++cmd_) {
             if (c == t) {
-                if (t == ' ')
+                if (t == ' ') {
                     break;
+                }
                 t = ' ';
             }
             else if ((c == '\'' || c == '"') && t == ' ') {
@@ -793,18 +804,20 @@ public:
     void operator=(const CfgFileParser&) = delete;
 
 private:
-    inline void trimLeft(std::string& str, const std::string& charList = " \t") {
+    static inline void trimLeft(std::string& str, const std::string& charList = " \t") {
         std::string::size_type pos = str.find_first_not_of(charList);
-        if (pos != 0)
+        if (pos != 0) {
             str.erase(0, pos);
+        }
     }
-    inline void trimRight(std::string& str, const std::string& charList = " \t") {
+    static inline void trimRight(std::string& str, const std::string& charList = " \t") {
         std::string::size_type pos = str.find_last_not_of(charList);
-        if (pos != std::string::npos)
+        if (pos != std::string::npos) {
             str.erase(pos + 1, std::string::npos);
+        }
     }
-    bool splitHalf(const std::string& str, const std::string& seperator, std::string& leftSide,
-                   std::string& rightSide) {
+    static bool splitHalf(const std::string& str, const std::string& seperator, std::string& leftSide,
+                          std::string& rightSide) {
         std::string::size_type sepPos = str.find(seperator);
         leftSide.assign(str, 0, sepPos);
         if (sepPos != std::string::npos) {
@@ -834,8 +847,9 @@ private:
             if (line.empty() || line.find('#') == 0) {
                 // An empty line or single line comment stops a multi line section value.
                 if (inSection) {
-                    if ((opt = getOption(sectionName.c_str(), ft)).get())
+                    if ((opt = getOption(sectionName.c_str(), ft)).get()) {
                         addOptionValue(opt, sectionValue);
+                    }
                     inSection = false;
                 }
                 continue;
@@ -862,8 +876,9 @@ private:
             }
         }
         if (inSection) { // file does not end with an empty line
-            if ((opt = getOption(sectionName.c_str(), ft)).get())
+            if ((opt = getOption(sectionName.c_str(), ft)).get()) {
                 addOptionValue(opt, sectionValue);
+            }
         }
     }
     std::istream& in_;
@@ -871,9 +886,9 @@ private:
 class DefaultContext : public ParseContext {
 public:
     DefaultContext(const OptionContext& o, bool allowUnreg, PosOption po)
-        : posOpt(po)
+        : posOpt(std::move(po))
         , parsed(o)
-        , eMask(2u + unsigned(not allowUnreg)) {}
+        , eMask(2u + static_cast<unsigned>(not allowUnreg)) {}
     SharedOptPtr getOption(const char* name, FindType ft) override {
         OptionContext::OptionRange r = parsed.ctx->findImpl(name, ft, eMask);
         if (r.first != r.second) {
@@ -898,15 +913,15 @@ public:
 
 ParsedValues parseCommandLine(int& argc, char** argv, const OptionContext& o, bool allowUnreg, PosOption po,
                               unsigned flags) {
-    DefaultContext ctx(o, allowUnreg, po);
+    DefaultContext ctx(o, allowUnreg, std::move(po));
     return static_cast<DefaultContext&>(parseCommandLine(argc, argv, ctx, flags)).parsed;
 }
 ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsigned flags) {
-    while (argv[argc]) ++argc;
+    while (argv[argc]) { ++argc; }
     ArgvParser parser(ctx, 1, argc, argv, flags);
     parser.parse();
 
-    argc  = 1 + (int) parser.remaining.size();
+    argc  = 1 + static_cast<int>(parser.remaining.size());
     int i = 1;
     for (const char* r : parser.remaining) { argv[i++] = const_cast<char*>(r); }
     argv[argc] = nullptr;
@@ -914,7 +929,7 @@ ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsign
 }
 ParsedValues parseCommandArray(const char* const* argv, int nArgs, const OptionContext& o, bool allowUnreg,
                                PosOption po, unsigned flags) {
-    DefaultContext ctx(o, allowUnreg, po);
+    DefaultContext ctx(o, allowUnreg, std::move(po));
     ArgvParser     parser(ctx, 0, nArgs, argv, flags);
     parser.parse();
     return static_cast<DefaultContext&>(ctx).parsed;
@@ -924,7 +939,7 @@ ParseContext& parseCommandString(const char* cmd, ParseContext& ctx, unsigned fl
 }
 ParsedValues parseCommandString(const std::string& cmd, const OptionContext& o, bool allowUnreg, PosOption po,
                                 unsigned flags) {
-    DefaultContext ctx(o, allowUnreg, po);
+    DefaultContext ctx(o, allowUnreg, std::move(po));
     return static_cast<DefaultContext&>(CommandStringParser(cmd.c_str(), ctx, flags).parse()).parsed;
 }
 

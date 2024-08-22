@@ -34,7 +34,6 @@
 #include <memory>
 #include <ostream>
 #include <set>
-#include <stdexcept>
 #include <string_view>
 #include <vector>
 
@@ -50,7 +49,7 @@ namespace Potassco::ProgramOptions {
  *   with the option's default value, implicit value and the argument name,
  *   respectively.
  */
-class Option : public detail::RefCountable {
+class Option : public Detail::RefCountable {
 public:
     /*!
      * \pre longName != ""
@@ -77,7 +76,7 @@ private:
     std::unique_ptr<Value> value_;       // the option's value manager
 };
 
-using SharedOptPtr = detail::IntrusiveSharedPtr<Option>;
+using SharedOptPtr = Detail::IntrusiveSharedPtr<Option>;
 
 class OptionInitHelper;
 class OptionContext;
@@ -172,8 +171,8 @@ private:
  */
 class OptionContext {
 private:
-    using key_type       = std::size_t;
-    using Name2Key       = std::map<std::string, key_type>;
+    using KeyType        = std::size_t;
+    using Name2Key       = std::map<std::string, KeyType>;
     using GroupList      = std::vector<OptionGroup>;
     using index_iterator = Name2Key::const_iterator;
     using PrefixRange    = std::pair<index_iterator, index_iterator>;
@@ -246,7 +245,7 @@ public:
      */
     option_iterator tryFind(const char* key, FindType t = find_name) const;
 
-    OptionRange findImpl(const char* key, FindType t, unsigned eMask = unsigned(-1)) const {
+    OptionRange findImpl(const char* key, FindType t, unsigned eMask = static_cast<unsigned>(-1)) const {
         return findImpl(key, t, eMask, caption());
     }
     OptionRange findImpl(const char* key, FindType t, unsigned eMask, const std::string& eCtx) const;
@@ -298,7 +297,7 @@ public:
     ~ParsedOptions();
     [[nodiscard]] bool        empty() const { return parsed_.empty(); }
     [[nodiscard]] std::size_t size() const { return parsed_.size(); }
-    [[nodiscard]] std::size_t count(const std::string& name) const { return parsed_.count(name); }
+    [[nodiscard]] bool        contains(const std::string& name) const { return parsed_.contains(name); }
 
     void add(const std::string& name) { parsed_.insert(name); }
 
@@ -308,7 +307,8 @@ public:
      * not composing) are ignored. On the other hand, parsed values
      * overwrite any existing default values.
      *
-     * \param p parsed values to assign
+     * \param p       parsed values to assign
+     * \param exclude options that should be ignored during value assignment
      *
      * \throw ValueError if p contains more than one value
      *        for a non-composing option or if p contains a value that is
@@ -380,17 +380,17 @@ private:
 
 //! Default formatting for options.
 struct DefaultFormat {
-    std::size_t format(std::string&, const OptionContext&) { return 0; }
+    static std::size_t format(std::string&, const OptionContext&) { return 0; }
     //! Writes g.caption() to buffer.
-    std::size_t format(std::string& buffer, const OptionGroup& g);
+    static std::size_t format(std::string& buffer, const OptionGroup& g);
     //! Writes long name, short name, and argument name to buffer.
-    std::size_t format(std::string& buffer, const Option& o, std::size_t maxW);
+    static std::size_t format(std::string& buffer, const Option& o, std::size_t maxW);
     //! Writes description to buffer.
     /*!
      * Occurrences of %D, %I and %A in desc are replaced with
      * the value's default value, implicit value, and name, respectively.
      */
-    std::size_t format(std::string& buffer, const char* desc, const Value&, std::size_t maxW);
+    static std::size_t format(std::string& buffer, const char* desc, const Value&, std::size_t maxW);
 };
 
 //! Base class for printing options.
@@ -443,8 +443,9 @@ public:
 
 private:
     void writeBuffer(std::size_t n) {
-        if (sink_ && n)
+        if (sink_ && n) {
             sink_(std::string_view{buffer_.data(), n});
+        }
         buffer_.clear();
     }
     std::string buffer_;
@@ -473,6 +474,7 @@ enum CommandLineFlags { command_line_allow_flag_value = 1u };
  * \param ctx options to search in the command line.
  * \param allowUnregistered Allow arguments that match no option in ctx
  * \param posParser parse function for positional options
+ * \param flags optional config flags (see CommandLineFlags).
  *
  * \return A ParsedOptions-Object containing names and values for all options found.
  *
@@ -492,6 +494,7 @@ ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsign
  * \param ctx options to search in the arguments
  * \param allowUnregistered Allow arguments that match no option in ctx
  * \param posParser parse function for positional options
+ * \param flags optional config flags (see CommandLineFlags).
  *
  * \return A ParsedOptions-Object containing names and values for all options found.
  *
@@ -506,8 +509,9 @@ ParsedValues parseCommandArray(const char* const args[], int nArgs, const Option
  * Parses the command line given in the first parameter.
  * \param cmd command line to parse
  * \param ctx options to search in the command string.
- * \param allowUnregistered Allow arguments that match no option in ctx
+ * \param allowUnreg Allow arguments that match no option in ctx
  * \param posParser parse function for positional options
+ * \param flags optional config flags (see CommandLineFlags).
  *
  * \return A ParsedOptions-Object containing names and values for all options found.
  *

@@ -35,27 +35,19 @@ namespace Potassco {
 
 //! Supported clause types in theory propagation.
 enum class Clause_t : unsigned {
-    Learnt         = 0u, //!< Cumulative removable (i.e. subject to nogood deletion) clause.
-    Static         = 1u, //!< Cumulative unremovable clause.
-    Volatile       = 2u, //!< Removable clause associated with current solving step.
-    VolatileStatic = 3u  //!< Unremovable clause associated with current solving step.
+    learnt           = 0u, //!< Cumulative removable (i.e. subject to nogood deletion) clause.
+    locked           = 1u, //!< Cumulative unremovable clause.
+    transient        = 2u, //!< Removable clause associated with current solving step.
+    transient_locked = 3u  //!< Unremovable clause associated with current solving step.
 };
 [[maybe_unused]] consteval auto enable_ops(std::type_identity<Clause_t>) -> BitOps;
-//! Returns whether @c p is either Volatile or VolatileStatic.
-constexpr bool isVolatile(Clause_t p) { return test(p, Clause_t::Volatile); }
-static_assert(isVolatile(Clause_t::Volatile) && isVolatile(Clause_t::VolatileStatic) &&
-              isVolatile(Clause_t::Learnt | Clause_t::Volatile));
-//! Returns whether @c p is either Static or VolatileStatic.
-constexpr bool isStatic(Clause_t p) { return test(p, Clause_t::Static); }
-static_assert(isStatic(Clause_t::Static) && isStatic(Clause_t::VolatileStatic) &&
-              isStatic(Clause_t::Volatile | Clause_t::Static));
 
 //! Named constants.
 enum class Statistics_t {
-    Empty = 0, //!< Empty (invalid) object.
-    Value = 1, //!< Single statistic value that is convertible to a double.
-    Array = 2, //!< Composite object mapping int keys to statistics types.
-    Map   = 3  //!< Composite object mapping string keys to statistics types.
+    empty = 0, //!< Empty (invalid) object.
+    value = 1, //!< Single statistic value that is convertible to a double.
+    array = 2, //!< Composite object mapping int keys to statistics types.
+    map   = 3  //!< Composite object mapping string keys to statistics types.
 };
 
 //! Represents an assignment of a particular solver.
@@ -76,7 +68,7 @@ public:
     [[nodiscard]] virtual uint32_t rootLevel() const = 0;
     //! Returns whether @c lit is a valid literal in this assignment.
     [[nodiscard]] virtual bool hasLit(Lit_t lit) const = 0;
-    //! Returns the truth value that is currently assigned to @c lit or @c Value_t::Free if @c lit is unassigned.
+    //! Returns the truth value that is currently assigned to @c lit or @c Value_t::free if @c lit is unassigned.
     [[nodiscard]] virtual Value_t value(Lit_t lit) const = 0;
     //! Returns the decision level on which @c lit was assigned or @c UINT32_MAX if @c lit is unassigned.
     [[nodiscard]] virtual uint32_t level(Lit_t lit) const = 0;
@@ -133,12 +125,12 @@ public:
      * \param clause The literals that make up the clause.
      * \param prop   Properties to be associated with the new clause.
      *
-     * \note If clause contains a volatile variable, i.e., a variable
+     * \note If the given clause contains a volatile variable, i.e., a variable
      * that was created with @c Solver::addVariable(), it is also considered volatile.
      *
      */
     [[nodiscard]] virtual bool addClause(const Potassco::LitSpan& clause, Clause_t prop) = 0;
-    bool addClause(const Potassco::LitSpan& clause) { return addClause(clause, Clause_t::Learnt); }
+    bool addClause(const Potassco::LitSpan& clause) { return addClause(clause, Clause_t::learnt); }
 
     //! Adds a new volatile variable to this solver instance.
     /*!

@@ -22,8 +22,9 @@
 // IN THE SOFTWARE.
 //
 #pragma once
-#include <potassco/enum.h>
 #include <potassco/platform.h>
+
+#include <potassco/enum.h>
 
 #include <system_error>
 namespace Potassco {
@@ -84,17 +85,20 @@ AtScopeExit(ActionT) -> AtScopeExit<ActionT>; // NOLINT
 #define POTASSCO_SCOPE_EXIT(...)                                                                                       \
     Potassco::AtScopeExit POTASSCO_CONCAT(e, __COUNTER__) { [&]() __VA_ARGS__ }
 
-namespace detail {
+namespace Detail {
 template <typename T>
 constexpr auto translateEc(T in) {
-    if constexpr (std::is_same_v<T, int>)
+    if constexpr (std::is_same_v<T, int>) {
         return static_cast<Potassco::Errc>(in >= 0 ? in : -in);
-    else if constexpr (std::is_same_v<T, std::errc>)
+    }
+    else if constexpr (std::is_same_v<T, std::errc>) {
         return static_cast<Potassco::Errc>(in);
-    else
+    }
+    else {
         return in;
+    }
 }
-} // namespace detail
+} // namespace Detail
 
 #if (defined(_MSVC_TRADITIONAL) && _MSVC_TRADITIONAL == 1) || (not defined(_MSC_VER) && __cplusplus < 202002L)
 #define POTASSCO_OPTARGS(...) , ##__VA_ARGS__
@@ -134,13 +138,13 @@ POTASSCO_ATTR_NORETURN extern void failAbort(const ExpressionInfo& expressionInf
  * \param ...  Optional parameters passed to the selected failThrow() overload on error.
  */
 #define POTASSCO_CHECK(exp, code, ...)                                                                                 \
-    (void) ((!!(exp)) || (failThrow(Potassco::detail::translateEc((code)),                                             \
+    (void) ((!!(exp)) || (failThrow(Potassco::Detail::translateEc((code)),                                             \
                                     POTASSCO_CAPTURE_EXPRESSION(exp) POTASSCO_OPTARGS(__VA_ARGS__)),                   \
                           0))
 
 //! Effect: POTASSCO_CHECK(false, code, ...)
 #define POTASSCO_FAIL(code, ...)                                                                                       \
-    ((void) (failThrow(Potassco::detail::translateEc((code)),                                                          \
+    ((void) (failThrow(Potassco::Detail::translateEc((code)),                                                          \
                        {{}, POTASSCO_CURRENT_LOCATION()} POTASSCO_OPTARGS(__VA_ARGS__)),                               \
              0))
 
@@ -176,6 +180,27 @@ POTASSCO_ATTR_NORETURN extern void failAbort(const ExpressionInfo& expressionInf
 #define POTASSCO_DEBUG_ASSERT(exp, ...)    POTASSCO_ASSERT(exp, __VA_ARGS__)
 #define POTASSCO_DEBUG_CHECK_PRE(exp, ...) POTASSCO_CHECK_PRE(exp, __VA_ARGS__)
 #endif
+
+template <std::integral To, std::integral From>
+constexpr To safe_cast(From from) {
+    POTASSCO_CHECK(std::in_range<To>(from), Errc::out_of_range);
+    return static_cast<To>(from);
+}
+template <std::integral To, typename From>
+requires(std::is_enum_v<From>)
+constexpr To safe_cast(From from) {
+    return safe_cast<To>(to_underlying(from));
+}
+template <std::integral To = uint32_t, typename C>
+constexpr To size_cast(const C& c) {
+    static_assert(std::is_unsigned_v<decltype(c.size())>, "unsigned size expected");
+    if constexpr (std::is_unsigned_v<To> && sizeof(To) >= sizeof(decltype(c.size()))) {
+        return static_cast<To>(c.size());
+    }
+    else {
+        return safe_cast<To>(c.size());
+    }
+}
 
 ///@}
 } // namespace Potassco

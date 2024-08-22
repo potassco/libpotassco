@@ -81,8 +81,9 @@ char BufferedStream::get() {
         pop();
         if (c == '\r') {
             c = '\n';
-            if (peek() == '\n')
+            if (peek() == '\n') {
                 pop();
+            }
         }
         if (c == '\n') {
             ++line_;
@@ -96,8 +97,9 @@ void BufferedStream::skipWs() {
 }
 
 void BufferedStream::underflow(bool upPos) {
-    if (not str_)
+    if (not str_) {
         return;
+    }
     if (upPos && rpos_) {
         // keep last char for unget
         buf_[0] = buf_[rpos_ - 1];
@@ -109,8 +111,9 @@ void BufferedStream::underflow(bool upPos) {
     buf_[r + rpos_] = 0;
 }
 bool BufferedStream::unget(char c) {
-    if (not rpos_)
+    if (not rpos_) {
         return false;
+    }
     if ((buf_[--rpos_] = c) == '\n') {
         --line_;
     }
@@ -156,7 +159,7 @@ std::size_t BufferedStream::read(std::span<char> outBuf) {
         auto  b   = (alloc_size - rpos_) - 1;
         auto  m   = std::min(n, b);
         auto* out = outBuf.data() + os;
-        std::copy(buf_ + rpos_, buf_ + rpos_ + m, out);
+        std::copy_n(buf_ + rpos_, m, out);
         n     -= m;
         os    += m;
         rpos_ += m;
@@ -187,7 +190,7 @@ bool ProgramReader::parse(ReadMode m) {
         }
         skipWs();
         require(not more() || incremental(), "invalid extra input");
-    } while (m == Complete && more());
+    } while (m == read_complete && more());
     return true;
 }
 bool ProgramReader::more() { return str_ && (str_->skipWs(), not str_->end()); }
@@ -213,7 +216,7 @@ void ProgramReader::matchChar(char c) {
                    str_->line(), c);
 }
 int readProgram(std::istream& str, ProgramReader& reader) {
-    if (not reader.accept(str) || not reader.parse(ProgramReader::Complete)) {
+    if (not reader.accept(str) || not reader.parse(ProgramReader::read_complete)) {
         reader.error("invalid input format");
     }
     return 0;
@@ -249,12 +252,12 @@ bool matchTerm(std::string_view& input, std::string_view& arg) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // DynamicBuffer
 /////////////////////////////////////////////////////////////////////////////////////////
-static constexpr uint32_t c_fastGrowCap = 0x20000u;
+static constexpr uint32_t c_fast_grow_cap = 0x20000u;
 static constexpr uint32_t nextCapacity(uint32_t current) {
     if (current == 0u) {
         return 64u;
     }
-    return current <= c_fastGrowCap ? (current * 3 + 1) >> 1 : current << 1u;
+    return current <= c_fast_grow_cap ? (current * 3 + 1) >> 1 : current << 1u;
 }
 DynamicBuffer::DynamicBuffer(std::size_t init) : beg_(nullptr), cap_(0), size_(0) { reserve(init); }
 DynamicBuffer::DynamicBuffer(DynamicBuffer&& other) noexcept
@@ -288,12 +291,11 @@ void DynamicBuffer::swap(DynamicBuffer& other) noexcept {
 }
 void DynamicBuffer::reserve(std::size_t n) {
     if (n > capacity()) {
-        auto newCap = std::max(static_cast<std::size_t>(nextCapacity(capacity())), n);
-        POTASSCO_CHECK(std::in_range<uint32_t>(newCap), Errc::length_error, "region too large");
-        void* t = std::realloc(beg_, newCap);
+        auto  newCap = safe_cast<uint32_t>(std::max(static_cast<std::size_t>(nextCapacity(capacity())), n));
+        void* t      = std::realloc(beg_, newCap);
         POTASSCO_CHECK(t, Errc::bad_alloc);
         beg_ = t;
-        cap_ = static_cast<uint32_t>(newCap);
+        cap_ = newCap;
     }
 }
 std::span<char> DynamicBuffer::alloc(std::size_t n) {
@@ -301,33 +303,34 @@ std::span<char> DynamicBuffer::alloc(std::size_t n) {
     return {data(std::exchange(size_, static_cast<uint32_t>(size_ + n))), n};
 }
 void DynamicBuffer::append(const void* what, std::size_t n) {
-    if (n)
+    if (n) {
         std::memcpy(alloc(n).data(), what, n);
+    }
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // ConstString
 /////////////////////////////////////////////////////////////////////////////////////////
-ConstString::ConstString(std::string_view n, CreateMode cm) {
-    if (n.size() > c_maxSmall) {
-        storage_[c_maxSmall] = static_cast<char>(c_largeTag + cm);
-        auto* buf            = new char[(cm == Shared ? sizeof(std::atomic<int32_t>) : 0) + n.size() + 1];
-        if (cm == Shared) {
+ConstString::ConstString(std::string_view n, CreateMode m) {
+    if (n.size() > c_max_small) {
+        storage_[c_max_small] = static_cast<char>(c_large_tag + m);
+        auto* buf             = new char[(m == create_shared ? sizeof(std::atomic<int32_t>) : 0) + n.size() + 1];
+        if (m == create_shared) {
             new (buf) std::atomic<int32_t>(1);
             buf += sizeof(std::atomic<int32_t>);
         }
-        *std::copy(n.begin(), n.end(), buf) = 0;
+        *std::ranges::copy(n, buf).out = 0;
         new (storage_) Large{.str = buf, .size = n.size()};
     }
     else {
-        *std::copy(n.begin(), n.end(), storage_) = 0;
-        storage_[c_maxSmall]                     = static_cast<char>(c_maxSmall - n.size());
+        *std::ranges::copy(n, storage_).out = 0;
+        storage_[c_max_small]               = static_cast<char>(c_max_small - n.size());
     }
     POTASSCO_DEBUG_ASSERT(static_cast<std::string_view>(*this) == n);
 }
 ConstString::ConstString(const ConstString& o) : ConstString(not o.shareable() ? o.view() : std::string_view{}) {
     if (o.shareable()) {
         POTASSCO_DEBUG_ASSERT(not o.small());
-        storage_[c_maxSmall] = o.storage_[c_maxSmall];
+        storage_[c_max_small] = o.storage_[c_max_small];
         new (storage_) Large{*o.large()};
         addRef(1);
     }

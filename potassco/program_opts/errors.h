@@ -65,18 +65,16 @@ private:
 
 class DuplicateOption : public ContextError {
 public:
-    DuplicateOption(const std::string& ctx, const std::string& key)
-        : ContextError(ctx, ContextError::duplicate_option, key) {}
+    DuplicateOption(const std::string& ctx, const std::string& key) : ContextError(ctx, duplicate_option, key) {}
 };
 class UnknownOption : public ContextError {
 public:
-    UnknownOption(const std::string& ctx, const std::string& key)
-        : ContextError(ctx, ContextError::unknown_option, key) {}
+    UnknownOption(const std::string& ctx, const std::string& key) : ContextError(ctx, unknown_option, key) {}
 };
 class AmbiguousOption : public ContextError {
 public:
     AmbiguousOption(const std::string& ctx, const std::string& key, const std::string& alt)
-        : ContextError(ctx, ContextError::ambiguous_option, key, alt) {}
+        : ContextError(ctx, ambiguous_option, key, alt) {}
 };
 
 //! Used for signaling validation errors when trying to assign option values.

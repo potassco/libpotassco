@@ -69,16 +69,16 @@ namespace Potassco {
  * \brief Basic types for working with logic programs.
  */
 ///@{
-//! Ids are non-negative integers in the range [0..idMax].
+//! Ids are non-negative integers in the range [0;id_max].
 using Id_t = uint32_t;
 //! Maximum value for ids.
-constexpr auto idMax = static_cast<Id_t>(-1);
-//! Atom ids are positive integers in the range [atomMin..atomMax].
+constexpr auto id_max = static_cast<Id_t>(-1);
+//! Atom ids are positive integers in the range [atom_min;atom_max].
 using Atom_t = uint32_t;
 //! Minimum value for atom ids (must not be 0).
-constexpr auto atomMin = static_cast<Atom_t>(1);
+constexpr auto atom_min = static_cast<Atom_t>(1);
 //! Maximum value for atom ids.
-constexpr auto atomMax = static_cast<Atom_t>(((1u) << 31) - 1);
+constexpr auto atom_max = static_cast<Atom_t>(((1u) << 31) - 1);
 //! Literals are signed atoms.
 using Lit_t = int32_t;
 //! (Literal) weights are integers.
@@ -102,46 +102,52 @@ using IdSpan        = std::span<const Id_t>;
 using AtomSpan      = std::span<const Atom_t>;
 using LitSpan       = std::span<const Lit_t>;
 using WeightLitSpan = std::span<const WeightLit_t>;
+//! Convert a single lvalue into a span with one element.
+template <typename T>
+requires(std::is_lvalue_reference_v<T>)
+constexpr auto toSpan(T&& x) -> std::span<std::remove_reference_t<T>> {
+    return {&x, 1};
+}
 
 //! Supported rule head types.
-enum class Head_t : unsigned { Disjunctive = 0, Choice = 1 };
+enum class Head_t : unsigned { disjunctive = 0, choice = 1 };
 [[maybe_unused]] consteval auto enable_meta(std::type_identity<Head_t>) { return DefaultEnum<Head_t, 2u>(); }
 
 //! Supported rule body types.
-enum class Body_t : unsigned { Normal = 0, Sum = 1, Count = 2 };
+enum class Body_t : unsigned { normal = 0, sum = 1, count = 2 };
 [[maybe_unused]] consteval auto enable_meta(std::type_identity<Body_t>) { return DefaultEnum<Body_t, 3u>(); }
 
 //! Type representing an external value.
-enum class Value_t : unsigned { Free = 0, True = 1, False = 2, Release = 3 };
+enum class Value_t : unsigned { free = 0, true_ = 1, false_ = 2, release = 3 };
 [[maybe_unused]] consteval auto enable_meta(std::type_identity<Value_t>) {
     using enum Value_t;
     using namespace std::literals;
-    return EnumEntries(Free, "free"sv, True, "true"sv, False, "false"sv, Release, "release"sv);
+    return EnumEntries(free, "free"sv, true_, "true"sv, false_, "false"sv, release, "release"sv);
 }
 
 //! Supported modifications for domain heuristic.
-enum class Heuristic_t : unsigned { Level = 0, Sign = 1, Factor = 2, Init = 3, True = 4, False = 5 };
+enum class Heuristic_t : unsigned { level = 0, sign = 1, factor = 2, init = 3, true_ = 4, false_ = 5 };
 [[maybe_unused]] consteval auto enable_meta(std::type_identity<Heuristic_t>) {
     using enum Heuristic_t;
     using namespace std::literals;
-    return EnumEntries(Level, "level"sv, Sign, "sign"sv, Factor, "factor"sv, Init, "init"sv, True, "true"sv, False,
+    return EnumEntries(level, "level"sv, sign, "sign"sv, factor, "factor"sv, init, "init"sv, true_, "true"sv, false_,
                        "false"sv);
 }
 [[maybe_unused]] consteval auto enable_ops(std::type_identity<Heuristic_t>) -> CmpOps;
 
 //! Supported aspif directives.
 enum class Directive_t : unsigned {
-    End       = 0,
-    Rule      = 1,
-    Minimize  = 2,
-    Project   = 3,
-    Output    = 4,
-    External  = 5,
-    Assume    = 6,
-    Heuristic = 7,
-    Edge      = 8,
-    Theory    = 9,
-    Comment   = 10
+    end       = 0,
+    rule      = 1,
+    minimize  = 2,
+    project   = 3,
+    output    = 4,
+    external  = 5,
+    assume    = 6,
+    heuristic = 7,
+    edge      = 8,
+    theory    = 9,
+    comment   = 10
 };
 [[maybe_unused]] consteval auto enable_meta(std::type_identity<Directive_t>) { return DefaultEnum<Directive_t, 11u>(); }
 
@@ -172,7 +178,7 @@ public:
     virtual void project(const AtomSpan& atoms);
     //! Output @c str whenever condition is true in a stable model.
     virtual void output(const std::string_view& str, const LitSpan& condition);
-    //! If @c v is not equal to @c Value_t::Release, mark a as external and assume value @c v. Otherwise, treat @c a as
+    //! If @c v is not equal to @c Value_t::release, mark a as external and assume value @c v. Otherwise, treat @c a as
     //! regular atom.
     virtual void external(Atom_t a, Value_t v);
     //! Assume the given literals to true during solving.
@@ -214,15 +220,10 @@ public:
  * \ingroup BasicTypes
  */
 ///@{
-//! Returns whether @c n is a valid atom number (i.e. in the range [atomMin..atomMax])
+//! Returns whether @c n is a valid atom number (i.e. in the range [atomMin;atomMax])
 template <std::integral T>
 constexpr bool validAtom(T n) {
-    if constexpr (std::is_signed_v<T>) {
-        return n >= 0 && validAtom(std::make_unsigned_t<T>(n));
-    }
-    else {
-        return n >= atomMin && n <= atomMax;
-    }
+    return std::cmp_greater_equal(n, atom_min) && std::cmp_less_equal(n, atom_max);
 }
 //! Identity function for atoms.
 constexpr Atom_t atom(Atom_t atom) { return atom; }
@@ -318,27 +319,27 @@ class RuleBuilder;
 /*!
  * Not all std::string implementations are trivially relocatable. E.g. the SSO implemented in gcc (libstdc++) relies on
  * a pointer referencing a buffer internal to the string, making relocation non-trivial.
- * In contrast, this class uses a SSO implementation that is more similar to the one from libc++.
+ * In contrast, this class uses an SSO implementation that is more similar to the one from libc++.
  */
 class ConstString {
 public:
-    using trivially_relocatable = std::true_type;
+    using trivially_relocatable = std::true_type; // NOLINT
     //! Supported creation modes.
-    enum CreateMode { Unique, Shared };
+    enum CreateMode { create_unique, create_shared };
     //! Creates an empty string.
     constexpr ConstString() noexcept {
         if (std::is_constant_evaluated()) {
             std::fill(std::begin(storage_) + 1, std::end(storage_), static_cast<char>(0));
         }
-        storage_[0]          = 0;
-        storage_[c_maxSmall] = static_cast<char>(c_maxSmall);
+        storage_[0]           = 0;
+        storage_[c_max_small] = static_cast<char>(c_max_small);
     }
     //! Creates a string by coping @c n.
     /*!
      * The creation mode determines how further copies are handled. If @c n exceeds the SSO limit and @c m is set to
-     * @c CreateMode::Shared, further copies only increase an internal reference count.
+     * @c CreateMode::create_shared, further copies only increase an internal reference count.
      */
-    ConstString(std::string_view n, CreateMode m = Unique);
+    ConstString(std::string_view n, CreateMode m = create_unique);
     //! Creates a copy of @c o.
     ConstString(const ConstString& o);
     //! "Steals" the content of @c o.
@@ -349,15 +350,15 @@ public:
             }
             else {
                 std::memmove(storage_, o.storage_, o.size() + 1);
-                storage_[c_maxSmall] = o.storage_[c_maxSmall];
+                storage_[c_max_small] = o.storage_[c_max_small];
             }
         }
         else {
             new (storage_) Large{*o.large()};
-            storage_[c_maxSmall] = o.storage_[c_maxSmall];
+            storage_[c_max_small] = o.storage_[c_max_small];
         }
-        o.storage_[0]          = 0;
-        o.storage_[c_maxSmall] = static_cast<char>(c_maxSmall);
+        o.storage_[0]           = 0;
+        o.storage_[c_max_small] = static_cast<char>(c_max_small);
     }
     constexpr ~ConstString() {
         if (not small()) {
@@ -381,20 +382,20 @@ public:
     [[nodiscard]] constexpr std::string_view view() const { return static_cast<std::string_view>(*this); }
     //! Returns the length of this string.
     [[nodiscard]] constexpr std::size_t size() const {
-        return small() ? c_maxSmall - static_cast<std::size_t>(storage_[c_maxSmall]) : large()->size;
+        return small() ? c_max_small - static_cast<std::size_t>(storage_[c_max_small]) : large()->size;
     }
     //! Returns the character at the given position, which shall be \< @c size().
     [[nodiscard]] constexpr char operator[](std::size_t pos) const { return c_str()[pos]; }
 
-    [[nodiscard]] constexpr bool small() const { return storage_[c_maxSmall] < c_largeTag; }
-    [[nodiscard]] constexpr bool shareable() const { return storage_[c_maxSmall] == c_largeTag + Shared; }
+    [[nodiscard]] constexpr bool small() const { return storage_[c_max_small] < c_large_tag; }
+    [[nodiscard]] constexpr bool shareable() const { return storage_[c_max_small] == c_large_tag + create_shared; }
 
     friend bool operator==(const ConstString& lhs, const ConstString& rhs) { return lhs.view() == rhs.view(); }
     friend auto operator<=>(const ConstString& lhs, const ConstString& rhs) { return lhs.view() <=> rhs.view(); }
 
 private:
-    static constexpr auto c_maxSmall = 23;
-    static constexpr auto c_largeTag = c_maxSmall + 1;
+    static constexpr auto c_max_small = 23;
+    static constexpr auto c_large_tag = c_max_small + 1;
     struct Large {
         char*       str;
         std::size_t size;
@@ -402,7 +403,7 @@ private:
     [[nodiscard]] const Large* large() const { return reinterpret_cast<const Large*>(storage_); }
     int32_t                    addRef(int32_t x);
     void                       release();
-    alignas(Large) char storage_[c_maxSmall + 1];
+    alignas(Large) char storage_[c_max_small + 1];
 };
 
 ///@}
@@ -410,7 +411,7 @@ private:
 } // namespace Potassco
 template <>
 struct std::hash<Potassco::ConstString> : std::hash<std::string_view> {
-    using is_transparent = void;
+    using is_transparent = void; // NOLINT
     using std::hash<std::string_view>::operator();
     std::size_t operator()(const Potassco::ConstString& str) const noexcept { return (*this)(str.view()); }
 };
