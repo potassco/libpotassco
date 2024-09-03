@@ -28,40 +28,83 @@
 #include <potassco/error.h>
 #include <potassco/program_opts/typed_value.h>
 
+#include <atomic>
 #include <climits>
-#include <cstdarg>
-#include <cstring>
-#ifdef _MSC_VER
-#pragma warning(disable : 4996)
-#endif
 #include <csignal>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <sstream>
-#if not defined(SIGALRM)
-#define SIGALRM 14
-#endif
-#if not defined(_WIN32)
+
+#if __has_include(<unistd.h>)
 #include <unistd.h> // for _exit
-static long fetch_and_inc(volatile long& x) { return __sync_fetch_and_add(&x, 1); }
-static long fetch_and_dec(volatile long& x) { return __sync_fetch_and_sub(&x, 1); }
+#endif
+
+using AlarmHandler = void (*)(int);
+
+#if not defined(SIGALRM)
+#include <condition_variable>
+#include <thread>
+static AlarmHandler g_alarmHandler = SIG_DFL;
+static void         setAlarmHandler(AlarmHandler handler) { g_alarmHandler = handler; }
+static void         alarm(unsigned sec) {
+    static std::jthread alarmThread;
+    if (alarmThread.joinable()) {
+        alarmThread.request_stop();
+        alarmThread.join();
+    }
+    if (sec) {
+        alarmThread = std::jthread([timeout = std::chrono::seconds(sec)](const std::stop_token& stop) {
+            std::condition_variable_any cond;
+            std::mutex                  m;
+            m.lock();
+            cond.wait_for(m, timeout, []() { return false; });
+            if (not stop.stop_requested() && g_alarmHandler != SIG_IGN && g_alarmHandler != SIG_DFL) {
+                g_alarmHandler(14);
+            }
+        });
+    }
+}
 #else
-#define WIN32_LEAN_AND_MEAN // exclude APIs such as Cryptography, DDE, RPC, Shell, and Windows Sockets.
-#if not defined(NOMINMAX)
-#define NOMINMAX // do not let windows.h define macros min and max
+static void setAlarmHandler(AlarmHandler handler) { signal(SIGALRM, handler); }
 #endif
-#include <process.h>
-#include <windows.h>
-static long fetch_and_inc(volatile long& x) { return InterlockedIncrement(&x) - 1; }
-static long fetch_and_dec(volatile long& x) { return InterlockedDecrement(&x) + 1; }
-#endif
+
 using namespace Potassco::ProgramOptions;
 using namespace std;
 namespace Potassco {
+template <typename T>
+static T fetchAndAdd(T* data, T add) {
+    if constexpr (requires { __atomic_fetch_add(data, add, 0); }) {
+#if !defined(__ATOMIC_ACQ_REL)
+#define __ATOMIC_ACQ_REL 4
+#endif
+        return __atomic_fetch_add(data, add, __ATOMIC_ACQ_REL);
+    }
+    else {
+#if defined(__cpp_lib_atomic_ref) && __cpp_lib_atomic_ref >= 201806L
+        return std::atomic_ref{*data}.fetch_add(add);
+#else
+        static_assert(std::is_same_v<T, void>, "unsupported compuler");
+#endif
+    }
+}
+
+template <typename T>
+static int fetchInc(T& x) {
+    return fetchAndAdd(&x, static_cast<T>(1));
+}
+template <typename T>
+static int fetchDec(T& x) {
+    return fetchAndAdd(&x, static_cast<T>(-1));
+}
 /////////////////////////////////////////////////////////////////////////////////////////
 // Application
 /////////////////////////////////////////////////////////////////////////////////////////
 static Application* g_instance; // running instance (only valid during run()).
+struct Application::Error : std::runtime_error {
+    explicit Error(const char* msg) : std::runtime_error(msg) {}
+};
 Application::Application()
     : exitCode_(EXIT_FAILURE)
     , timeout_(0)
@@ -76,41 +119,22 @@ void Application::resetInstance(const Application& app) {
         g_instance = nullptr;
     }
 }
-#if not defined(_WIN32)
+
 void Application::setAlarm(unsigned sec) {
     if (sec) {
-        signal(SIGALRM, &Application::sigHandler);
+        setAlarmHandler(&Application::sigHandler);
     }
+    timeout_ = sec;
     alarm(sec);
 }
-#else
-void Application::setAlarm(unsigned sec) {
-    static HANDLE alarmEvent  = CreateEvent(0, TRUE, TRUE, TEXT("Potassco::Application::AlarmEvent"));
-    static HANDLE alarmThread = INVALID_HANDLE_VALUE;
-    POTASSCO_CHECK(alarmEvent != nullptr, std::errc::operation_not_supported, "Could not set time limit!");
-    if (alarmThread != INVALID_HANDLE_VALUE) {
-        // wakeup any existing alarm
-        SetEvent(alarmEvent);
-        WaitForSingleObject(alarmThread, INFINITE);
-        CloseHandle(alarmThread);
-        alarmThread = INVALID_HANDLE_VALUE;
-    }
-    if (sec > 0) {
-        struct THUNK {
-            static unsigned __stdcall run(void* p) {
-                unsigned ms = static_cast<unsigned>(reinterpret_cast<std::size_t>(p));
-                if (WaitForSingleObject(alarmEvent, ms) == WAIT_TIMEOUT) {
-                    Application::getInstance()->processSignal(SIGALRM);
-                }
-                return 0;
-            }
-        };
-        ResetEvent(alarmEvent);
-        alarmThread = (HANDLE) _beginthreadex(0, 0, &THUNK::run,
-                                              reinterpret_cast<void*>(static_cast<std::size_t>(sec) * 1000), 0, 0);
+
+// Kill any pending alarm.
+void Application::killAlarm() {
+    if (std::exchange(timeout_, 0u) > 0u) {
+        setAlarmHandler(SIG_DFL);
+        alarm(0);
     }
 }
-#endif
 
 // Application entry point.
 int Application::main(int argc, char** argv) {
@@ -167,6 +191,26 @@ Application* Application::getInstance() { return g_instance; }
 
 void Application::setExitCode(int n) { exitCode_ = n; }
 int  Application::getExitCode() const { return exitCode_; }
+void Application::fail(int code, std::string_view message, std::string_view info) {
+    if (this == getInstance()) {
+        char  mem[1024];
+        auto* pos  = std::begin(mem);
+        auto* end  = std::end(mem);
+        pos       += formatMessage(mem, message_error, "%.*s", static_cast<int>(message.length()), message.data());
+        while (not info.empty() && (end - pos) > 1) {
+            auto line  = info.substr(0, std::min(info.find('\n'), info.size()));
+            *pos++     = '\n';
+            pos       += formatMessage({pos, end}, message_info, "%.*s", static_cast<int>(line.length()), line.data());
+            info.remove_prefix(std::min(info.size(), line.size() + 1));
+        }
+        if (not fastExit_) {
+            setExitCode(code);
+            throw Error(mem);
+        }
+        std::ignore = onUnhandledException(mem);
+        Application::exit(code);
+    }
+}
 
 void Application::shutdown() {}
 
@@ -177,15 +221,13 @@ void Application::exit(int exitCode) {
 }
 
 // Temporarily disable delivery of signals.
-int Application::blockSignals() { return static_cast<int>(fetch_and_inc(blocked_)); }
+int Application::blockSignals() { return fetchInc(blocked_); }
 
 // Re-enable signal handling and deliver any pending signal.
 void Application::unblockSignals(bool deliverPending) {
-    if (fetch_and_dec(blocked_) == 1) {
-        auto pend = static_cast<int>(pending_);
-        pending_  = 0;
+    if (fetchDec(blocked_) == 1) {
         // directly deliver any pending signal to our sig handler
-        if (pend && deliverPending) {
+        if (auto pend = std::exchange(pending_, 0); pend && deliverPending) {
             processSignal(pend);
         }
     }
@@ -193,32 +235,28 @@ void Application::unblockSignals(bool deliverPending) {
 void Application::sigHandler(int sig) {
     // On Windows and original Unix, a handler once invoked is set to SIG_DFL.
     // Instead, we temporarily ignore signals and reset our handler once it is done.
-    POTASSCO_SCOPE_EXIT({ signal(sig, sigHandler); });
-    signal(sig, SIG_IGN);
-    Application::getInstance()->processSignal(sig);
+    auto restore = signal(sig, SIG_IGN);
+    if (auto inst = getInstance()) {
+        inst->processSignal(sig);
+        restore = &Application::sigHandler;
+    }
+    signal(sig, restore);
 }
 
 // Called on timeout or signal.
-void Application::processSignal(int sig) {
+void Application::processSignal(int sigNum) {
     if (blockSignals() == 0) {
-        if (not onSignal(sig)) {
+        if (not onSignal(sigNum)) {
             return;
         } // block further signals
     }
     else if (pending_ == 0) { // signals are currently blocked because output is active
-        pending_ = sig;
+        pending_ = sigNum;
     }
-    fetch_and_dec(blocked_);
+    fetchDec(blocked_);
 }
 
 bool Application::onSignal(int x) { exit(EXIT_FAILURE | (128 + x)); }
-
-// Kill any pending alarm.
-void Application::killAlarm() {
-    if (timeout_ > 0) {
-        setAlarm(0);
-    }
-}
 
 static const char* prefix(Application::MessageType t) {
     switch (t) {
@@ -250,8 +288,8 @@ bool Application::formatActiveException(std::span<char> buffer) const {
         throw;
     }
     catch (const ProgramOptions::Error& e) {
-        buffer = buffer.subspan(formatMessage(buffer, message_error, "%s\n", e.what()));
-        formatMessage(buffer, message_info, "Try '--help' for usage information");
+        buffer      = buffer.subspan(formatMessage(buffer, message_error, "%s\n", e.what()));
+        std::ignore = formatMessage(buffer, message_info, "Try '--help' for usage information");
     }
     catch (const RuntimeError& e) {
         auto m = e.message();
@@ -260,20 +298,13 @@ bool Application::formatActiveException(std::span<char> buffer) const {
         formatMessage(buffer, message_error, "%.*s", static_cast<int>(d.size()), d.data());
     }
     catch (const Error& e) {
-        buffer = buffer.subspan(formatMessage(buffer, message_error, "%s%s", e.what(), not e.info.empty() ? "\n" : ""));
-        if (not e.info.empty() && not buffer.empty()) {
-            buffer = buffer.subspan(
-                formatMessage(buffer, message_info, "%s%s", e.info.c_str(), not e.details.empty() ? "\n" : ""));
-        }
-        if (not e.details.empty() && not buffer.empty()) {
-            formatMessage(buffer, message_info, "%s", e.details.c_str());
-        }
+        snprintf(buffer.data(), buffer.size(), "%s", e.what());
     }
     catch (const std::exception& e) {
-        formatMessage(buffer, message_error, "%s", e.what());
+        std::ignore = formatMessage(buffer, message_error, "%s", e.what());
     }
     catch (...) {
-        formatMessage(buffer, message_error, "Unknown exception");
+        std::ignore = formatMessage(buffer, message_error, "Unknown exception");
         return false;
     }
     return true;

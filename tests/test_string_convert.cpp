@@ -147,7 +147,7 @@ TEST_CASE("String conversion", "[string]") {
         constexpr double d = 0.00000001;
         REQUIRE(string_cast<double>(Potassco::toString(d)) == d);
 
-        float x;
+        float x{};
         REQUIRE(Potassco::Parse::ok(Potassco::stringTo("0.8", x)));
         REQUIRE(Potassco::toString(x) == "0.8");
     }

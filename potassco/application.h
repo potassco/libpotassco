@@ -33,17 +33,6 @@ namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
 class Application {
 public:
-    //! Application specific exception type.
-    struct Error : std::runtime_error {
-        explicit Error(const char* msg) : std::runtime_error(msg) {}
-        Error(const char* msg, std::string i, std::string d)
-            : std::runtime_error(msg)
-            , info(std::move(i))
-            , details(std::move(d)) {}
-        std::string info;
-        std::string details;
-    };
-
     //! Description of and max value for help option.
     using HelpOpt = std::pair<const char*, unsigned>;
 
@@ -79,6 +68,13 @@ public:
     [[nodiscard]] int getExitCode() const;
     //! Returns the application's current verbosity level.
     [[nodiscard]] unsigned getVerbose() const;
+    //! Stops running application with given exit code and error message.
+    /*!
+     * The function sets the given code as exit code and then stops the running application by calling
+     * Application::onUnhandledException() passing a formatted error message.
+     * \note If the application is currently not running, this function is a noop.
+     */
+    void fail(int code, std::string_view message, std::string_view info = {});
     //! Returns the application object that is running.
     static Application* getInstance();
 
@@ -123,7 +119,7 @@ protected:
     virtual void validateOptions(const ProgramOptions::OptionContext& root, const ProgramOptions::ParsedOptions& parsed,
                                  const ProgramOptions::ParsedValues& values) = 0;
     //! Shall print the provided help message.
-    virtual void onHelp(const std::string& help, Potassco::ProgramOptions::DescriptionLevel level) = 0;
+    virtual void onHelp(const std::string& help, ProgramOptions::DescriptionLevel level) = 0;
     //! Shall print the provided version info.
     virtual void onVersion(const std::string& version) = 0;
     //! Called once after option processing is done.
@@ -156,6 +152,7 @@ protected:
     void processSignal(int sigNum);
 
 private:
+    struct Error;
     struct Prefix {
         const Application* app;
         const char*        msg;
@@ -172,12 +169,12 @@ private:
     static void        resetInstance(const Application& app);
     static void        sigHandler(int sig);
 
-    int           exitCode_; // application's exit code
-    unsigned      timeout_;  // active time limit or 0 for no limit
-    unsigned      verbose_;  // active verbosity level
-    bool          fastExit_; // force fast exit?
-    volatile long blocked_;  // temporarily block signals?
-    volatile long pending_;  // pending signal or 0 if no pending signal
+    int      exitCode_; // application's exit code
+    unsigned timeout_;  // active time limit or 0 for no limit
+    unsigned verbose_;  // active verbosity level
+    bool     fastExit_; // force fast exit?
+    int      blocked_;  // temporarily block signals?
+    int      pending_;  // pending signal or 0 if no pending signal
 };
 
 } // namespace Potassco

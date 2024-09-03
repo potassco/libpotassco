@@ -29,7 +29,6 @@
 #include <cstdint>
 #include <ios>
 #include <iosfwd>
-#include <limits>
 
 namespace Potassco {
 
@@ -151,7 +150,7 @@ protected:
     //! Returns the next character in the input stream.
     char get();
     //! Throws a std::exception with the current line and given message if cnd is false.
-    bool require(bool cnd, const char* msg) const { return cnd || (error(msg), false); }
+    void require(bool cnd, const char* msg) const { static_cast<void>(cnd || (error(msg), false)); }
     //! Attempts to match the given string.
     bool match(const std::string_view& word) { return stream()->match(word); }
     //! Extracts the given character or fails with a std::exception.

@@ -25,7 +25,6 @@
 //
 #pragma once
 #include <cstdint>
-#include <memory>
 #include <string>
 
 namespace Potassco::ProgramOptions {
@@ -141,7 +140,7 @@ public:
         return this;
     }
 
-    //! Returns true if the value of this option can be composed from multiple source.
+    //! Returns true if the value of this option can be composed of multiple sources.
     [[nodiscard]] bool isComposing() const { return composing_ != 0; }
     /*!
      * Marks the value as composing.

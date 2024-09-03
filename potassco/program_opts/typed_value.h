@@ -29,6 +29,8 @@
 #include <potassco/program_opts/string_convert.h>
 #include <potassco/program_opts/value.h>
 
+#include <vector>
+
 namespace Potassco::ProgramOptions {
 struct Parser {
     template <typename T>

@@ -23,11 +23,6 @@
 // NOTE: ProgramOptions is inspired by Boost.Program_options
 //       see: www.boost.org/libs/program_options
 //
-#ifdef _MSC_VER
-#pragma warning(disable : 4786)
-#pragma warning(disable : 4503)
-#pragma warning(disable : 4996)
-#endif
 #include <potassco/program_opts/program_options.h>
 
 #include <potassco/program_opts/errors.h>

@@ -504,7 +504,7 @@ struct AspifTextOutput::Data {
     void          endStep(std::ostream&, bool more);
     void          visitTheoryAtoms(std::ostream& os);
     std::ostream& printTheoryAtom(std::ostream&, const TheoryAtom&);
-    std::ostream& appendTerm(std::ostream&, Id_t term) const;
+    std::ostream& appendTerm(std::ostream&, Id_t tId) const;
     std::ostream& printName(std::ostream& os, Lit_t lit);
     std::ostream& printName(std::ostream& os, Atom_t at) { return printName(os, lit(at)); }
     std::ostream& printCondition(std::ostream&, const uint32_t*& pos, const char* init = "");
@@ -554,8 +554,8 @@ void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, cons
         AspifTextOutput::rule(ht, head, {});
     }
     data_->push(Directive_t::rule).push(ht).push(head);
-    if (std::adjacent_find(lits.begin(), lits.end(),
-                           [](const auto& lhs, const auto& rhs) { return lhs.weight != rhs.weight; }) != lits.end()) {
+    if (std::ranges::adjacent_find(lits, [](const auto& lhs, const auto& rhs) { return lhs.weight != rhs.weight; }) !=
+        lits.end()) {
         data_->push(Body_t::sum).push(bound).push(lits);
     }
     else {

@@ -23,57 +23,57 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
 #include <csignal>
 #include <sstream>
 
 namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
 
-struct MyApp : public Potassco::Application {
+struct MyApp : Application {
     [[nodiscard]] const char* getName() const override { return "TestApp"; }
     [[nodiscard]] const char* getVersion() const override { return "1.0"; }
     [[nodiscard]] const char* getUsage() const override { return "[options] [files]"; }
     [[nodiscard]] HelpOpt     getHelpOption() const override { return {"Print {1=basic|2=extended} help and exit", 2}; }
     [[nodiscard]] const char* getPositional(const std::string&) const override { return "file"; }
-    void                      run() override { setExitCode(0); }
+    void                      run() override { setExitCode(doRun ? doRun() : 0); }
     void                      setup() override {}
-    void                      initOptions(ProgramOptions::OptionContext& root) override {
-        Po::OptionGroup g("Basic Options");
+    void                      initOptions(OptionContext& root) override {
+        OptionGroup g("Basic Options");
         g.addOptions()("foo,@,@1", Po::storeTo(foo), "Option on level 1");
         root.add(g);
-        Po::OptionGroup g2("E1 Options");
+        OptionGroup g2("E1 Options");
         g2.setDescriptionLevel(Po::desc_level_e1);
         g2.addOptions()("file,f", Po::storeTo(input)->composing(), "Input files");
         root.add(g2);
     }
-    void validateOptions(const Po::OptionContext&, const Po::ParsedOptions&, const Po::ParsedValues&) override {}
-    void onHelp(const std::string& str, Potassco::ProgramOptions::DescriptionLevel) override {
-        messages["help"].append(str);
-    }
+    void validateOptions(const OptionContext&, const ParsedOptions&, const ParsedValues&) override {}
+    void onHelp(const std::string& str, DescriptionLevel) override { messages["help"].append(str); }
     void onVersion(const std::string& str) override { messages["version"].append(str); }
     bool onUnhandledException(const char* err) override {
         messages["error"].append(err);
         return false;
     }
     void flush() override {}
-    using StringSeq = std::vector<std::string>;
-    using Messages  = std::map<std::string, std::string>;
-    int       foo   = {};
-    StringSeq input;
-    Messages  messages;
+    using StringSeq          = std::vector<std::string>;
+    using Messages           = std::map<std::string, std::string>;
+    int                  foo = {};
+    std::function<int()> doRun;
+    StringSeq            input;
+    Messages             messages;
 };
 
 TEST_CASE("Test application formatting", "[app]") {
     MyApp app;
     SECTION("message") {
         char buffer[80];
-        app.formatMessage(buffer, Application::message_error, "An error");
+        std::ignore = app.formatMessage(buffer, Application::message_error, "An error");
         CHECK(std::strcmp(buffer, "*** ERROR: (TestApp): An error") == 0);
 
-        app.formatMessage(buffer, Application::message_warning, "A warning");
+        std::ignore = app.formatMessage(buffer, Application::message_warning, "A warning");
         CHECK(std::strcmp(buffer, "*** Warn : (TestApp): A warning") == 0);
 
-        app.formatMessage(buffer, Application::message_info, "Some info");
+        std::ignore = app.formatMessage(buffer, Application::message_info, "Some info");
         CHECK(std::strcmp(buffer, "*** Info : (TestApp): Some info") == 0);
     }
     SECTION("stream") {
@@ -82,6 +82,25 @@ TEST_CASE("Test application formatting", "[app]") {
         REQUIRE(s.str() == "*** ERROR: (TestApp): An error\n"
                            "*** Warn : (TestApp): A warning\n"
                            "*** Info : (TestApp): Some info\n");
+    }
+    SECTION("fail") {
+        char* argv[] = {(char*) "app", nullptr}; // NOLINT
+        SECTION("noop if not running") {
+            REQUIRE_NOTHROW(app.fail(79, "Something is not right!", "Info line 1\nInfo line 2"));
+            REQUIRE(app.getExitCode() == EXIT_FAILURE);
+        }
+        SECTION("stop if running") {
+            app.doRun = [&]() {
+                app.fail(79, "Something is not right!", "Info line 1\nInfo line 2");
+                FAIL("should not be reached");
+                return 0;
+            };
+            REQUIRE(app.main(0, argv) == 79);
+            REQUIRE(app.getExitCode() == 79);
+            REQUIRE(app.messages["error"] == "*** ERROR: (TestApp): Something is not right!\n"
+                                             "*** Info : (TestApp): Info line 1\n"
+                                             "*** Info : (TestApp): Info line 2");
+        }
     }
 }
 TEST_CASE("Test application", "[app]") {
@@ -133,21 +152,20 @@ TEST_CASE("Test alarm", "[app]") {
     struct TimedApp : MyApp {
         TimedApp() : stop(0) {}
         void run() override {
-            int i = 0;
-            while (not stop) { ++i; }
-            setExitCode(i);
+            while (stop.load() == 0) { stop.wait(0); }
         }
-        bool onSignal(int) override {
-            stop = 1;
+        bool onSignal(int sig) override {
+            stop = sig;
+            stop.notify_one();
             return true;
         }
-        volatile sig_atomic_t stop;
+        std::atomic<int> stop;
     };
 
     TimedApp app;
     char*    argv[] = {(char*) "app", (char*) "--time-limit=1", nullptr}; // NOLINT
     int      argc   = 2;
     app.main(argc, argv);
-    REQUIRE(app.stop == 1);
+    REQUIRE(app.stop == 14);
 }
 } // namespace Potassco::ProgramOptions::Test

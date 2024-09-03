@@ -100,12 +100,6 @@ constexpr auto translateEc(T in) {
 }
 } // namespace Detail
 
-#if (defined(_MSVC_TRADITIONAL) && _MSVC_TRADITIONAL == 1) || (not defined(_MSC_VER) && __cplusplus < 202002L)
-#define POTASSCO_OPTARGS(...) , ##__VA_ARGS__
-#else
-#define POTASSCO_OPTARGS(...) __VA_OPT__(, ) __VA_ARGS__
-#endif
-
 //! Throws an exception of type defined the given error code.
 POTASSCO_ATTR_NORETURN extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char* fmt = nullptr,
                                              ...) POTASSCO_ATTRIBUTE_FORMAT(3, 4);

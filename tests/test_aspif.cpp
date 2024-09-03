@@ -292,6 +292,16 @@ TEST_CASE("Test ConstString", "[rule]") {
         REQUIRE(s3 == std::string_view{large});
         REQUIRE(s4 == std::string_view{large});
         REQUIRE((void*) s3.c_str() != (void*) s4.c_str());
+
+        SECTION("assign") {
+            ConstString sc;
+            sc = s3;
+            REQUIRE(sc == std::string_view{large});
+            REQUIRE((void*) sc.c_str() != (void*) s3.c_str());
+            sc = s2;
+            REQUIRE(sc == sv);
+            REQUIRE((void*) sc.c_str() != (void*) s2.c_str());
+        }
     }
     SECTION("shallow copy") {
         std::string_view sv("small");
@@ -309,6 +319,16 @@ TEST_CASE("Test ConstString", "[rule]") {
         REQUIRE(s3 == std::string_view{large});
         REQUIRE(s4 == std::string_view{large});
         REQUIRE((void*) s3.c_str() == (void*) s4.c_str());
+
+        SECTION("assign") {
+            ConstString sc;
+            sc = s3;
+            REQUIRE(sc == std::string_view{large});
+            REQUIRE((void*) sc.c_str() == (void*) s3.c_str());
+            sc = s2;
+            REQUIRE(sc == sv);
+            REQUIRE((void*) sc.c_str() != (void*) s2.c_str());
+        }
     }
     SECTION("move") {
         std::string_view sv("small");
@@ -950,9 +970,7 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
         }
         writer.endStep();
         readAspif(out, observer);
-        for (auto&& r : rules) {
-            REQUIRE(std::find(observer.rules.begin(), observer.rules.end(), r) != observer.rules.end());
-        }
+        for (auto&& r : rules) { REQUIRE(std::ranges::find(observer.rules, r) != observer.rules.end()); }
     }
     SECTION("Writer writes minimize") {
         auto m1 = Vec<WeightLit_t>{{1, -2}, {-3, 2}, {4, 1}};
@@ -972,9 +990,7 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
         for (auto&& s : exp) { writer.output(s.first, s.second); }
         writer.endStep();
         readAspif(out, observer);
-        for (auto&& s : exp) {
-            REQUIRE(std::find(observer.shows.begin(), observer.shows.end(), s) != observer.shows.end());
-        }
+        for (auto&& s : exp) { REQUIRE(std::ranges::find(observer.shows, s) != observer.shows.end()); }
     }
     SECTION("Writer writes external") {
         std::pair<Atom_t, Value_t> exp[] = {
@@ -982,9 +998,7 @@ TEST_CASE("Test AspifOutput", "[aspif]") {
         for (auto&& e : exp) { writer.external(e.first, e.second); }
         writer.endStep();
         readAspif(out, observer);
-        for (auto&& e : exp) {
-            REQUIRE(std::find(observer.externals.begin(), observer.externals.end(), e) != observer.externals.end());
-        }
+        for (auto&& e : exp) { REQUIRE(std::ranges::find(observer.externals, e) != observer.externals.end()); }
     }
     SECTION("Writer writes assumptions") {
         Lit_t a[] = {1, 987232, -2};
@@ -1072,15 +1086,15 @@ TEST_CASE("TheoryData", "[aspif]") {
         data.addTerm(n[4] = tId++, 42);                // (number 42)
         data.addAtom(1, s[2], {elems, 4}, o[1], n[4]); // (&sum { 1*x(1); 2*x(2); 3*x(3); 4*z     } >= 42)
 
-        struct Visitor : public TheoryData::Visitor {
+        struct Visitor : TheoryData::Visitor {
             void visit(const TheoryData& data, Id_t termId, const TheoryTerm& t) override {
                 if (out.hasTerm(termId)) {
                     return;
                 }
                 switch (t.type()) {
-                    case Potassco::Theory_t::number: out.addTerm(termId, t.number()); break;
-                    case Potassco::Theory_t::symbol: out.addTerm(termId, t.symbol()); break;
-                    case Potassco::Theory_t::compound:
+                    case Theory_t::number: out.addTerm(termId, t.number()); break;
+                    case Theory_t::symbol: out.addTerm(termId, t.symbol()); break;
+                    case Theory_t::compound:
                         data.accept(t, *this);
                         if (t.isFunction()) {
                             out.addTerm(termId, t.function(), t.terms());

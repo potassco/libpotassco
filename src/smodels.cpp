@@ -154,7 +154,7 @@ bool SmodelsInput::readRules() {
                 break;
             case SmodelsRule_t::clasp_assign_ext:
             case SmodelsRule_t::clasp_release_ext:
-                std::ignore = require(opts_.claspExt, "unrecognized rule type");
+                require(opts_.claspExt, "unrecognized rule type");
                 if (rt == SmodelsRule_t::clasp_assign_ext) {
                     auto rHead = matchAtom();
                     out_.external(rHead, static_cast<Value_t>((matchUint(0u, 2u, "0..2 expected") ^ 3) - 1));
@@ -198,7 +198,7 @@ bool SmodelsInput::readSymbols() {
         scratch.clear();
         matchChar(' ');
         for (char c; (c = get()) != '\n';) {
-            std::ignore = require(c != 0, "atom name expected!");
+            require(c != 0, "atom name expected!");
             scratch.push(c);
         }
         scratch.push(0);

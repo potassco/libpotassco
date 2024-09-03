@@ -21,7 +21,6 @@
 //
 #pragma once
 
-#include <potassco/basic_types.h>
 #include <potassco/enum.h>
 
 #include <cassert>
@@ -31,7 +30,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <vector>
 
 namespace Potassco {
 namespace Detail {

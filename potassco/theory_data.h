@@ -36,12 +36,12 @@ class TheoryData;
 ///@{
 //! Supported aspif theory directives.
 enum class Theory_t { number = 0, symbol = 1, compound = 2, reserved = 3, element = 4, atom = 5, atom_with_guard = 6 };
-[[maybe_unused]] consteval auto enable_meta(std::type_identity<Theory_t>) { return DefaultEnum<Theory_t, 7u>(); }
+POTASSCO_SET_DEFAULT_ENUM_MAX(Theory_t::atom_with_guard);
 
 //! Supported aspif theory tuple types.
 enum class Tuple_t { bracket = -3, brace = -2, paren = -1 };
-[[maybe_unused]] consteval auto enable_meta(std::type_identity<Tuple_t>) { return DefaultEnum<Theory_t, 3u, -3>(); }
-[[nodiscard]] constexpr auto    parens(Tuple_t t) -> std::string_view {
+POTASSCO_SET_DEFAULT_ENUM_COUNT(Tuple_t, 3u, -3);
+[[nodiscard]] constexpr auto parens(Tuple_t t) -> std::string_view {
     using namespace std::literals;
     switch (t) {
         case Tuple_t::bracket: return "[]"sv;
@@ -302,10 +302,10 @@ private:
 
 inline void print(AbstractProgram& out, Id_t termId, const TheoryTerm& term) {
     switch (term.type()) {
-        case Potassco::Theory_t::number  : out.theoryTerm(termId, term.number()); break;
-        case Potassco::Theory_t::symbol  : out.theoryTerm(termId, term.symbol()); break;
-        case Potassco::Theory_t::compound: out.theoryTerm(termId, term.compound(), term.terms()); break;
-        default                          : break;
+        case Theory_t::number  : out.theoryTerm(termId, term.number()); break;
+        case Theory_t::symbol  : out.theoryTerm(termId, term.symbol()); break;
+        case Theory_t::compound: out.theoryTerm(termId, term.compound(), term.terms()); break;
+        default                : break;
     }
 }
 inline void print(AbstractProgram& out, const TheoryAtom& a) {

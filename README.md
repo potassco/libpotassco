@@ -13,7 +13,7 @@ or to a human-readable text format.
 
 libpotassco is part of the potassco project. For further information please visit:
 
-  http://potassco.org/
+  https://potassco.org/
 
 ## Installation
 
@@ -61,4 +61,4 @@ or via the `doc_potassco` target when using cmake.
   
 [aspif]: https://www.cs.uni-potsdam.de/wv/publications/DBLP_conf/iclp/GebserKKOSW16x.pdf  "Aspif specification"
 [cmake]: https://cmake.org/
-[doxygen]: http://www.doxygen.nl/
+[doxygen]: https://www.doxygen.nl/

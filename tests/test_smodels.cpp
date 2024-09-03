@@ -193,11 +193,11 @@ TEST_CASE("Smodels reader ", "[smodels]") {
         REQUIRE(Potassco::readSmodels(input, observer) == 0);
         REQUIRE(observer.compute.size() == 5);
         const auto& c = observer.compute;
-        REQUIRE(std::find(c.begin(), c.end(), 2) != c.end());
-        REQUIRE(std::find(c.begin(), c.end(), 3) != c.end());
-        REQUIRE(std::find(c.begin(), c.end(), -1) != c.end());
-        REQUIRE(std::find(c.begin(), c.end(), -4) != c.end());
-        REQUIRE(std::find(c.begin(), c.end(), -5) != c.end());
+        REQUIRE(std::ranges::find(c, 2) != c.end());
+        REQUIRE(std::ranges::find(c, 3) != c.end());
+        REQUIRE(std::ranges::find(c, -1) != c.end());
+        REQUIRE(std::ranges::find(c, -4) != c.end());
+        REQUIRE(std::ranges::find(c, -5) != c.end());
     }
     SECTION("read external") {
         input << "0\n0\nB+\n0\nB-\n0\nE\n1\n2\n4\n0\n1\n";

@@ -37,6 +37,12 @@
 
 #define POTASSCO_ATTR_NORETURN [[noreturn]]
 
+#if (defined(_MSVC_TRADITIONAL) && _MSVC_TRADITIONAL == 1) || (not defined(_MSC_VER) && __cplusplus < 202002L)
+#define POTASSCO_OPTARGS(...) , ##__VA_ARGS__
+#else
+#define POTASSCO_OPTARGS(...) __VA_OPT__(, ) __VA_ARGS__
+#endif
+
 #if defined(_MSC_VER)
 #define POTASSCO_WARNING_PUSH()         __pragma(warning(push))
 #define POTASSCO_WARNING_POP()          __pragma(warning(pop))
@@ -49,10 +55,10 @@
 #define POTASSCO_ATTR_INLINE [[msvc::forceinline]]
 
 #elif defined(__GNUC__) || defined(__clang__)
-#if not defined(__STDC_FORMAT_MACROS)
+#if !defined(__STDC_FORMAT_MACROS)
 #define __STDC_FORMAT_MACROS
 #endif
-#if not defined(__STDC_LIMIT_MACROS)
+#if !defined(__STDC_LIMIT_MACROS)
 #define __STDC_LIMIT_MACROS
 #endif
 #define POTASSCO_FUNC_NAME                __PRETTY_FUNCTION__
@@ -95,19 +101,21 @@
 
 #define POTASSCO_FORCE_INLINE POTASSCO_ATTR_INLINE inline
 
-#if not defined(POTASSCO_ENABLE_PRAGMA_TODO) || POTASSCO_ENABLE_PRAGMA_TODO == 0
+#if !defined(POTASSCO_ENABLE_PRAGMA_TODO) || POTASSCO_ENABLE_PRAGMA_TODO == 0
 #undef POTASSCO_PRAGMA_TODO
 #define POTASSCO_PRAGMA_TODO(X)
 #endif
-#if not defined(POTASSCO_WARNING_IGNORE_GCC)
+#if !defined(POTASSCO_WARNING_IGNORE_GCC)
 #define POTASSCO_WARNING_IGNORE_GCC(...)
 #endif
-#if not defined(POTASSCO_WARNING_IGNORE_CLANG)
+#if !defined(POTASSCO_WARNING_IGNORE_CLANG)
 #define POTASSCO_WARNING_IGNORE_CLANG(...)
 #endif
 #ifndef POTASSCO_WARNING_IGNORE_MSVC
 #define POTASSCO_WARNING_IGNORE_MSVC(...)
 #endif
+
+#define POTASSCO_WARNING_IGNORE_GNU(X) POTASSCO_WARNING_IGNORE_GCC(X) POTASSCO_WARNING_IGNORE_CLANG(X)
 
 static_assert(UINTPTR_MAX <= UINT64_MAX, "Unsupported platform!");
 

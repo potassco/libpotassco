@@ -59,7 +59,7 @@ endif()
 add_library(potassco_default_warnings INTERFACE)
 add_library(potassco::potassco_default_warnings ALIAS potassco_default_warnings)
 if(MSVC)
-    set(PROJECT_WARNINGS_CXX /W4)
+    set(PROJECT_WARNINGS_CXX /W3)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(PROJECT_WARNINGS_CXX
         -Wall -Wextra -Wpedantic -Wshadow -Wundef -Wformat -Wformat=2 -Wunused -Wsign-conversion -Wimplicit-fallthrough

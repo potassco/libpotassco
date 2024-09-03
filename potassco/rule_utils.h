@@ -96,7 +96,7 @@ public:
      * \note Calling an update function implicitly starts the definition of the corresponding rule part.
      */
     //@{
-    //! Add given atom @c a to the rule's head.
+    //! Add given atom to the rule's head.
     RuleBuilder& addHead(Atom_t a);
     //! Add lit to the rule's body.
     RuleBuilder& addGoal(Lit_t lit);

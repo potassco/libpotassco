@@ -24,6 +24,7 @@
 #include <potassco/platform.h>
 
 #include <bit>
+#include <climits>
 #include <concepts>
 #if !defined(__cpp_lib_int_pow2) || __cpp_lib_int_pow2 < 202002L
 #error "unsupported compiler"
@@ -52,49 +53,48 @@ using std::rotr;
 ///@{
 //! Returns a value of T with bit @c n set.
 template <std::unsigned_integral T>
-[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T bit_mask(unsigned n) {
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T nth_bit(unsigned n) {
     return static_cast<T>(1) << n;
 }
-static_assert(bit_mask<unsigned>(0) == 1u && bit_mask<unsigned>(3) == 8u);
-
+static_assert(nth_bit<unsigned>(0) == 1u && nth_bit<unsigned>(3) == 0b00001000u);
 //! Returns whether bit @c n is set in @c x.
 template <std::unsigned_integral T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr bool test_bit(T x, unsigned n) noexcept {
-    return (x & bit_mask<T>(n)) != 0;
+    return (x & nth_bit<T>(n)) != 0;
 }
-static_assert(test_bit(7u, 0) && not test_bit(8u, 4));
+static_assert(test_bit(7u, 0) && not test_bit(8u, 4) && test_bit(nth_bit<unsigned>(2), 2));
 //! Returns a copy of @c x with bit @c n set.
 template <std::unsigned_integral T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr T set_bit(T x, unsigned n) noexcept {
-    return x | bit_mask<T>(n);
+    return x | nth_bit<T>(n);
 }
 static_assert(set_bit(6u, 0) == 7u && set_bit(8u, 1) == 10u);
 //! Effect: x = set_bit(x, n)
 template <std::unsigned_integral T>
 POTASSCO_FORCE_INLINE constexpr T& store_set_bit(T& x, unsigned n) noexcept {
-    return (x |= bit_mask<T>(n));
+    return (x |= nth_bit<T>(n));
 }
 //! Returns a copy of @c x with bit @c n cleared.
 template <std::unsigned_integral T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr T clear_bit(T x, unsigned n) noexcept {
-    return x & ~bit_mask<T>(n);
+    return x & ~nth_bit<T>(n);
 }
 static_assert(clear_bit(7u, 0) == 6u && clear_bit(8u, 3) == 0u);
 //! Effect: x = clear_bit(x, n)
 template <std::unsigned_integral T>
 POTASSCO_FORCE_INLINE constexpr T& store_clear_bit(T& x, unsigned n) noexcept {
-    return (x &= ~bit_mask<T>(n));
+    return (x &= ~nth_bit<T>(n));
 }
 //! Returns a copy of @c x with bit @c n toggled.
 template <std::unsigned_integral T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr T toggle_bit(T x, unsigned n) noexcept {
-    return x ^ bit_mask<T>(n);
+    return x ^ nth_bit<T>(n);
 }
 static_assert(toggle_bit(6u, 0) == 7u && toggle_bit(7u, 1) == 5u);
 //! Effect: x = toggle_bit(x, n)
 template <std::unsigned_integral T>
 POTASSCO_FORCE_INLINE constexpr T& store_toggle_bit(T& x, unsigned n) noexcept {
-    return (x ^= bit_mask<T>(n));
+    return (x ^= nth_bit<T>(n));
 }
 ///@}
 /*!
@@ -146,6 +146,12 @@ POTASSCO_FORCE_INLINE constexpr T& store_toggle_mask(T& x, std::type_identity_t<
     return (x ^= m);
 }
 ///@}
+//! Returns a value of T with first @c numBits set.
+template <std::unsigned_integral T>
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T bit_max(unsigned numBits) {
+    return numBits < (sizeof(T) * CHAR_BIT) ? nth_bit<T>(numBits) - 1 : ~static_cast<T>(0);
+}
+static_assert(bit_max<unsigned>(0) == 0u && bit_max<unsigned>(3) == 7u && bit_max<uint32_t>(32) == UINT32_MAX);
 
 //! Returns a copy of @c x with only the right most set bit set.
 template <std::unsigned_integral T>
@@ -168,6 +174,12 @@ POTASSCO_FORCE_INLINE constexpr unsigned log2(T x) noexcept {
     return static_cast<unsigned>(std::bit_width(x)) - static_cast<unsigned>(x != 0u);
 }
 static_assert(log2(0u) == 0u && log2(1u) == 0u && log2(2u) == 1u && log2(4u) == 2u && log2(255u) == 7u);
+//! Returns the number of set bits in the value of x.
+template <std::unsigned_integral T>
+POTASSCO_FORCE_INLINE constexpr unsigned bit_count(T x) noexcept {
+    return static_cast<unsigned>(std::popcount(x));
+}
+static_assert(bit_count(0u) == 0u && bit_count(1u) == 1u && bit_count(127u) == 7u);
 ///@}
 
 } // namespace Potassco

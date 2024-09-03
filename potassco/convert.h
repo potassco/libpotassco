@@ -59,7 +59,7 @@ public:
     void minimize(Weight_t prio, const WeightLitSpan& lits) override;
     //! Adds an atom with the given name that is equivalent to the condition to the symbol table.
     void output(const std::string_view& name, const LitSpan& cond) override;
-    //! Marks the atom that is equivalent to @c a as external.
+    //! Marks the atom that is equivalent to @c 'a' as external.
     void external(Atom_t a, Value_t v) override;
     //! Adds an @a _heuristic predicate over the given atom to the symbol table that is equivalent to @c condition.
     void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;

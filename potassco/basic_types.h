@@ -111,11 +111,11 @@ constexpr auto toSpan(T&& x) -> std::span<std::remove_reference_t<T>> {
 
 //! Supported rule head types.
 enum class Head_t : unsigned { disjunctive = 0, choice = 1 };
-[[maybe_unused]] consteval auto enable_meta(std::type_identity<Head_t>) { return DefaultEnum<Head_t, 2u>(); }
+POTASSCO_SET_DEFAULT_ENUM_MAX(Head_t::choice);
 
 //! Supported rule body types.
 enum class Body_t : unsigned { normal = 0, sum = 1, count = 2 };
-[[maybe_unused]] consteval auto enable_meta(std::type_identity<Body_t>) { return DefaultEnum<Body_t, 3u>(); }
+POTASSCO_SET_DEFAULT_ENUM_MAX(Body_t::count);
 
 //! Type representing an external value.
 enum class Value_t : unsigned { free = 0, true_ = 1, false_ = 2, release = 3 };
@@ -127,13 +127,13 @@ enum class Value_t : unsigned { free = 0, true_ = 1, false_ = 2, release = 3 };
 
 //! Supported modifications for domain heuristic.
 enum class Heuristic_t : unsigned { level = 0, sign = 1, factor = 2, init = 3, true_ = 4, false_ = 5 };
+[[maybe_unused]] consteval auto enable_ops(std::type_identity<Heuristic_t>) -> CmpOps;
 [[maybe_unused]] consteval auto enable_meta(std::type_identity<Heuristic_t>) {
     using enum Heuristic_t;
     using namespace std::literals;
     return EnumEntries(level, "level"sv, sign, "sign"sv, factor, "factor"sv, init, "init"sv, true_, "true"sv, false_,
                        "false"sv);
 }
-[[maybe_unused]] consteval auto enable_ops(std::type_identity<Heuristic_t>) -> CmpOps;
 
 //! Supported aspif directives.
 enum class Directive_t : unsigned {
@@ -149,7 +149,7 @@ enum class Directive_t : unsigned {
     theory    = 9,
     comment   = 10
 };
-[[maybe_unused]] consteval auto enable_meta(std::type_identity<Directive_t>) { return DefaultEnum<Directive_t, 11u>(); }
+POTASSCO_SET_DEFAULT_ENUM_MAX(Directive_t::comment);
 
 //! Basic callback interface for constructing a logic program.
 class AbstractProgram {
@@ -365,7 +365,7 @@ public:
             release();
         }
     }
-    ConstString&           operator=(const ConstString&) = delete;
+    ConstString&           operator=(const ConstString& other);
     constexpr ConstString& operator=(ConstString&& other) noexcept {
         if (this != &other) {
             this->~ConstString();

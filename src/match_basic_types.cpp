@@ -21,10 +21,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-#ifdef _MSC_VER
-#pragma warning(disable : 4996) // std::copy unsafe
-#endif
-
 #include <potassco/match_basic_types.h>
 
 #include <potassco/error.h>
@@ -64,7 +60,7 @@ void AbstractProgram::endStep() {}
 /////////////////////////////////////////////////////////////////////////////////////////
 // BufferedStream
 /////////////////////////////////////////////////////////////////////////////////////////
-BufferedStream::BufferedStream(std::istream& str) : str_(str), rpos_(0), line_(1) {
+BufferedStream::BufferedStream(std::istream& str) : str_(str), buf_(nullptr), rpos_(0), line_(1) {
     buf_ = new char[alloc_size];
     underflow();
 }
@@ -334,6 +330,13 @@ ConstString::ConstString(const ConstString& o) : ConstString(not o.shareable() ?
         new (storage_) Large{*o.large()};
         addRef(1);
     }
+}
+ConstString& ConstString::operator=(const ConstString& other) {
+    if (this != &other) {
+        this->~ConstString();
+        new (this) ConstString(other);
+    }
+    return *this;
 }
 void ConstString::release() {
     if (not shareable() || addRef(-1) == 0) {
