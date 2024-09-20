@@ -247,7 +247,7 @@ int matchDomHeuPred(const char*& in, StringSpan& atom, Heuristic_t& type, int& b
 	if (!matchAtomArg(in, atom) || !match(in, ",")) { return -1; }
 	if (!match(in, type)        || !match(in, ",")) { return -2; }
 	if (!match(in, bias)) { return -3; }
-	prio = static_cast<unsigned>(bias < 0 ? -bias : bias);
+	prio = bias < 0 ? static_cast<unsigned>(~bias) + 1u : static_cast<unsigned>(bias);
 	if (!match(in, ",")) { return match(in, ")") ? 1 : -3; }
 	if (!match(in, p) || p < 0) { return -4; }
 	prio = static_cast<unsigned>(p);

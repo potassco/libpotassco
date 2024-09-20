@@ -354,9 +354,10 @@ struct AspifTextOutput::Data {
 		for (StringSpan ignore;;) {
 			POTASSCO_REQUIRE(matchAtomArg(args, ignore), "invalid empty argument in name");
 			++arity;
-			if (*args++ == ')') break;
+			if (*args != ',') break;
+			++args;
 		}
-		POTASSCO_REQUIRE(!*args, "invalid character in name");
+		POTASSCO_REQUIRE(*args == ')' && !*++args, "invalid character in name");
 		return arity;
 	}
 
