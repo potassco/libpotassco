@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <ostream>
 #include <string>
@@ -344,7 +345,7 @@ struct AspifTextOutput::Data {
 	static int atomArity(const std::string& name, std::size_t* sepPos = 0) {
 		if (name.empty() || name[0] == '&') return -1;
 		std::size_t pos = std::min(name.find('('), name.size());
-		POTASSCO_REQUIRE(pos == name.size() || name.back() == ')', "invalid name");
+		POTASSCO_REQUIRE(pos == name.size() || *name.rbegin() == ')', "invalid name");
 		if (sepPos) *sepPos = pos;
 		if (name.size() - pos <= 2) {
 			return 0;
@@ -659,7 +660,7 @@ void AspifTextOutput::writeDirectives() {
 				}
 				else if (last.second != arity || n->compare(0, ep, last.first) != 0) {
 					last.first.resize(n->size());
-					auto w = snprintf(&last.first[0], n->size(), "%.*s/%d", (int) ep, n->c_str(), arity);
+					int w = snprintf(&last.first[0], n->size(), "%.*s/%d", (int) ep, n->c_str(), arity);
 					assert(w > ep);
 					last.first.resize(w);
 					if (data_->strings.insert(Data::StringMapVal(last.first, idMax)).second) {

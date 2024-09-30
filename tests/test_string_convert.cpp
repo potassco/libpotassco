@@ -154,8 +154,9 @@ TEST_CASE("String conversion", "[string]") {
 					std::string loc(it->first);
 					loc.append(1, *s).append(it->second).append(*code);
 					if (setlocale(LC_ALL, loc.c_str())) {
-						restore.second = std::locale::global(std::locale(loc));
+						INFO("Set locale to " << loc);
 						set = true;
+						CHECK_NOFAIL((restore.second = std::locale::global(std::locale(loc)), true));
 					}
 				}
 			}
