@@ -257,6 +257,8 @@ constexpr Weight_t weight(const WeightLit_t& w) { return w.weight; }
  */
 class DynamicBuffer {
 public:
+    using trivially_relocatable = std::true_type; // NOLINT
+
     //! Creates a buffer with given initial capacity.
     explicit DynamicBuffer(std::size_t initialCap = 0);
     ~DynamicBuffer();

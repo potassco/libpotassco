@@ -62,6 +62,8 @@ struct Rule_t {
 //! A builder class for creating a rule.
 class RuleBuilder {
 public:
+    using trivially_relocatable = std::true_type; // NOLINT
+
     RuleBuilder()                         = default;
     RuleBuilder(const RuleBuilder& other) = default;
     RuleBuilder(RuleBuilder&& other) noexcept;

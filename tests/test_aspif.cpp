@@ -199,6 +199,8 @@ TEST_CASE("Test DynamicBuffer", "[rule]") {
         static_assert(std::is_move_assignable_v<DynamicBuffer>, "should be movable");
         static_assert(std::is_copy_assignable_v<DynamicBuffer>, "should not be copyable");
         static_assert(std::is_copy_constructible_v<DynamicBuffer>, "should not be copyable");
+        static_assert(DynamicBuffer::trivially_relocatable::value);
+
         DynamicBuffer m1;
         std::string   exp(50, 'x');
         m1.append(exp.data(), exp.size());
@@ -251,6 +253,20 @@ TEST_CASE("Test DynamicBuffer", "[rule]") {
             CHECK(m2.size() == sz);
             CHECK(m2.capacity() <= cp);
             CHECK(exp == m2.data());
+        }
+
+        SECTION("memcpy") {
+            DynamicBuffer empty;
+            DynamicBuffer m2;
+            void*         raw = m1.data();
+            POTASSCO_WARNING_PUSH()
+            POTASSCO_WARNING_IGNORE_GCC("-Wclass-memaccess")
+            std::memcpy(&m2, &m1, sizeof(DynamicBuffer));    // NOLINT(*-undefined-memory-manipulation)
+            std::memcpy(&m1, &empty, sizeof(DynamicBuffer)); // NOLINT(*-undefined-memory-manipulation)
+            POTASSCO_WARNING_POP()
+            CHECK(raw == m2.data());
+            CHECK(exp == m2.data());
+            CHECK(m1.data() == nullptr);
         }
     }
 }
@@ -477,6 +493,7 @@ TEST_CASE("Test Basic", "[rule]") {
 }
 TEST_CASE("Test RuleBuilder", "[rule]") {
     RuleBuilder rb;
+    static_assert(RuleBuilder::trivially_relocatable::value);
 
     SECTION("simple rule") {
         rb.start().addHead(1).addGoal(2).addGoal(-3).end();
@@ -676,6 +693,23 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
             REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
             REQUIRE(rb.bodyType() == Body_t::normal);
             REQUIRE(spanEq(rb.body(), std::vector{2, -3}));
+        }
+        SECTION("memcpy") {
+            RuleBuilder empty;
+            RuleBuilder mc;
+            POTASSCO_WARNING_PUSH()
+            POTASSCO_WARNING_IGNORE_GCC("-Wclass-memaccess")
+            std::memcpy(&mc, &rb, sizeof(RuleBuilder));    // NOLINT(*-undefined-memory-manipulation)
+            std::memcpy(&rb, &empty, sizeof(RuleBuilder)); // NOLINT(*-undefined-memory-manipulation)
+            POTASSCO_WARNING_POP()
+
+            REQUIRE(spanEq(mc.head(), std::vector<Atom_t>{1}));
+            REQUIRE(mc.sum().bound == 25);
+            REQUIRE(spanEq(mc.sumLits(), exp));
+            auto newLit = WeightLit_t{4711, 31};
+            mc.addGoal(newLit);
+            exp.push_back(newLit);
+            REQUIRE(spanEq(mc.sumLits(), exp));
         }
     }
 
