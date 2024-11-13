@@ -63,7 +63,7 @@ static std::ostream& operator<<(std::ostream& os, const std::pair<Atom_t, Potass
 static std::ostream& operator<<(std::ostream& os, const Heuristic& h);
 static std::ostream& operator<<(std::ostream& os, const Edge& e);
 template <typename T>
-std::string stringify(const std::span<T>& s) {
+static std::string stringify(const std::span<T>& s) {
     std::stringstream str;
     str << "[";
     const char* sep = "";
@@ -82,7 +82,8 @@ template <Potassco::ScopedEnum E>
 [[maybe_unused]] static std::ostream& operator<<(std::ostream& os, E e) {
     return os << Potassco::to_underlying(e);
 }
-class ReadObserver : public Test::ReadObserver {
+namespace {
+class ReadObserver final : public Test::ReadObserver {
 public:
     void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override {
         rules.push_back({ht, {begin(head), end(head)}, Body_t::normal, bound_none, {}});
@@ -126,6 +127,22 @@ public:
     TheoryData                              theory;
 };
 
+enum class DummyEnum : uint8_t {
+    zero  = 0,
+    one   = 1,
+    two   = 2,
+    three = 3,
+    four  = 4,
+    five  = 5,
+    six   = 6,
+    seven = 7,
+    eight = 8,
+};
+POTASSCO_SET_DEFAULT_ENUM_MAX(DummyEnum::eight);
+[[maybe_unused]] consteval auto enable_ops(std::type_identity<DummyEnum>) -> CmpOps { return {}; }
+
+} // namespace
+
 static unsigned compareRead(std::stringstream& input, ReadObserver& observer, const Rule* rules,
                             const std::pair<unsigned, unsigned>& subset) {
     for (unsigned i = 0; i != subset.second; ++i) { rule(input, rules[subset.first + i]); }
@@ -141,6 +158,7 @@ static unsigned compareRead(std::stringstream& input, ReadObserver& observer, co
     }
     return subset.second;
 }
+
 TEST_CASE("Test DynamicBuffer", "[rule]") {
     SECTION("starts empty") {
         DynamicBuffer r;
@@ -261,6 +279,7 @@ TEST_CASE("Test DynamicBuffer", "[rule]") {
             void*         raw = m1.data();
             POTASSCO_WARNING_PUSH()
             POTASSCO_WARNING_IGNORE_GCC("-Wclass-memaccess")
+            POTASSCO_WARNING_IGNORE_CLANG("-Wnontrivial-memaccess")
             std::memcpy(&m2, &m1, sizeof(DynamicBuffer));    // NOLINT(*-undefined-memory-manipulation)
             std::memcpy(&m1, &empty, sizeof(DynamicBuffer)); // NOLINT(*-undefined-memory-manipulation)
             POTASSCO_WARNING_POP()
@@ -490,6 +509,96 @@ TEST_CASE("Test Basic", "[rule]") {
         CHECK(store_clear_bit(n, 3u) == 0u);
         CHECK(n == 0);
     }
+    SECTION("bitset") {
+        Bitset<unsigned> bs({1u, 2u, 5u});
+        CHECK(bs.count() == 3);
+        CHECK(bs.contains(1));
+        CHECK(bs.contains(2));
+        CHECK(bs.contains(5));
+        CHECK_FALSE(bs.contains(0));
+        CHECK_FALSE(bs.contains(3));
+        CHECK_FALSE(bs.contains(4));
+
+        bs.removeMax(5);
+        CHECK_FALSE(bs.contains(5));
+        CHECK(bs.count() == 2);
+        bs.add(3);
+        bs.add(4);
+        bs.add(5);
+        CHECK(bs.count() == 5);
+        bs.removeMax(4);
+        CHECK_FALSE(bs.contains(5));
+        CHECK_FALSE(bs.contains(4));
+        CHECK(bs.contains(3));
+        CHECK(bs.count() == 3);
+        bs.remove(3);
+        CHECK(bs.count() == 2);
+        CHECK_FALSE(bs.contains(3));
+
+        auto copy = bs;
+        bs.removeMax(0);
+        CHECK(bs.count() == 0);
+        CHECK(copy.count() == 2);
+        copy.clear();
+        CHECK(copy.count() == 0);
+
+        bs.add(31);
+        bs.add(30);
+        CHECK(bs.count() == 2);
+        bs.removeMax(32);
+        CHECK(bs.count() == 2);
+        bs.removeMax(31);
+        CHECK(bs.count() == 1);
+    }
+
+    SECTION("bitset enum") {
+        using SetType = Bitset<unsigned, DummyEnum>;
+        static_assert(sizeof(SetType) == sizeof(unsigned));
+
+        SetType dummy;
+        dummy.add(DummyEnum::eight);
+        CHECK(dummy.count() == 1u);
+        CHECK(dummy.contains(DummyEnum::eight));
+        CHECK_FALSE(dummy.contains(DummyEnum::seven));
+
+        dummy.add(DummyEnum::five);
+        dummy.removeMax(DummyEnum::seven);
+        CHECK(dummy.count() == 1u);
+        CHECK(dummy.contains(DummyEnum::five));
+    }
+
+    SECTION("dynamic biset") {
+        DynamicBitset bitset;
+        CHECK(bitset.count() == 0);
+        CHECK(bitset == bitset);
+        CHECK_FALSE(bitset < bitset);
+        CHECK_FALSE(bitset > bitset);
+        CHECK(bitset <= bitset);
+
+        bitset.add(63);
+        DynamicBitset other;
+        CHECK(bitset.count() == 1);
+        CHECK(other < bitset);
+        bitset.add(64);
+        CHECK(bitset.count() == 2);
+        other.add(64);
+        CHECK(other < bitset);
+        other.add(65);
+        CHECK(other > bitset);
+        other.add(128);
+        CHECK(other > bitset);
+        CHECK(other.count() == 3);
+        other.remove(65);
+        CHECK(other > bitset);
+        other.add(63);
+        other.remove(128);
+        CHECK(other == bitset);
+        other.add(4096);
+        other.add(100000);
+        CHECK(other.count() == 4);
+        other.remove(100000);
+        CHECK(other.count() == 3);
+    }
 }
 TEST_CASE("Test RuleBuilder", "[rule]") {
     RuleBuilder rb;
@@ -543,7 +652,7 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
         rb.startSum(2).addGoal(2, 1).addGoal(-3, 1).addGoal(4, 2).addHead(1).end();
         REQUIRE_THROWS_AS(rb.setBound(4), std::logic_error);
     }
-    SECTION("weakean to cardinality rule") {
+    SECTION("weaken to cardinality rule") {
         rb.start().addHead(1).startSum(2).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).weaken(Body_t::count).end();
         REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
         REQUIRE(rb.bodyType() == Body_t::count);
@@ -699,6 +808,7 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
             RuleBuilder mc;
             POTASSCO_WARNING_PUSH()
             POTASSCO_WARNING_IGNORE_GCC("-Wclass-memaccess")
+            POTASSCO_WARNING_IGNORE_CLANG("-Wnontrivial-memaccess")
             std::memcpy(&mc, &rb, sizeof(RuleBuilder));    // NOLINT(*-undefined-memory-manipulation)
             std::memcpy(&rb, &empty, sizeof(RuleBuilder)); // NOLINT(*-undefined-memory-manipulation)
             POTASSCO_WARNING_POP()

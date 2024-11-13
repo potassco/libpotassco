@@ -304,6 +304,56 @@ void DynamicBuffer::append(const void* what, std::size_t n) {
     }
 }
 /////////////////////////////////////////////////////////////////////////////////////////
+// DynamicBitset
+/////////////////////////////////////////////////////////////////////////////////////////
+unsigned DynamicBitset::count() const noexcept {
+    unsigned c = 0;
+    for (auto xs : span()) { c += xs.count(); }
+    return c;
+}
+bool DynamicBitset::empty() const noexcept { return buffer_.size() == 0; }
+void DynamicBitset::reserve(unsigned numBits) {
+    if (numBits) {
+        buffer_.reserve((1u + pos(numBits - 1).first) * sizeof(SetType));
+    }
+}
+bool DynamicBitset::add(IndexType bit) {
+    auto [w, p] = pos(bit);
+    auto s      = span();
+    if (w >= s.size()) {
+        auto add = (w - s.size()) + 1;
+        buffer_.reserve((s.size() + add) * sizeof(SetType));
+        while (add--) { new (buffer_.alloc(sizeof(SetType)).data()) SetType(); }
+        s = span();
+    }
+    return s[w].add(bit);
+}
+bool DynamicBitset::remove(IndexType bit) {
+    auto [w, p] = pos(bit);
+    auto s      = span();
+    auto res    = w < s.size() && s[w].remove(p);
+    if (res && (w + 1) == s.size() && s[w].count() == 0) {
+        auto pop = 1u;
+        while (w-- && s[w].count() == 0) { ++pop; }
+        buffer_.pop(pop * sizeof(SetType));
+        return true;
+    }
+    return res;
+}
+auto DynamicBitset::compare(const DynamicBitset& other) const -> std::strong_ordering {
+    auto lhs = span();
+    auto rhs = other.span();
+    if (auto x = lhs.size() <=> rhs.size(); x != std::strong_ordering::equal) {
+        return x;
+    }
+    for (auto n = lhs.size(); n--;) {
+        if (auto x = lhs[n] <=> rhs[n]; x != std::strong_ordering::equal) {
+            return x;
+        }
+    }
+    return std::strong_ordering::equal;
+}
+/////////////////////////////////////////////////////////////////////////////////////////
 // ConstString
 /////////////////////////////////////////////////////////////////////////////////////////
 ConstString::ConstString(std::string_view n, CreateMode m) {
