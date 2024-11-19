@@ -1,15 +1,54 @@
 #include <potassco/error.h>
 
+#if __has_include(<fpu_control.h>)
+#include <fpu_control.h>
+#endif
+
+#include <cfloat>
 #include <charconv>
 #include <cstdarg>
 #include <cstdio>
 #include <span>
 #include <utility>
 
+#if FLT_EVAL_METHOD == 2 || FLT_EVAL_METHOD < 0
+#if defined(_MSC_VER) || defined(_WIN32)
+#pragma fenv_access(on)
+#endif
+static unsigned setFpuPrecision(unsigned* r) {
+#if defined(_FPU_GETCW) && defined(_FPU_SETCW) && defined(_FPU_DOUBLE)
+    fpu_control_t cw;
+    _FPU_GETCW(cw);
+    if (r && cw == static_cast<fpu_control_t>(*r)) {
+        return *r;
+    }
+    auto nw = static_cast<fpu_control_t>(
+        not r ? (cw & ~static_cast<fpu_control_t>(_FPU_EXTENDED) & ~static_cast<fpu_control_t>(_FPU_SINGLE)) |
+                    static_cast<fpu_control_t>(_FPU_DOUBLE)
+              : static_cast<fpu_control_t>(*r));
+    _FPU_SETCW(nw);
+    return static_cast<unsigned>(cw);
+#elif defined(_MSC_VER) || defined(_WIN32)
+    unsigned cw = _controlfp(0, 0);
+    unsigned nw = not r ? static_cast<unsigned>(_PC_53) : *r;
+    _controlfp(nw, _MCW_PC);
+    return cw;
+#else
+    return UINT32_MAX;
+#endif
+    return 0u;
+}
+#else
+constexpr unsigned setFpuPrecision(unsigned*) { return 0u; }
+#endif
+
 namespace Potassco {
 using namespace std::literals;
 
 static constexpr auto c_file = std::string_view{__FILE__};
+
+unsigned initFpuPrecision() { return setFpuPrecision(nullptr); }
+void     restoreFpuPrecision(unsigned r) { setFpuPrecision(&r); }
 
 const char* ExpressionInfo::relativeFileName(const std::source_location& loc) {
     auto res = loc.file_name();

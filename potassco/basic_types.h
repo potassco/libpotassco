@@ -178,7 +178,7 @@ public:
     virtual void project(const AtomSpan& atoms);
     //! Output @c str whenever condition is true in a stable model.
     virtual void output(const std::string_view& str, const LitSpan& condition);
-    //! If @c v is not equal to @c Value_t::release, mark a as external and assume value @c v. Otherwise, treat @c a as
+    //! If `v` is not equal to `Value_t::release`, mark `a` as external and assume value `v`. Otherwise, treat `a` as
     //! regular atom.
     virtual void external(Atom_t a, Value_t v);
     //! Assume the given literals to true during solving.

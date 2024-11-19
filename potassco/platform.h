@@ -145,6 +145,16 @@ using AbortHandler = void (*)(const char* msg);
  */
 extern AbortHandler setAbortHandler(AbortHandler handler);
 
+//! Sets x87 floating-point unit to double precision if needed and returns the previous configuration.
+/*!
+ * \note This function does nothing (and returns 0) if x87 floating-point unit is not active.
+ * \note x87 floating-point unit is typically only used on x86_32 (x86_64 uses SSE by default).
+ * \return The previous configuration or UINT32_MAX if configuration failed.
+ */
+unsigned initFpuPrecision();
+//! Restores x87 floating-point unit to a previous configuration `r` returned from initFpuPrecision().
+void restoreFpuPrecision(unsigned r);
+
 } // namespace Potassco
 
 ///@}
