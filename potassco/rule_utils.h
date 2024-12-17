@@ -32,31 +32,30 @@ namespace Potassco {
 ///@{
 
 //! A sum aggregate with a lower bound.
-struct Sum_t {
+struct Sum {
     WeightLitSpan lits;  //!< Weight literals of the aggregate.
     Weight_t      bound; //!< Lower bound of the aggregate.
 };
 //! A type that can represent an aspif rule.
-struct Rule_t {
-    Rule_t() : ht{Head_t::disjunctive}, bt{Body_t::normal}, cond{} {}
-
-    Head_t   ht;   //!< Head type of the rule.
-    AtomSpan head; //!< Head atoms of the rule.
-    Body_t   bt;   //!< Type of rule body.
+struct Rule {
+    constexpr Rule() {}
+    HeadType ht{HeadType::disjunctive}; //!< Head type of the rule.
+    AtomSpan head{};                    //!< Head atoms of the rule.
+    BodyType bt{BodyType::normal};      //!< Type of rule body.
     union {
-        LitSpan cond;
-        Sum_t   agg;
+        LitSpan cond{};
+        Sum     agg;
     };
     //! Named constructor for creating a rule.
-    static Rule_t normal(Head_t ht, const AtomSpan& head, const LitSpan& body);
+    static Rule normal(HeadType ht, const AtomSpan& head, const LitSpan& body);
     //! Named constructor for creating a sum rule.
-    static Rule_t sum(Head_t ht, const AtomSpan& head, const Sum_t& sum);
+    static Rule sum(HeadType ht, const AtomSpan& head, const Sum& sum);
     //! Named constructor for creating a sum rule.
-    static Rule_t sum(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits);
+    static Rule sum(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits);
     //! Returns whether the rule has a normal body, i.e. whether the body is a conjunction of literals.
-    [[nodiscard]] bool normal() const { return bt == Body_t::normal; }
+    [[nodiscard]] bool normal() const { return bt == BodyType::normal; }
     //! Returns whether the body of the rule is a sum aggregate.
-    [[nodiscard]] bool sum() const { return bt != Body_t::normal; }
+    [[nodiscard]] bool sum() const { return bt != BodyType::normal; }
 };
 
 //! A builder class for creating a rule.
@@ -80,7 +79,7 @@ public:
      */
     //@{
     //! Start definition of the rule's head, which can be either disjunctive or a choice.
-    RuleBuilder& start(Head_t ht = Head_t::disjunctive);
+    RuleBuilder& start(HeadType ht = HeadType::disjunctive);
     //! Start definition of a minimize rule. No head allowed.
     RuleBuilder& startMinimize(Weight_t prio);
     //! Start definition of a conjunction to be used as the rule's body.
@@ -102,8 +101,8 @@ public:
     RuleBuilder& addHead(Atom_t a);
     //! Add lit to the rule's body.
     RuleBuilder& addGoal(Lit_t lit);
-    RuleBuilder& addGoal(WeightLit_t lit);
-    RuleBuilder& addGoal(Lit_t lit, Weight_t w) { return addGoal(WeightLit_t{.lit = lit, .weight = w}); }
+    RuleBuilder& addGoal(WeightLit lit);
+    RuleBuilder& addGoal(Lit_t lit, Weight_t w) { return addGoal(WeightLit{.lit = lit, .weight = w}); }
     //@}
 
     //! Stop definition of rule and add rule to out if given.
@@ -118,7 +117,7 @@ public:
     //! Discard head of active rule but keep body if any.
     RuleBuilder& clearHead();
     //! Weaken active sum aggregate body to a normal body or count aggregate.
-    RuleBuilder& weaken(Body_t to, bool resetWeights = true);
+    RuleBuilder& weaken(BodyType to, bool resetWeights = true);
 
     /*!
      * \name Query functions.
@@ -126,16 +125,16 @@ public:
      * \note The result of these functions is only valid until the next call to an update function.
      */
     //@{
-    [[nodiscard]] auto headType() const -> Head_t;
+    [[nodiscard]] auto headType() const -> HeadType;
     [[nodiscard]] auto head() const -> AtomSpan;
     [[nodiscard]] auto isMinimize() const -> bool;
-    [[nodiscard]] auto bodyType() const -> Body_t;
+    [[nodiscard]] auto bodyType() const -> BodyType;
     [[nodiscard]] auto body() const -> LitSpan;
     [[nodiscard]] auto bound() const -> Weight_t;
-    [[nodiscard]] auto sumLits() const -> std::span<WeightLit_t>;
-    [[nodiscard]] auto findSumLit(Lit_t lit) const -> WeightLit_t*;
-    [[nodiscard]] auto sum() const -> Sum_t;
-    [[nodiscard]] auto rule() const -> Rule_t;
+    [[nodiscard]] auto sumLits() const -> std::span<WeightLit>;
+    [[nodiscard]] auto findSumLit(Lit_t lit) const -> WeightLit*;
+    [[nodiscard]] auto sum() const -> Sum;
+    [[nodiscard]] auto rule() const -> Rule;
     [[nodiscard]] auto frozen() const -> bool;
     //@}
 private:

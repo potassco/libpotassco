@@ -30,7 +30,6 @@
 #include <algorithm>
 #include <cstring>
 
-#include <stdexcept>
 namespace Potassco {
 template <typename T>
 static constexpr std::size_t computeExtraBytes(const T& arg [[maybe_unused]]) {
@@ -59,42 +58,40 @@ struct TheoryTerm::FuncData {
 
 constexpr auto  c_nul_term  = static_cast<uint64_t>(-1);
 constexpr auto  c_type_mask = static_cast<uint64_t>(3);
-static uint64_t assertPtr(const void* p, Theory_t type) {
+static uint64_t assertPtr(const void* p, TheoryTermType type) {
     auto data = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(p));
     auto mask = static_cast<uint32_t>(type);
     POTASSCO_ASSERT(not test_any(data, mask), "Invalid pointer alignment");
     return data | mask;
 }
-Theory_t TheoryTerm::type() const { return static_cast<Theory_t>(clear_mask(data_, ~c_type_mask)); }
-int      TheoryTerm::number() const {
-    POTASSCO_CHECK(type() == Theory_t::number, Errc::invalid_argument, "Term is not a number");
+auto TheoryTerm::type() const -> Type { return static_cast<TheoryTermType>(clear_mask(data_, ~c_type_mask)); }
+int  TheoryTerm::number() const {
+    POTASSCO_CHECK(type() == TheoryTermType::number, Errc::invalid_argument, "Term is not a number");
     return static_cast<int>(data_ >> 2);
 }
 uintptr_t   TheoryTerm::getPtr() const { return static_cast<uintptr_t>(clear_mask(data_, c_type_mask)); }
 const char* TheoryTerm::symbol() const {
-    POTASSCO_CHECK(type() == Theory_t::symbol, Errc::invalid_argument, "Term is not a symbol");
+    POTASSCO_CHECK(type() == Type::symbol, Errc::invalid_argument, "Term is not a symbol");
     return reinterpret_cast<const char*>(getPtr());
 }
 TheoryTerm::FuncData* TheoryTerm::func() const { return reinterpret_cast<FuncData*>(getPtr()); }
 int                   TheoryTerm::compound() const {
-    POTASSCO_CHECK(type() == Theory_t::compound, Errc::invalid_argument, "Term is not a compound");
+    POTASSCO_CHECK(type() == Type::compound, Errc::invalid_argument, "Term is not a compound");
     return func()->base;
 }
-bool TheoryTerm::isFunction() const { return type() == Theory_t::compound && func()->base >= 0; }
-bool TheoryTerm::isTuple() const { return type() == Theory_t::compound && func()->base < 0; }
+bool TheoryTerm::isFunction() const { return type() == Type::compound && func()->base >= 0; }
+bool TheoryTerm::isTuple() const { return type() == Type::compound && func()->base < 0; }
 Id_t TheoryTerm::function() const {
     POTASSCO_CHECK(isFunction(), Errc::invalid_argument, "Term is not a function");
     return static_cast<Id_t>(func()->base);
 }
-Tuple_t TheoryTerm::tuple() const {
+TupleType TheoryTerm::tuple() const {
     POTASSCO_CHECK(isTuple(), Errc::invalid_argument, "Term is not a tuple");
-    return static_cast<Tuple_t>(func()->base);
+    return static_cast<TupleType>(func()->base);
 }
-uint32_t             TheoryTerm::size() const { return type() == Theory_t::compound ? func()->size : 0; }
-TheoryTerm::iterator TheoryTerm::begin() const { return type() == Theory_t::compound ? func()->args : nullptr; }
-TheoryTerm::iterator TheoryTerm::end() const {
-    return type() == Theory_t::compound ? func()->args + func()->size : nullptr;
-}
+uint32_t TheoryTerm::size() const { return type() == Type::compound ? func()->size : 0; }
+auto     TheoryTerm::begin() const -> iterator { return type() == Type::compound ? func()->args : nullptr; }
+auto TheoryTerm::end() const -> iterator { return type() == Type::compound ? func()->args + func()->size : nullptr; }
 TheoryElement::TheoryElement(const IdSpan& terms, const Id_t* c)
     : nTerms_(static_cast<uint32_t>(terms.size()))
     , nCond_(c != nullptr) {
@@ -134,10 +131,10 @@ struct TheoryData::DestroyT {
     void operator()(const TheoryTerm& raw) const {
         if (raw.data_ != c_nul_term) {
             // TheoryTerm term(raw);
-            if (auto type = raw.type(); type == Theory_t::compound) {
+            if (auto type = raw.type(); type == TheoryTermType::compound) {
                 (*this)(raw.func());
             }
-            else if (type == Theory_t::symbol) {
+            else if (type == TheoryTermType::symbol) {
                 delete[] const_cast<char*>(raw.symbol());
             }
         }
@@ -159,21 +156,20 @@ struct TheoryData::Data {
     amc::vector<TheoryElement*> elems;
     amc::vector<TheoryTerm>     terms;
     struct Up {
-        Up() : atom(0), term(0), elem(0) {}
-        uint32_t atom;
-        uint32_t term;
-        uint32_t elem;
+        uint32_t atom{0};
+        uint32_t term{0};
+        uint32_t elem{0};
     } frame;
 };
 TheoryData::TheoryData() : data_(std::make_unique<Data>()) {}
 TheoryData::~TheoryData() { reset(); }
 void TheoryData::addTerm(Id_t termId, int number) {
     auto& term = setTerm(termId);
-    term       = (static_cast<uint64_t>(number) << 2) | to_underlying(Theory_t::number);
+    term       = (static_cast<uint64_t>(number) << 2) | to_underlying(TheoryTermType::number);
 }
 void TheoryData::addTerm(Id_t termId, const std::string_view& name) {
     auto& term = setTerm(termId);
-    term       = assertPtr(Data::allocCString(name), Theory_t::symbol);
+    term       = assertPtr(Data::allocCString(name), TheoryTermType::symbol);
     POTASSCO_DEBUG_ASSERT(getTerm(termId).symbol() == name);
 }
 void TheoryData::addTerm(Id_t termId, const char* name) {
@@ -183,12 +179,12 @@ void TheoryData::addTerm(Id_t termId, const char* name) {
 void TheoryData::addTerm(Id_t termId, Id_t funcId, const IdSpan& args) {
     using D    = TheoryTerm::FuncData;
     auto& term = setTerm(termId);
-    term       = assertPtr(Data::allocConstruct<D>(static_cast<int32_t>(funcId), args), Theory_t::compound);
+    term       = assertPtr(Data::allocConstruct<D>(static_cast<int32_t>(funcId), args), TheoryTermType::compound);
 }
-void TheoryData::addTerm(Id_t termId, Tuple_t type, const IdSpan& args) {
+void TheoryData::addTerm(Id_t termId, TupleType type, const IdSpan& args) {
     using D    = TheoryTerm::FuncData;
     auto& term = setTerm(termId);
-    term       = assertPtr(Data::allocConstruct<D>(static_cast<int32_t>(type), args), Theory_t::compound);
+    term       = assertPtr(Data::allocConstruct<D>(static_cast<int32_t>(type), args), TheoryTermType::compound);
 }
 void TheoryData::removeTerm(Id_t termId) {
     if (hasTerm(termId)) {
@@ -241,19 +237,19 @@ void TheoryData::update() {
     data_->frame.term = numTerms();
     data_->frame.elem = numElems();
 }
-uint32_t                  TheoryData::numAtoms() const { return data_->atoms.size(); }
-uint32_t                  TheoryData::numTerms() const { return data_->terms.size(); }
-uint32_t                  TheoryData::numElems() const { return data_->elems.size(); }
-void                      TheoryData::resizeAtoms(uint32_t newSize) { data_->atoms.resize(newSize); }
-void                      TheoryData::destroyAtom(TheoryAtom* atom) { DestroyT{}(atom); }
-TheoryData::atom_iterator TheoryData::begin() const { return data_->atoms.begin(); }
-TheoryData::atom_iterator TheoryData::currBegin() const { return begin() + data_->frame.atom; }
-TheoryData::atom_iterator TheoryData::end() const { return begin() + numAtoms(); }
-bool       TheoryData::hasTerm(Id_t id) const { return id < numTerms() && data_->terms[id].data_ != c_nul_term; }
-bool       TheoryData::isNewTerm(Id_t id) const { return hasTerm(id) && id >= data_->frame.term; }
-bool       TheoryData::hasElement(Id_t id) const { return id < numElems() && data_->elems[id] != nullptr; }
-bool       TheoryData::isNewElement(Id_t id) const { return hasElement(id) && id >= data_->frame.elem; }
-TheoryTerm TheoryData::getTerm(Id_t id) const {
+uint32_t TheoryData::numAtoms() const { return data_->atoms.size(); }
+uint32_t TheoryData::numTerms() const { return data_->terms.size(); }
+uint32_t TheoryData::numElems() const { return data_->elems.size(); }
+void     TheoryData::resizeAtoms(uint32_t newSize) { data_->atoms.resize(newSize); }
+void     TheoryData::destroyAtom(TheoryAtom* atom) { DestroyT{}(atom); }
+auto     TheoryData::begin() const -> atom_iterator { return data_->atoms.begin(); }
+auto     TheoryData::currBegin() const -> atom_iterator { return begin() + data_->frame.atom; }
+auto     TheoryData::end() const -> atom_iterator { return begin() + numAtoms(); }
+bool     TheoryData::hasTerm(Id_t id) const { return id < numTerms() && data_->terms[id].data_ != c_nul_term; }
+bool     TheoryData::isNewTerm(Id_t id) const { return hasTerm(id) && id >= data_->frame.term; }
+bool     TheoryData::hasElement(Id_t id) const { return id < numElems() && data_->elems[id] != nullptr; }
+bool     TheoryData::isNewElement(Id_t id) const { return hasElement(id) && id >= data_->frame.elem; }
+auto     TheoryData::getTerm(Id_t id) const -> TheoryTerm {
     POTASSCO_CHECK(hasTerm(id), Errc::out_of_range, "Unknown term '%u'", id);
     return data_->terms[id];
 }
@@ -267,7 +263,7 @@ void TheoryData::accept(Visitor& out, VisitMode m) const {
     }
 }
 void TheoryData::accept(const TheoryTerm& t, Visitor& out, VisitMode m) const {
-    if (t.type() == Theory_t::compound) {
+    if (t.type() == TheoryTermType::compound) {
         for (auto id : t) {
             if (doVisitTerm(m, id)) {
                 out.visit(*this, id, getTerm(id));

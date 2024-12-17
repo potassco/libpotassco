@@ -129,7 +129,7 @@ public:
 
 protected:
     using StreamType = BufferedStream;
-    using WLit_t     = WeightLit_t;
+    using WLit_t     = WeightLit;
     //! Shall return true if the format of the input stream is supported by this object.
     /*!
      * \param[out] inc Whether the input stream represents an incremental program.
@@ -168,7 +168,7 @@ protected:
     //! Extracts a literal (i.e. positive or negative atom) or fails with a std::exception.
     Lit_t matchLit(const char* error = "literal expected") {
         auto res = matchInt(-static_cast<Lit_t>(varMax_), static_cast<Lit_t>(varMax_), error);
-        (void) require(res != 0, error);
+        require(res != 0, error);
         return static_cast<Lit_t>(res);
     }
     //! Extracts a weight or fails with a std::exception.

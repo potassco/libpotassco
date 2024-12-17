@@ -34,13 +34,15 @@ namespace Potassco {
  */
 int readAspif(std::istream& prg, AbstractProgram& out);
 
-enum class Theory_t;
+//! Supported aspif theory statements.
+enum class TheoryType : uint32_t { number = 0, symbol = 1, compound = 2, element = 4, atom = 5, atom_with_guard = 6 };
+POTASSCO_SET_DEFAULT_ENUM_MAX(TheoryType::atom_with_guard);
 
 //! Class for parsing logic programs in asp intermediate format.
 class AspifInput : public ProgramReader {
 public:
     //! Creates a new parser object that calls @c out on each parsed element.
-    AspifInput(AbstractProgram& out);
+    explicit AspifInput(AbstractProgram& out);
 
 protected:
     //! Checks whether stream starts with aspif header.
@@ -51,11 +53,6 @@ protected:
      * output object before/after parsing the current step.
      */
     bool doParse() override;
-    //! Attempts to parse a theory directive of type @c t.
-    /*!
-     * \see Potassco::Theory_t
-     */
-    virtual void matchTheory(Theory_t t);
 
 private:
     struct Extra;
@@ -64,6 +61,7 @@ private:
     void matchWLits(bool positive);
     void matchString();
     void matchIds();
+    void matchTheory(TheoryType t);
 
     AbstractProgram& out_;
     Extra*           data_;
@@ -77,7 +75,7 @@ private:
 class AspifOutput : public AbstractProgram {
 public:
     //! Creates a new object and associates it with the given output stream.
-    AspifOutput(std::ostream& os);
+    explicit AspifOutput(std::ostream& os);
     AspifOutput(const AspifOutput&)            = delete;
     AspifOutput& operator=(const AspifOutput&) = delete;
 
@@ -86,15 +84,15 @@ public:
     //! Prepares the object for a new program step.
     void beginStep() override;
     //! Writes an aspif rule directive.
-    void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override;
+    void rule(HeadType ht, const AtomSpan& head, const LitSpan& body) override;
     //! Writes an aspif rule directive.
-    void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) override;
+    void rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) override;
     //! Writes an aspif minimize directive.
     void minimize(Weight_t prio, const WeightLitSpan& lits) override;
     //! Writes an aspif output directive.
     void output(const std::string_view& str, const LitSpan& cond) override;
     //! Writes an aspif external directive.
-    void external(Atom_t a, Value_t v) override;
+    void external(Atom_t a, TruthValue v) override;
     //! Writes an aspif assumption directive.
     void assume(const LitSpan& lits) override;
     //! Writes an aspif projection directive.
@@ -102,7 +100,7 @@ public:
     //! Writes an aspif edge directive.
     void acycEdge(int s, int t, const LitSpan& condition) override;
     //! Writes an aspif heuristic directive.
-    void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;
+    void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& condition) override;
 
     //! Writes an aspif theory number term.
     void theoryTerm(Id_t termId, int number) override;
@@ -121,7 +119,7 @@ public:
 
 protected:
     //! Starts writing an aspif directive.
-    AspifOutput& startDir(Directive_t r);
+    AspifOutput& startDir(AspifType r);
     //! Writes @c x.
     template <typename T>
     AspifOutput& add(T x);

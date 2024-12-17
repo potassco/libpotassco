@@ -295,53 +295,51 @@ TEST_CASE("String conversion", "[string]") {
     }
 }
 
-enum class Foo_t : unsigned { Value1 = 0, Value2 = 1, Value3 = 2, Value4, Value5 = 7, Value6 = 7 + 1 };
-[[maybe_unused]] consteval auto enable_meta(std::type_identity<Foo_t>) {
-    return Potassco::reflectEntries<Foo_t, 0u, 8u>();
-}
+enum class Foo : unsigned { Value1 = 0, Value2 = 1, Value3 = 2, Value4, Value5 = 7, Value6 = 7 + 1 };
+[[maybe_unused]] consteval auto enable_meta(std::type_identity<Foo>) { return Potassco::reflectEntries<Foo, 0u, 8u>(); }
 
 using namespace std::literals;
-static_assert(Potassco::enum_count<Foo_t>() == 6, "Wrong count");
-static_assert(Potassco::enum_name(Foo_t::Value3) == "Value3"sv, "Wrong name");
+static_assert(Potassco::enum_count<Foo>() == 6, "Wrong count");
+static_assert(Potassco::enum_name(Foo::Value3) == "Value3"sv, "Wrong name");
 TEST_CASE("Enum entries", "[enum]") {
-    using P = std::pair<Foo_t, std::string_view>;
-    using enum Foo_t;
+    using P = std::pair<Foo, std::string_view>;
+    using enum Foo;
 
-    REQUIRE(Potassco::enum_entries<Foo_t>() == std::array{P(Value1, "Value1"sv), P(Value2, "Value2"sv),
-                                                          P(Value3, "Value3"sv), P(Value4, "Value4"sv),
-                                                          P(Value5, "Value5"sv), P(Value6, "Value6"sv)});
+    REQUIRE(Potassco::enum_entries<Foo>() == std::array{P(Value1, "Value1"sv), P(Value2, "Value2"sv),
+                                                        P(Value3, "Value3"sv), P(Value4, "Value4"sv),
+                                                        P(Value5, "Value5"sv), P(Value6, "Value6"sv)});
 
-    REQUIRE(Potassco::enum_min<Foo_t>() == 0);
-    REQUIRE(Potassco::enum_max<Foo_t>() == 8);
-    REQUIRE_FALSE(Potassco::enum_cast<Foo_t>(4).has_value());
-    REQUIRE_FALSE(Potassco::enum_cast<Foo_t>(5).has_value());
-    REQUIRE_FALSE(Potassco::enum_cast<Foo_t>(6).has_value());
-    REQUIRE(Potassco::enum_cast<Foo_t>(7) == Foo_t::Value5);
+    REQUIRE(Potassco::enum_min<Foo>() == 0);
+    REQUIRE(Potassco::enum_max<Foo>() == 8);
+    REQUIRE_FALSE(Potassco::enum_cast<Foo>(4).has_value());
+    REQUIRE_FALSE(Potassco::enum_cast<Foo>(5).has_value());
+    REQUIRE_FALSE(Potassco::enum_cast<Foo>(6).has_value());
+    REQUIRE(Potassco::enum_cast<Foo>(7) == Foo::Value5);
     enum NoMeta : uint8_t {};
     REQUIRE(Potassco::enum_min<NoMeta>() == 0u);
     REQUIRE(Potassco::enum_max<NoMeta>() == 255u);
 }
 
 TEST_CASE("Enum to string", "[enum]") {
-    REQUIRE(toString(Foo_t::Value1) == "Value1");
-    REQUIRE(toString(Foo_t::Value2) == "Value2");
-    REQUIRE(toString(Foo_t::Value3) == "Value3");
-    REQUIRE(toString(Foo_t::Value4) == "Value4");
-    REQUIRE(toString(Foo_t::Value5) == "Value5");
-    REQUIRE(toString(Foo_t::Value6) == "Value6");
-    Foo_t unknown{12};
+    REQUIRE(toString(Foo::Value1) == "Value1");
+    REQUIRE(toString(Foo::Value2) == "Value2");
+    REQUIRE(toString(Foo::Value3) == "Value3");
+    REQUIRE(toString(Foo::Value4) == "Value4");
+    REQUIRE(toString(Foo::Value5) == "Value5");
+    REQUIRE(toString(Foo::Value6) == "Value6");
+    Foo unknown{12};
     REQUIRE(toString(unknown) == "12");
 }
 
 TEST_CASE("Enum from string", "[enum]") {
-    REQUIRE(string_cast<Foo_t>("Value3") == Foo_t::Value3);
-    REQUIRE(string_cast<Foo_t>("7") == Foo_t::Value5);
-    REQUIRE(string_cast<Foo_t>("Value4") == Foo_t::Value4);
-    REQUIRE(string_cast<Foo_t>("vAlUe4") == Foo_t::Value4);
-    REQUIRE(string_cast<Foo_t>("8") == Foo_t::Value6);
-    REQUIRE_FALSE(string_cast<Foo_t>("9").has_value());
-    REQUIRE_FALSE(string_cast<Foo_t>("Value98").has_value());
-    REQUIRE_FALSE(string_cast<Foo_t>("Value").has_value());
+    REQUIRE(string_cast<Foo>("Value3") == Foo::Value3);
+    REQUIRE(string_cast<Foo>("7") == Foo::Value5);
+    REQUIRE(string_cast<Foo>("Value4") == Foo::Value4);
+    REQUIRE(string_cast<Foo>("vAlUe4") == Foo::Value4);
+    REQUIRE(string_cast<Foo>("8") == Foo::Value6);
+    REQUIRE_FALSE(string_cast<Foo>("9").has_value());
+    REQUIRE_FALSE(string_cast<Foo>("Value98").has_value());
+    REQUIRE_FALSE(string_cast<Foo>("Value").has_value());
 }
 
 } // namespace Potassco::Test

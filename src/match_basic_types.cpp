@@ -40,9 +40,9 @@ void AbstractProgram::project(const AtomSpan&) { POTASSCO_UNSUPPORTED("projectio
 void AbstractProgram::output(const std::string_view&, const LitSpan&) {
     POTASSCO_UNSUPPORTED("output directive not supported");
 }
-void AbstractProgram::external(Atom_t, Value_t) { POTASSCO_UNSUPPORTED("external directive not supported"); }
+void AbstractProgram::external(Atom_t, TruthValue) { POTASSCO_UNSUPPORTED("external directive not supported"); }
 void AbstractProgram::assume(const LitSpan&) { POTASSCO_UNSUPPORTED("assumption directive not supported"); }
-void AbstractProgram::heuristic(Atom_t, Heuristic_t, int, unsigned, const LitSpan&) {
+void AbstractProgram::heuristic(Atom_t, DomModifier, int, unsigned, const LitSpan&) {
     POTASSCO_UNSUPPORTED("heuristic directive not supported");
 }
 void AbstractProgram::acycEdge(int, int, const LitSpan&) { POTASSCO_UNSUPPORTED("edge directive not supported"); }
@@ -110,7 +110,7 @@ bool BufferedStream::unget(char c) {
     if (not rpos_) {
         return false;
     }
-    if ((buf_[--rpos_] = c) == '\n') {
+    if (buf_[--rpos_] = c; c == '\n') {
         --line_;
     }
     return true;
@@ -124,7 +124,7 @@ bool BufferedStream::match(std::string_view w) {
         rpos_ = 0;
     }
     if (std::strncmp(w.data(), buf_ + rpos_, w.length()) == 0) {
-        if (not buf_[rpos_ += w.length()]) {
+        if (rpos_ += w.length(); not buf_[rpos_]) {
             underflow();
         }
         return true;
@@ -178,7 +178,7 @@ bool ProgramReader::accept(std::istream& str) {
     return doAttach(inc_);
 }
 bool ProgramReader::incremental() const { return inc_; }
-bool ProgramReader::parse(ReadMode m) {
+bool ProgramReader::parse(ReadMode r) {
     POTASSCO_CHECK_PRE(str_ != nullptr, "no input stream");
     do {
         if (not doParse()) {
@@ -186,7 +186,7 @@ bool ProgramReader::parse(ReadMode m) {
         }
         skipWs();
         require(not more() || incremental(), "invalid extra input");
-    } while (m == read_complete && more());
+    } while (r == read_complete && more());
     return true;
 }
 bool ProgramReader::more() { return str_ && (str_->skipWs(), not str_->end()); }
@@ -262,13 +262,13 @@ DynamicBuffer::DynamicBuffer(DynamicBuffer&& other) noexcept
     , size_(std::exchange(other.size_, 0)) {}
 DynamicBuffer::DynamicBuffer(const DynamicBuffer& other) : DynamicBuffer() { append(other.data(), other.size_); }
 DynamicBuffer::~DynamicBuffer() { release(); }
-DynamicBuffer& DynamicBuffer::operator=(Potassco::DynamicBuffer&& other) noexcept {
+DynamicBuffer& DynamicBuffer::operator=(DynamicBuffer&& other) noexcept {
     if (this != &other) {
         DynamicBuffer(std::move(other)).swap(*this);
     }
     return *this;
 }
-DynamicBuffer& DynamicBuffer::operator=(const Potassco::DynamicBuffer& other) {
+DynamicBuffer& DynamicBuffer::operator=(const DynamicBuffer& other) {
     if (this != &other) {
         DynamicBuffer(other).swap(*this);
     }
@@ -356,16 +356,19 @@ auto DynamicBitset::compare(const DynamicBitset& other) const -> std::strong_ord
 /////////////////////////////////////////////////////////////////////////////////////////
 // ConstString
 /////////////////////////////////////////////////////////////////////////////////////////
+using RefCount = std::atomic<int32_t>;
 ConstString::ConstString(std::string_view n, CreateMode m) {
     if (n.size() > c_max_small) {
         storage_[c_max_small] = static_cast<char>(c_large_tag + m);
-        auto* buf             = new char[(m == create_shared ? sizeof(std::atomic<int32_t>) : 0) + n.size() + 1];
+        auto  mem             = std::make_unique<char[]>((m == create_shared ? sizeof(RefCount) : 0) + n.size() + 1);
+        auto* buf             = mem.get();
         if (m == create_shared) {
-            new (buf) std::atomic<int32_t>(1);
-            buf += sizeof(std::atomic<int32_t>);
+            new (buf) RefCount(1);
+            buf += sizeof(RefCount);
         }
         *std::ranges::copy(n, buf).out = 0;
         new (storage_) Large{.str = buf, .size = n.size()};
+        mem.release();
     }
     else {
         *std::ranges::copy(n, storage_).out = 0;
@@ -389,13 +392,13 @@ ConstString& ConstString::operator=(const ConstString& other) {
     return *this;
 }
 void ConstString::release() {
-    if (not shareable() || addRef(-1) == 0) {
-        delete[] (large()->str - (shareable() * sizeof(std::atomic<int32_t>)));
+    if (auto off = shareable() * sizeof(RefCount); off == 0 || addRef(-1) == 0) {
+        delete[] (large()->str - off);
     }
 }
 int32_t ConstString::addRef(int32_t x) {
     POTASSCO_DEBUG_ASSERT(shareable());
-    auto& r   = *reinterpret_cast<std::atomic<int32_t>*>(large()->str - sizeof(std::atomic<int32_t>));
+    auto& r   = *reinterpret_cast<RefCount*>(large()->str - sizeof(RefCount));
     return r += x;
 }
 

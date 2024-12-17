@@ -103,7 +103,7 @@ void AspifTextInput::parseStatements() {
 void AspifTextInput::matchRule(char c) {
     if (c == '{') {
         matchDelim('{');
-        data_->rule.start(Head_t::choice);
+        data_->rule.start(HeadType::choice);
         matchAtoms(";,"sv);
         matchDelim('}');
     }
@@ -152,10 +152,10 @@ bool AspifTextInput::matchDirective() {
     }
     else if (matchOpt("#external"sv)) {
         auto a = matchId();
-        auto v = Value_t::false_;
+        auto v = TruthValue::false_;
         matchDelim('.');
         if (matchOpt("["sv)) {
-            require(std::ranges::any_of(enum_entries<Value_t>(),
+            require(std::ranges::any_of(enum_entries<TruthValue>(),
                                         [&](const auto& e) {
                                             v = e.first;
                                             return matchOpt(e.second);
@@ -210,8 +210,8 @@ bool AspifTextInput::matchDirective() {
     }
     return true;
 }
-bool AspifTextInput::matchOpt(std::string_view term) {
-    if (match(term)) {
+bool AspifTextInput::matchOpt(std::string_view ts) {
+    if (match(ts)) {
         skipWs();
         return true;
     }
@@ -223,13 +223,13 @@ void AspifTextInput::matchDelim(char c) {
     skipWs();
 }
 
-void AspifTextInput::matchAtoms(std::string_view seps) {
+void AspifTextInput::matchAtoms(std::string_view sv) {
     if (isLower(skipWs())) {
         do {
             auto x = matchLit();
             require(x > 0, "positive atom expected");
             data_->rule.addHead(static_cast<Atom_t>(x));
-        } while (seps.find(peek()) != std::string_view::npos && get() && (skipWs(), true));
+        } while (sv.find(peek()) != std::string_view::npos && get() && (skipWs(), true));
     }
 }
 void AspifTextInput::matchLits() {
@@ -247,7 +247,7 @@ void AspifTextInput::matchAgg() {
     matchDelim('{');
     if (not matchOpt("}"sv)) {
         do {
-            auto wl = WeightLit_t{matchLit(), 1};
+            auto wl = WeightLit{matchLit(), 1};
             if (matchOpt("="sv)) {
                 wl.weight = matchInt();
             }
@@ -280,10 +280,8 @@ Atom_t AspifTextInput::matchId() {
         require(i > 0, "<pos-integer> expected");
         return static_cast<Atom_t>(i);
     }
-    else {
-        skipWs();
-        return static_cast<Atom_t>(c - 'a') + 1;
-    }
+    skipWs();
+    return static_cast<Atom_t>(c - 'a') + 1;
 }
 void AspifTextInput::push(char c) { data_->symbol.push(c); }
 
@@ -341,9 +339,9 @@ void AspifTextInput::matchStr() {
     push('"');
 }
 
-Heuristic_t AspifTextInput::matchHeuMod() {
+DomModifier AspifTextInput::matchHeuMod() {
     auto first = peek();
-    for (const auto& [k, n] : enum_entries<Heuristic_t>()) {
+    for (const auto& [k, n] : enum_entries<DomModifier>()) {
         if (not n.empty() && n[0] == first && ProgramReader::match(n)) {
             skipWs();
             return k;
@@ -391,7 +389,7 @@ struct AspifTextOutput::Data {
 
     void addOutput(const std::string_view& str, const LitSpan& cond) {
         out.push_back(&*strings.try_emplace(str, id_max).first);
-        push(Directive_t::output).push(out.size() - 1).push(cond);
+        push(AspifType::output).push(out.size() - 1).push(cond);
     }
 
     void convertToOutput(StringMap::const_pointer node) {
@@ -400,7 +398,7 @@ struct AspifTextOutput::Data {
                                node->second, node->first.c_str());
             atoms[node->second] = &c_gen_name;
             out.push_back(node);
-            push(Directive_t::output).push(out.size() - 1).push(1).push(node->second);
+            push(AspifType::output).push(out.size() - 1).push(1).push(node->second);
             const_cast<StringMap::pointer>(node)->second = 0;
         }
     }
@@ -546,26 +544,26 @@ void AspifTextOutput::beginStep() {
         data_->startAtom = std::max(size_cast<Atom_t>(data_->atoms), data_->maxGenAtom + 1);
     }
 }
-void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
-    data_->push(Directive_t::rule).push(ht).push(head).push(Body_t::normal).push(body);
+void AspifTextOutput::rule(HeadType ht, const AtomSpan& head, const LitSpan& body) {
+    data_->push(AspifType::rule).push(ht).push(head).push(BodyType::normal).push(body);
 }
-void AspifTextOutput::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) {
+void AspifTextOutput::rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) {
     if (lits.empty()) {
         AspifTextOutput::rule(ht, head, {});
     }
-    data_->push(Directive_t::rule).push(ht).push(head);
+    data_->push(AspifType::rule).push(ht).push(head);
     if (std::ranges::adjacent_find(lits, [](const auto& lhs, const auto& rhs) { return lhs.weight != rhs.weight; }) !=
         lits.end()) {
-        data_->push(Body_t::sum).push(bound).push(lits);
+        data_->push(BodyType::sum).push(bound).push(lits);
     }
     else {
         bound = (bound + lits[0].weight - 1) / lits[0].weight;
-        data_->push(Body_t::count).push(bound).push(lits.size());
+        data_->push(BodyType::count).push(bound).push(lits.size());
         for (const auto& wl : lits) { data_->push(Potassco::lit(wl)); }
     }
 }
 void AspifTextOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
-    data_->push(Directive_t::minimize).push(prio).push(lits);
+    data_->push(AspifType::minimize).push(prio).push(lits);
 }
 void AspifTextOutput::output(const std::string_view& str, const LitSpan& cond) {
     auto atom = cond.size() == 1 && cond.front() > 0 ? Potassco::atom(cond.front()) : 0;
@@ -573,14 +571,14 @@ void AspifTextOutput::output(const std::string_view& str, const LitSpan& cond) {
         data_->addOutput(str, cond);
     }
 }
-void AspifTextOutput::external(Atom_t a, Value_t v) { data_->push(Directive_t::external).push(a).push(v); }
-void AspifTextOutput::assume(const LitSpan& lits) { data_->push(Directive_t::assume).push(lits); }
-void AspifTextOutput::project(const AtomSpan& atoms) { data_->push(Directive_t::project).push(atoms); }
+void AspifTextOutput::external(Atom_t a, TruthValue v) { data_->push(AspifType::external).push(a).push(v); }
+void AspifTextOutput::assume(const LitSpan& lits) { data_->push(AspifType::assume).push(lits); }
+void AspifTextOutput::project(const AtomSpan& atoms) { data_->push(AspifType::project).push(atoms); }
 void AspifTextOutput::acycEdge(int s, int t, const LitSpan& condition) {
-    data_->push(Directive_t::edge).push(s).push(t).push(condition);
+    data_->push(AspifType::edge).push(s).push(t).push(condition);
 }
-void AspifTextOutput::heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) {
-    data_->push(Directive_t::heuristic).push(a).push(condition).push(bias).push(prio).push(t);
+void AspifTextOutput::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& condition) {
+    data_->push(AspifType::heuristic).push(a).push(condition).push(bias).push(prio).push(t);
 }
 void AspifTextOutput::theoryTerm(Id_t termId, int number) { data_->theory.addTerm(termId, number); }
 void AspifTextOutput::theoryTerm(Id_t termId, const std::string_view& name) { data_->theory.addTerm(termId, name); }
@@ -589,7 +587,7 @@ void AspifTextOutput::theoryTerm(Id_t termId, int compound, const IdSpan& args) 
         data_->theory.addTerm(termId, static_cast<Id_t>(compound), args);
     }
     else {
-        data_->theory.addTerm(termId, Potassco::enum_cast<Tuple_t>(compound).value(), args);
+        data_->theory.addTerm(termId, Potassco::enum_cast<TupleType>(compound).value(), args);
     }
 }
 void AspifTextOutput::theoryElement(Id_t id, const IdSpan& terms, const LitSpan& cond) {
@@ -604,13 +602,13 @@ void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& ele
 
 std::ostream& AspifTextOutput::Data::appendTerm(std::ostream& os, Id_t tId) const {
     const auto& term = theory.getTerm(tId);
-    if (term.type() == Theory_t::number) {
+    if (term.type() == TheoryTermType::number) {
         return os << term.number();
     }
-    if (term.type() == Theory_t::symbol) {
+    if (term.type() == TheoryTermType::symbol) {
         return os << term.symbol();
     }
-    POTASSCO_CHECK_PRE(term.type() == Theory_t::compound);
+    POTASSCO_CHECK_PRE(term.type() == TheoryTermType::compound);
     if (term.isFunction()) {
         const auto* fSym = theory.getTerm(term.function()).symbol();
         if (term.size() <= 2 && std::strchr("/!<=>+-*\\?&@|:;~^.", *fSym)) {
@@ -623,7 +621,7 @@ std::ostream& AspifTextOutput::Data::appendTerm(std::ostream& os, Id_t tId) cons
         }
         os << fSym;
     }
-    auto parens = Potassco::parens(term.isTuple() ? term.tuple() : Potassco::Tuple_t::paren);
+    auto parens = Potassco::parens(term.isTuple() ? term.tuple() : TupleType::paren);
     auto sep    = ""sv;
     os << parens.substr(0, 1);
     for (auto e : term) { appendTerm(os << std::exchange(sep, ", "sv), e); }
@@ -722,11 +720,11 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
     visitTheoryAtoms(os);
     for (const auto *pos = directives.data(), *end = pos + directives.size(); pos != end;) {
         const auto *sep = "", *term = ".";
-        switch (next<Directive_t>(pos)) {
+        switch (next<AspifType>(pos)) {
             default: POTASSCO_ASSERT_NOT_REACHED("unexpected directive");
-            case Directive_t::rule:
+            case AspifType::rule:
                 term = "";
-                if (next<Head_t>(pos) == Head_t::choice) {
+                if (next<HeadType>(pos) == HeadType::choice) {
                     os << "{";
                     term = "}";
                 }
@@ -739,27 +737,27 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
                     os << ":- ";
                 }
                 term = ".";
-                switch (auto bt = next<Body_t>(pos)) {
-                    case Body_t::normal: printCondition(os, pos, sep); break;
-                    case Body_t::count : // fall through
-                    case Body_t::sum   : printAggregate(os << sep, pos, bt == Body_t::sum); break;
-                    default            : break;
+                switch (auto bt = next<BodyType>(pos)) {
+                    case BodyType::normal: printCondition(os, pos, sep); break;
+                    case BodyType::count : // fall through
+                    case BodyType::sum   : printAggregate(os << sep, pos, bt == BodyType::sum); break;
+                    default              : break;
                 }
                 break;
-            case Directive_t::minimize: printMinimize(os, pos); break;
-            case Directive_t::project : printCondition(os << "#project{", pos) << '}'; break;
-            case Directive_t::output:
+            case AspifType::minimize: printMinimize(os, pos); break;
+            case AspifType::project : printCondition(os << "#project{", pos) << '}'; break;
+            case AspifType::output:
                 printCondition(os << "#show " << out.at(next(pos))->first.view(), pos, " : ");
                 break;
-            case Directive_t::external:
+            case AspifType::external:
                 printName(os << "#external ", next<Atom_t>(pos));
-                if (auto v = next<Value_t>(pos); v != Value_t::false_) {
+                if (auto v = next<TruthValue>(pos); v != TruthValue::false_) {
                     os << ". [" << enum_name(v) << "]";
                     term = "";
                 }
                 break;
-            case Directive_t::assume: printCondition(os << "#assume{", pos) << '}'; break;
-            case Directive_t::heuristic:
+            case AspifType::assume: printCondition(os << "#assume{", pos) << '}'; break;
+            case AspifType::heuristic:
                 term = "";
                 os << "#heuristic ";
                 printName(os, next<Atom_t>(pos));
@@ -767,9 +765,9 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
                 if (auto p = next(pos)) {
                     os << "@" << p;
                 }
-                os << ", " << Potassco::enum_name(next<Heuristic_t>(pos)) << "]";
+                os << ", " << Potassco::enum_name(next<DomModifier>(pos)) << "]";
                 break;
-            case Directive_t::edge:
+            case AspifType::edge:
                 os << "#edge(" << next<int32_t>(pos) << ",";
                 os << next<int32_t>(pos) << ")";
                 printCondition(os, pos, " : ");

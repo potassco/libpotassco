@@ -101,10 +101,11 @@ static int fetchDec(T& x) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Application
 /////////////////////////////////////////////////////////////////////////////////////////
-static Application* g_instance; // running instance (only valid during run()).
-struct Application::Error : std::runtime_error {
+struct Application::Error final : std::runtime_error {
     explicit Error(const char* msg) : std::runtime_error(msg) {}
 };
+static Application* g_instance; // running instance (only valid during run()).
+
 Application::Application()
     : exitCode_(EXIT_FAILURE)
     , timeout_(0)
@@ -318,18 +319,16 @@ bool Application::applyOptions(int argc, char** argv) {
     bool          version = false;
     ParsedOptions parsed; // options found in command-line
     OptionContext allOpts(std::string("<").append(getName()).append(">"));
-    HelpOpt       helpO = getHelpOption();
     OptionGroup   basic("Basic Options");
-    if (helpO.second > 0) {
-        Value* hv = helpO.second == 1
-                        ? storeTo(help)->flag()
-                        : storeTo(help,
-                                  [maxV = helpO.second](const std::string& v, unsigned& out) {
-                                      return Potassco::stringTo(v, out) == std::errc{} && out > 0 && out <= maxV;
-                                  })
-                              ->arg("<n>")
-                              ->implicit("1");
-        basic.addOptions()("help,h", hv, helpO.first);
+    if (auto [message, level] = getHelpOption(); level > 0) {
+        Value* hv = level == 1 ? storeTo(help)->flag()
+                               : storeTo(help,
+                                         [maxV = level](const std::string& v, unsigned& out) {
+                                             return Potassco::stringTo(v, out) == std::errc{} && out > 0 && out <= maxV;
+                                         })
+                                     ->arg("<n>")
+                                     ->implicit("1");
+        basic.addOptions()("help,h", hv, message);
     }
     basic.addOptions()                                                                                 //
         ("version,v", flag(version), "Print version information and exit")                             //

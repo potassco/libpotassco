@@ -34,16 +34,16 @@ namespace Potassco {
 ///@{
 
 //! Supported clause types in theory propagation.
-enum class Clause_t : unsigned {
+enum class ClauseType : unsigned {
     learnt           = 0u, //!< Cumulative removable (i.e. subject to nogood deletion) clause.
     locked           = 1u, //!< Cumulative unremovable clause.
     transient        = 2u, //!< Removable clause associated with current solving step.
     transient_locked = 3u  //!< Unremovable clause associated with current solving step.
 };
-[[maybe_unused]] consteval auto enable_ops(std::type_identity<Clause_t>) -> BitOps;
+[[maybe_unused]] consteval auto enable_ops(std::type_identity<ClauseType>) -> BitOps;
 
 //! Named constants.
-enum class Statistics_t {
+enum class StatisticsType {
     empty = 0, //!< Empty (invalid) object.
     value = 1, //!< Single statistic value that is convertible to a double.
     array = 2, //!< Composite object mapping int keys to statistics types.
@@ -53,8 +53,6 @@ enum class Statistics_t {
 //! Represents an assignment of a particular solver.
 class AbstractAssignment {
 public:
-    using Value_t = Potassco::Value_t;
-    using Lit_t   = Potassco::Lit_t;
     virtual ~AbstractAssignment();
     //! Returns the number of variables in the assignment.
     [[nodiscard]] virtual uint32_t size() const = 0;
@@ -68,8 +66,8 @@ public:
     [[nodiscard]] virtual uint32_t rootLevel() const = 0;
     //! Returns whether @c lit is a valid literal in this assignment.
     [[nodiscard]] virtual bool hasLit(Lit_t lit) const = 0;
-    //! Returns the truth value that is currently assigned to @c lit or @c Value_t::free if @c lit is unassigned.
-    [[nodiscard]] virtual Value_t value(Lit_t lit) const = 0;
+    //! Returns the truth value that is currently assigned to @c lit or @c TruthValue::free if @c lit is unassigned.
+    [[nodiscard]] virtual TruthValue value(Lit_t lit) const = 0;
     //! Returns the decision level on which @c lit was assigned or @c UINT32_MAX if @c lit is unassigned.
     [[nodiscard]] virtual uint32_t level(Lit_t lit) const = 0;
     //! Returns the decision literal of the given decision level.
@@ -109,7 +107,6 @@ public:
 //! Represents one particular solver instance.
 class AbstractSolver {
 public:
-    using Lit = Potassco::Lit_t;
     virtual ~AbstractSolver();
     //! Returns the id of the solver that is associated with this object.
     [[nodiscard]] virtual Id_t id() const = 0;
@@ -129,8 +126,8 @@ public:
      * that was created with @c Solver::addVariable(), it is also considered volatile.
      *
      */
-    [[nodiscard]] virtual bool addClause(const Potassco::LitSpan& clause, Clause_t prop) = 0;
-    bool addClause(const Potassco::LitSpan& clause) { return addClause(clause, Clause_t::learnt); }
+    [[nodiscard]] virtual bool addClause(const LitSpan& clause, ClauseType prop) = 0;
+    bool                       addClause(const LitSpan& clause) { return addClause(clause, ClauseType::learnt); }
 
     //! Adds a new volatile variable to this solver instance.
     /*!
@@ -139,7 +136,7 @@ public:
      *
      * \return The positive literal of the new variable.
      */
-    [[nodiscard]] virtual Lit addVariable() = 0;
+    [[nodiscard]] virtual Lit_t addVariable() = 0;
     //! Propagates any newly implied literals.
     virtual bool propagate() = 0;
 
@@ -150,19 +147,19 @@ public:
      * @{ */
 
     //! Returns whether the active propagator watches @c lit in this solver instance.
-    [[nodiscard]] virtual bool hasWatch(Lit lit) const = 0;
+    [[nodiscard]] virtual bool hasWatch(Lit_t lit) const = 0;
 
     //! Adds the active propagator to the list of propagators to be notified when the given literal is assigned in this
     //! solver instance.
     /*!
      * \post @c hasWatch(lit) returns true.
      */
-    virtual void addWatch(Lit lit) = 0;
+    virtual void addWatch(Lit_t lit) = 0;
     //! Removes the active propagator from the list of propagators watching @c lit in the given solver.
     /*!
      * \post @c hasWatch(lit) returns false.
      */
-    virtual void removeWatch(Lit lit) = 0;
+    virtual void removeWatch(Lit_t lit) = 0;
     //@}
 };
 
@@ -170,12 +167,12 @@ public:
 class AbstractPropagator {
 public:
     //! Type for representing a set of literals that have recently changed.
-    using ChangeList = Potassco::LitSpan;
+    using ChangeList = LitSpan;
     virtual ~AbstractPropagator();
     //! Shall propagate the newly assigned literals given in @c changes.
-    virtual void propagate(AbstractSolver& solver, const ChangeList& changes) = 0;
+    virtual void propagate(AbstractSolver& solver, const LitSpan& changes) = 0;
     //! May update internal state of the newly unassigned literals given in @c undo.
-    virtual void undo(const AbstractSolver& solver, const ChangeList& undo) = 0;
+    virtual void undo(const AbstractSolver& solver, const LitSpan& undo) = 0;
     //! Similar to propagate but called on an assignment without a list of changes.
     virtual void check(AbstractSolver& solver) = 0;
 };
@@ -183,7 +180,6 @@ public:
 //! Base class for implementing heuristics.
 class AbstractHeuristic {
 public:
-    using Lit = Potassco::Lit_t;
     virtual ~AbstractHeuristic();
     //! Shall return the literal that the solver with the given id should decide on next.
     /*!
@@ -196,7 +192,7 @@ public:
      * \note If the function returns 0 or a literal that is already assigned, the returned lit
      *       is implicitly replaced with fallback.
      */
-    virtual Lit decide(Id_t solverId, const AbstractAssignment& assignment, Lit fallback) = 0;
+    virtual Lit_t decide(Id_t solverId, const AbstractAssignment& assignment, Lit_t fallback) = 0;
 };
 
 //! Base class for providing (solver) statistics.
@@ -209,13 +205,14 @@ class AbstractStatistics {
 public:
     //! Opaque type for representing (sub) keys.
     using Key_t = uint64_t;
+    using Type  = StatisticsType;
 
     virtual ~AbstractStatistics();
 
     //! Returns the root key of this statistic object.
     [[nodiscard]] virtual Key_t root() const = 0;
     //! Returns the type of the object with the given key.
-    [[nodiscard]] virtual Statistics_t type(Key_t key) const = 0;
+    [[nodiscard]] virtual Type type(Key_t key) const = 0;
     //! Returns the child count of the object with the given key or 0 if it is a value.
     [[nodiscard]] virtual size_t size(Key_t key) const = 0;
     //! Returns whether the object with the given key can be updated.
@@ -240,7 +237,7 @@ public:
      * \return The key of the created statistic object.
      *
      */
-    virtual Key_t push(Key_t arr, Statistics_t type) = 0;
+    virtual Key_t push(Key_t arr, Type type) = 0;
     //@}
 
     /*!
@@ -280,7 +277,7 @@ public:
      *       the function either returns its key provided that the types match,
      *       or otherwise signals failure by throwing a std::logic_error.
      */
-    virtual Key_t add(Key_t mapK, const char* name, Statistics_t type) = 0;
+    virtual Key_t add(Key_t mapK, const char* name, Type type) = 0;
     //@}
     /*!
      * \name Value

@@ -35,7 +35,7 @@ namespace Potassco {
 class AspifTextInput : public ProgramReader {
 public:
     //! Creates a new object and associates it with the given output if any.
-    AspifTextInput(AbstractProgram* out);
+    explicit AspifTextInput(AbstractProgram* out);
     //! Sets the program to which parsed elements should be output.
     void setOutput(AbstractProgram& out);
 
@@ -52,22 +52,22 @@ protected:
     void parseStatements();
 
 private:
-    bool        matchDirective();
-    void        matchRule(char peek);
-    void        matchAtoms(std::string_view sv);
-    void        matchLits();
-    void        matchCondition();
-    void        matchAgg();
-    void        matchDelim(char);
-    bool        matchOpt(std::string_view ts);
-    Atom_t      matchId();
-    Lit_t       matchLit();
-    int         matchInt();
-    Heuristic_t matchHeuMod();
-    void        matchTerm();
-    void        matchAtomArg();
-    void        matchStr();
-    void        push(char c);
+    bool   matchDirective();
+    void   matchRule(char peek);
+    void   matchAtoms(std::string_view sv);
+    void   matchLits();
+    void   matchCondition();
+    void   matchAgg();
+    void   matchDelim(char);
+    bool   matchOpt(std::string_view ts);
+    Atom_t matchId();
+    Lit_t  matchLit();
+    int    matchInt();
+    auto   matchHeuMod() -> DomModifier;
+    void   matchTerm();
+    void   matchAtomArg();
+    void   matchStr();
+    void   push(char c);
     struct Data;
     AbstractProgram* out_;
     Data*            data_;
@@ -78,23 +78,23 @@ private:
  * Writes a logic program in human-readable text format.
  * \ingroup WriteType
  */
-class AspifTextOutput : public Potassco::AbstractProgram {
+class AspifTextOutput : public AbstractProgram {
 public:
-    AspifTextOutput(std::ostream& os);
+    explicit AspifTextOutput(std::ostream& os);
     ~AspifTextOutput() override;
     AspifTextOutput(AspifTextOutput&&) = delete;
 
     void initProgram(bool incremental) override;
     void beginStep() override;
-    void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) override;
-    void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) override;
+    void rule(HeadType ht, const AtomSpan& head, const LitSpan& body) override;
+    void rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) override;
     void minimize(Weight_t prio, const WeightLitSpan& lits) override;
     void output(const std::string_view& str, const LitSpan& cond) override;
-    void external(Atom_t a, Value_t v) override;
+    void external(Atom_t a, TruthValue v) override;
     void assume(const LitSpan& lits) override;
     void project(const AtomSpan& atoms) override;
     void acycEdge(int s, int t, const LitSpan& condition) override;
-    void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition) override;
+    void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& condition) override;
 
     void theoryTerm(Id_t termId, int number) override;
     void theoryTerm(Id_t termId, const std::string_view& name) override;

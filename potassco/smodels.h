@@ -34,7 +34,7 @@ namespace Potassco {
  */
 ///@{
 //! Smodels rule types.
-enum class SmodelsRule_t : unsigned {
+enum class SmodelsType : unsigned {
     end               = 0,  //!< Not a rule, marks the end of all rules.
     basic             = 1,  //!< Normal rule, i.e. h :- l1, ..., ln.
     cardinality       = 2,  //!< Cardinality constraint, i.e. h :- lb {l1, ..., ln}.
@@ -55,7 +55,6 @@ public:
     using AtomLookup = std::function<Atom_t(std::string_view name)>;
     //! Options for configuring reading of smodels format.
     struct Options {
-        Options() : claspExt(false), cEdge(false), cHeuristic(false), filter(false) {}
         //! Enable clasp extensions for handling incremental programs.
         Options& enableClaspExt() {
             claspExt = true;
@@ -76,10 +75,10 @@ public:
             filter = true;
             return *this;
         }
-        bool claspExt;
-        bool cEdge;
-        bool cHeuristic;
-        bool filter;
+        bool claspExt{false};
+        bool cEdge{false};
+        bool cHeuristic{false};
+        bool filter{false};
     };
     //! Creates a new parser object that calls @c out on each parsed element.
     /*!
@@ -121,7 +120,7 @@ private:
     Options                    opts_;
 };
 //! Tries to extract a heuristic modification from a given _heuristic/3 or _heuristic/4 predicate.
-bool matchDomHeuPred(std::string_view pred, std::string_view& atom, Heuristic_t& type, int& bias, unsigned& prio);
+bool matchDomHeuPred(std::string_view pred, std::string_view& atom, DomModifier& type, int& bias, unsigned& prio);
 //! Tries to extract source and target from a given _edge/2 or _acyc_/0 predicate.
 bool matchEdgePred(std::string_view pred, std::string_view& n0, std::string_view& n1);
 
@@ -163,9 +162,9 @@ public:
     //! Starts a new step.
     void beginStep() override;
     //! Writes a basic, choice, or disjunctive rule or throws an exception if rule is not representable.
-    void rule(Head_t t, const AtomSpan& head, const LitSpan& body) override;
+    void rule(HeadType ht, const AtomSpan& head, const LitSpan& body) override;
     //! Writes a cardinality or weight rule or throws an exception if rule is not representable.
-    void rule(Head_t t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override;
+    void rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override;
     //! Writes the given minimize rule while ignoring its priority.
     void minimize(Weight_t prio, const WeightLitSpan& lits) override;
     //! Writes the entry (atom, str) to the symbol table provided that condition equals atom.
@@ -179,15 +178,15 @@ public:
      */
     void assume(const LitSpan& lits) override;
     //! Requires enableClaspExt or throws exception.
-    void external(Atom_t a, Value_t v) override;
+    void external(Atom_t a, TruthValue v) override;
     //! Terminates the current step.
     void endStep() override;
 
 protected:
     //! Starts writing a rule of type @c rt.
-    SmodelsOutput& startRule(SmodelsRule_t rt);
+    SmodelsOutput& startRule(SmodelsType rt);
     //! Writes the given head.
-    SmodelsOutput& add(Head_t ht, const AtomSpan& head);
+    SmodelsOutput& add(HeadType ht, const AtomSpan& head);
     //! Writes the given normal body in smodels format, i.e. @c size(lits) @c size(B-) atoms in B- atoms in B+
     SmodelsOutput& add(const LitSpan& lits);
     //! Writes the given extended body in smodels format.

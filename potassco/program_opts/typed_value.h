@@ -77,7 +77,7 @@ bool parseValue(const std::vector<std::pair<std::string, EnumT>>& candidates, co
 template <typename Callable>
 class TypedValue : public Value {
 public:
-    TypedValue(Callable func) : func_(std::move(func)) {}
+    explicit TypedValue(Callable func) : func_(std::move(func)) {}
     bool doParse(const std::string& opt, const std::string& value) override { return func_(opt, value); }
 
 private:

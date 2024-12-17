@@ -55,12 +55,12 @@ constexpr auto ok(T ec) {
     }
 }
 constexpr std::from_chars_result error(std::string_view& x, std::errc ec = std::errc::invalid_argument) {
-    return {.ptr = x.data(), .ec = ec};
+    return {.ptr = std::data(x), .ec = ec};
 }
 constexpr std::from_chars_result success(std::string_view& x, std::size_t pop) {
     assert(pop <= x.length());
     x.remove_prefix(pop);
-    return {.ptr = x.data(), .ec = {}};
+    return {.ptr = std::data(x), .ec = {}};
 }
 bool matchOpt(std::string_view& in, char v);
 bool eqIgnoreCase(const char* lhs, const char* rhs, std::size_t n);

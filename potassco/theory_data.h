@@ -34,19 +34,19 @@ class TheoryData;
  * \addtogroup BasicTypes
  */
 ///@{
-//! Supported aspif theory directives.
-enum class Theory_t { number = 0, symbol = 1, compound = 2, reserved = 3, element = 4, atom = 5, atom_with_guard = 6 };
-POTASSCO_SET_DEFAULT_ENUM_MAX(Theory_t::atom_with_guard);
+//! Supported aspif theory terms.
+enum class TheoryTermType : uint32_t { number = 0, symbol = 1, compound = 2 };
+POTASSCO_SET_DEFAULT_ENUM_MAX(TheoryTermType::compound);
 
 //! Supported aspif theory tuple types.
-enum class Tuple_t { bracket = -3, brace = -2, paren = -1 };
-POTASSCO_SET_DEFAULT_ENUM_COUNT(Tuple_t, 3u, -3);
-[[nodiscard]] constexpr auto parens(Tuple_t t) -> std::string_view {
+enum class TupleType { bracket = -3, brace = -2, paren = -1 };
+POTASSCO_SET_DEFAULT_ENUM_COUNT(TupleType, 3u, -3);
+[[nodiscard]] constexpr auto parens(TupleType t) -> std::string_view {
     using namespace std::literals;
     switch (t) {
-        case Tuple_t::bracket: return "[]"sv;
-        case Tuple_t::brace  : return "{}"sv;
-        case Tuple_t::paren  : return "()"sv;
+        case TupleType::bracket: return "[]"sv;
+        case TupleType::brace  : return "{}"sv;
+        case TupleType::paren  : return "()"sv;
     }
     POTASSCO_ASSERT_NOT_REACHED("unexpected tuple type");
 }
@@ -55,10 +55,12 @@ POTASSCO_SET_DEFAULT_ENUM_COUNT(Tuple_t, 3u, -3);
 class TheoryTerm {
 public:
     TheoryTerm() noexcept = default;
+    //! Term type.
+    using Type = TheoryTermType;
     //! Iterator type for iterating over arguments of a compound term.
     using iterator = const Id_t*; // NOLINT
     //! Returns the type of this term.
-    [[nodiscard]] Theory_t type() const;
+    [[nodiscard]] Type type() const;
     //! Returns the number stored in this or throws if type() != Number.
     [[nodiscard]] int number() const;
     //! Returns the symbol stored in this or throws if type() != Symbol.
@@ -72,7 +74,7 @@ public:
     //! Returns whether this is a tuple.
     [[nodiscard]] bool isTuple() const;
     //! Returns the tuple id stored in this or throws if not isTuple().
-    [[nodiscard]] Tuple_t tuple() const;
+    [[nodiscard]] TupleType tuple() const;
     //! Returns the number of arguments in this term.
     [[nodiscard]] uint32_t size() const;
     //! Returns an iterator pointing to the first argument of this term.
@@ -88,7 +90,8 @@ private:
     friend class TheoryData;
     [[nodiscard]] uintptr_t getPtr() const;
     [[nodiscard]] FuncData* func() const;
-    uint64_t                data_ = 0;
+
+    uint64_t data_ = 0;
 };
 
 //! A basic building block for a theory atom.
@@ -211,7 +214,7 @@ public:
      */
     void addTerm(Id_t termId, Id_t funcSym, const IdSpan& args);
     //! Adds a new tuple term with the given id.
-    void addTerm(Id_t termId, Tuple_t type, const IdSpan& args);
+    void addTerm(Id_t termId, TupleType type, const IdSpan& args);
 
     //! Removes the term with the given id.
     /*!
@@ -302,11 +305,11 @@ private:
 
 inline void print(AbstractProgram& out, Id_t termId, const TheoryTerm& term) {
     switch (term.type()) {
-        case Theory_t::number  : out.theoryTerm(termId, term.number()); break;
-        case Theory_t::symbol  : out.theoryTerm(termId, term.symbol()); break;
-        case Theory_t::compound: out.theoryTerm(termId, term.compound(), term.terms()); break;
-        default                : break;
+        case TheoryTermType::number  : out.theoryTerm(termId, term.number()); return;
+        case TheoryTermType::symbol  : out.theoryTerm(termId, term.symbol()); return;
+        case TheoryTermType::compound: out.theoryTerm(termId, term.compound(), term.terms()); return;
     }
+    POTASSCO_ASSERT_NOT_REACHED("invalid term");
 }
 inline void print(AbstractProgram& out, const TheoryAtom& a) {
     if (a.guard()) {

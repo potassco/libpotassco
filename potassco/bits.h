@@ -83,7 +83,7 @@ static_assert(clear_bit(7u, 0) == 6u && clear_bit(8u, 3) == 0u);
 //! Effect: x = clear_bit(x, n)
 template <std::unsigned_integral T>
 POTASSCO_FORCE_INLINE constexpr T& store_clear_bit(T& x, unsigned n) noexcept {
-    return (x &= ~nth_bit<T>(n));
+    return x &= ~nth_bit<T>(n);
 }
 //! Returns a copy of @c x with bit @c n toggled.
 template <std::unsigned_integral T>
@@ -94,7 +94,7 @@ static_assert(toggle_bit(6u, 0) == 7u && toggle_bit(7u, 1) == 5u);
 //! Effect: x = toggle_bit(x, n)
 template <std::unsigned_integral T>
 POTASSCO_FORCE_INLINE constexpr T& store_toggle_bit(T& x, unsigned n) noexcept {
-    return (x ^= nth_bit<T>(n));
+    return x ^= nth_bit<T>(n);
 }
 ///@}
 /*!
@@ -122,7 +122,7 @@ static_assert(set_mask(6u, 3u) == 7u && set_mask(1024u, 7u) == 1031u);
 //! Effect: x = set_mask(x, m)
 template <std::unsigned_integral T>
 POTASSCO_FORCE_INLINE constexpr T& store_set_mask(T& x, std::type_identity_t<T> m) noexcept {
-    return (x |= m);
+    return x |= m;
 }
 //! Returns a copy of @c x with all set bits in the mask @c m cleared.
 template <std::unsigned_integral T>
@@ -133,7 +133,7 @@ static_assert(clear_mask(7u, 3u) == 4u && clear_mask(19u, 17u) == 2u);
 //! Effect: x = clear_mask(x, m)
 template <std::unsigned_integral T>
 POTASSCO_FORCE_INLINE constexpr T& store_clear_mask(T& x, std::type_identity_t<T> m) noexcept {
-    return (x &= ~m);
+    return x &= ~m;
 }
 //! Returns a copy of @c x with all bits in the mask @c m toggled.
 template <std::unsigned_integral T>
@@ -143,7 +143,7 @@ template <std::unsigned_integral T>
 //! Effect: x = toggle_mask(x, m)
 template <std::unsigned_integral T>
 POTASSCO_FORCE_INLINE constexpr T& store_toggle_mask(T& x, std::type_identity_t<T> m) noexcept {
-    return (x ^= m);
+    return x ^= m;
 }
 ///@}
 //! Returns a value of T with first @c numBits set.
@@ -158,7 +158,7 @@ template <std::unsigned_integral T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr T right_most_bit(T x) noexcept {
     POTASSCO_WARNING_PUSH()
     POTASSCO_WARNING_IGNORE_MSVC(4146) // unary minus operator applied to unsigned type, result still unsigned
-    return x & (-x);
+    return x & -x;
     POTASSCO_WARNING_POP()
 }
 static_assert(right_most_bit(0b00000000u) == 0b00000000u && right_most_bit(0b00010100u) == 0b00000100u);

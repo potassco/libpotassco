@@ -62,20 +62,20 @@ struct SmodelsConvert::SmData {
         return scratch.view();
     }
     struct Atom {
-        Atom() : smId(0), head(0), show(0), extn(0) {}
-        std::string_view makePred(ScratchType& scratch) const { return SmData::makePred(scratch, "_atom"sv, smId); }
-        operator Atom_t() const { return smId; }
-        uint32_t smId : 28; // corresponding smodels atom
-        uint32_t head : 1;  // atom occurs in a head of a rule
-        uint32_t show : 1;  // atom has a name
-        uint32_t extn : 2;  // value if atom is external
+        std::string_view     makePred(ScratchType& scratch) const { return SmData::makePred(scratch, "_atom"sv, smId); }
+        [[nodiscard]] Atom_t sm() const { return smId; }
+
+        uint32_t smId : 28 {0}; // corresponding smodels atom
+        uint32_t head : 1 {0};  // atom occurs in a head of a rule
+        uint32_t show : 1 {0};  // atom has a name
+        uint32_t extn : 2 {0};  // value if atom is external
     };
     struct Heuristic {
         std::string_view makePred(ScratchType& scratch, std::string_view atomName) const {
             return SmData::makePred(scratch, "_heuristic"sv, atomName, enum_name(type), bias, prio);
         }
         Atom_t      atom;
-        Heuristic_t type;
+        DomModifier type;
         int         bias{};
         unsigned    prio{};
         unsigned    cond{};
@@ -87,7 +87,7 @@ struct SmodelsConvert::SmData {
             int32_t s;
             int32_t t;
         };
-        Output(SymTab::iterator it) : atom(it->first), type(type_name), name(&it->second) {}
+        explicit Output(SymTab::iterator it) : atom(it->first), type(type_name), name(&it->second) {}
         Output(Atom_t a, int32_t s, int32_t t) : atom(a), type(type_edge), edge{s, t} {}
         std::string_view makePred(ScratchType& scratch) const {
             return type == type_name ? name->view() : SmData::makePred(scratch, "_edge"sv, edge.s, edge.t);
@@ -100,11 +100,11 @@ struct SmodelsConvert::SmData {
         };
     };
     static_assert(amc::is_trivially_relocatable_v<Atom> && amc::is_trivially_relocatable_v<Atom_t> &&
-                  amc::is_trivially_relocatable_v<Lit_t> && amc::is_trivially_relocatable_v<WeightLit_t> &&
+                  amc::is_trivially_relocatable_v<Lit_t> && amc::is_trivially_relocatable_v<WeightLit> &&
                   amc::is_trivially_relocatable_v<Heuristic> && amc::is_trivially_relocatable_v<Output>);
     using AtomMap = amc::vector<Atom>;
     using AtomVec = amc::vector<Atom_t>;
-    using WLitVec = amc::vector<WeightLit_t>;
+    using WLitVec = amc::vector<WeightLit>;
     using HeuVec  = amc::vector<Heuristic>;
     using OutVec  = amc::vector<Output>;
     struct Minimize {
@@ -114,10 +114,10 @@ struct SmodelsConvert::SmData {
         unsigned startPos;
         unsigned endPos;
     };
-    static_assert(amc::is_trivially_relocatable_v<Minimize>);
-    using MinSet                       = amc::vector<Minimize>;
     static constexpr Atom_t false_atom = 1;
-    SmData() : next(2) {}
+    static_assert(amc::is_trivially_relocatable_v<Minimize>);
+    using MinSet = amc::vector<Minimize>;
+    SmData()     = default;
     Atom_t newAtom() { return next++; }
     bool   mapped(Atom_t a) const { return a < atoms.size() && atoms[a].smId != 0; }
     Atom&  mapAtom(Atom_t a) {
@@ -131,19 +131,19 @@ struct SmodelsConvert::SmData {
         return atoms[a];
     }
     Lit_t mapLit(Lit_t in) {
-        auto x = static_cast<Lit_t>(mapAtom(atom(in)));
+        auto x = static_cast<Lit_t>(mapAtom(atom(in)).sm());
         return in < 0 ? -x : x;
     }
-    WeightLit_t mapLit(WeightLit_t in) {
+    WeightLit mapLit(WeightLit in) {
         in.lit = mapLit(in.lit);
         return in;
     }
     Atom_t mapHeadAtom(Atom_t a) {
         Atom& x = mapAtom(a);
         x.head  = 1;
-        return x;
+        return x.sm();
     }
-    RuleBuilder& mapHead(const AtomSpan& h, Head_t ht = Head_t::disjunctive) {
+    RuleBuilder& mapHead(const AtomSpan& h, HeadType ht = HeadType::disjunctive) {
         rule.clear().start(ht);
         for (auto a : h) { rule.addHead(mapHeadAtom(a)); }
         if (h.empty()) {
@@ -179,13 +179,13 @@ struct SmodelsConvert::SmData {
         }
         vec.endPos = minLits.size();
     }
-    void addExternal(Atom_t a, Value_t v) {
+    void addExternal(Atom_t a, TruthValue v) {
         if (auto& ma = mapAtom(a); not ma.head) {
             ma.extn = static_cast<unsigned>(v);
             external.push_back(a);
         }
     }
-    void addHeuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, Atom_t cond) {
+    void addHeuristic(Atom_t a, DomModifier t, int bias, unsigned prio, Atom_t cond) {
         Heuristic h = {a, t, bias, prio, cond};
         heuristic.push_back(h);
     }
@@ -205,7 +205,7 @@ struct SmodelsConvert::SmData {
     WLitVec     minLits;   // minimize literals
     OutVec      output;    // list of output atoms not yet processed
     RuleBuilder rule;      // active (mapped) rule
-    Atom_t      next;      // next unused output atom
+    Atom_t      next{2};   // next unused output atom
 };
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsConvert
@@ -233,14 +233,14 @@ Atom_t   SmodelsConvert::makeAtom(const LitSpan& cond, bool named) {
 }
 void SmodelsConvert::initProgram(bool inc) { out_.initProgram(inc); }
 void SmodelsConvert::beginStep() { out_.beginStep(); }
-void SmodelsConvert::rule(Head_t ht, const AtomSpan& head, const LitSpan& body) {
-    if (not head.empty() || ht == Head_t::disjunctive) {
+void SmodelsConvert::rule(HeadType ht, const AtomSpan& head, const LitSpan& body) {
+    if (not head.empty() || ht == HeadType::disjunctive) {
         data_->mapHead(head, ht).startBody();
         data_->mapBody(body).end(&out_);
     }
 }
-void SmodelsConvert::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
-    if (not head.empty() || ht == Head_t::disjunctive) {
+void SmodelsConvert::rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
+    if (not head.empty() || ht == HeadType::disjunctive) {
         POTASSCO_CHECK_PRE(std::ranges::none_of(body, [](const auto wl) { return weight(wl) < 0; }),
                            "negative weights in body are not supported");
         if (bound <= 0) {
@@ -251,13 +251,13 @@ void SmodelsConvert::rule(Head_t ht, const AtomSpan& head, Weight_t bound, const
         data_->mapBody(body);
         auto mHead = data_->rule.head();
         auto mBody = data_->rule.sum().lits;
-        if (ht == Head_t::disjunctive && mHead.size() == 1) {
+        if (ht == HeadType::disjunctive && mHead.size() == 1) {
             data_->rule.end(&out_);
             return;
         }
         auto auxH = data_->newAtom();
         auto auxB = lit(auxH);
-        out_.rule(Head_t::disjunctive, toSpan(auxH), bound, mBody);
+        out_.rule(HeadType::disjunctive, toSpan(auxH), bound, mBody);
         out_.rule(ht, mHead, toSpan(auxB));
     }
 }
@@ -268,8 +268,8 @@ void SmodelsConvert::output(const std::string_view& str, const LitSpan& cond) {
     data_->addOutput(makeAtom(cond, true), str);
 }
 
-void SmodelsConvert::external(Atom_t a, Value_t v) { data_->addExternal(a, v); }
-void SmodelsConvert::heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& cond) {
+void SmodelsConvert::external(Atom_t a, TruthValue v) { data_->addExternal(a, v); }
+void SmodelsConvert::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& cond) {
     if (not ext_) {
         out_.heuristic(a, t, bias, prio, cond);
     }
@@ -321,25 +321,25 @@ void SmodelsConvert::flushExternal() {
     data_->rule.clear();
     for (auto ext : data_->external) {
         SmData::Atom& a  = data_->mapAtom(ext);
-        auto          vt = static_cast<Value_t>(a.extn);
+        auto          vt = static_cast<TruthValue>(a.extn);
         if (not ext_) {
             if (a.head) {
                 continue;
             }
-            Atom_t at = a;
-            if (vt == Value_t::free) {
+            Atom_t at = a.sm();
+            if (vt == TruthValue::free) {
                 data_->rule.addHead(at);
             }
-            else if (vt == Value_t::true_) {
-                out_.rule(Head_t::disjunctive, toSpan(at), trueBody);
+            else if (vt == TruthValue::true_) {
+                out_.rule(HeadType::disjunctive, toSpan(at), trueBody);
             }
         }
         else {
-            out_.external(a, vt);
+            out_.external(a.sm(), vt);
         }
     }
     if (auto head = data_->rule.head(); not head.empty()) {
-        out_.rule(Head_t::choice, head, trueBody);
+        out_.rule(HeadType::choice, head, trueBody);
     }
 }
 void SmodelsConvert::flushHeuristic() {
@@ -355,7 +355,7 @@ void SmodelsConvert::flushHeuristic() {
         auto          it = ma.show ? data_->symTab.find(ma.smId) : data_->symTab.end();
         if (it == data_->symTab.end()) {
             ma.show = 1;
-            it      = data_->addOutput(ma, ma.makePred(scratch));
+            it      = data_->addOutput(ma.sm(), ma.makePred(scratch));
         }
         auto c = static_cast<Lit_t>(heu.cond);
         out_.output(heu.makePred(scratch, it->second.view()), toSpan(c));

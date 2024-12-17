@@ -91,11 +91,11 @@ static void appendExpression(std::span<char>& span, const ExpressionInfo& info, 
 constinit AbortHandler g_abortHandler = nullptr;
 extern AbortHandler    setAbortHandler(AbortHandler handler) { return std::exchange(g_abortHandler, handler); }
 
-extern void failAbort(const ExpressionInfo& info, const char* fmt, ...) {
-    char            message[1024];
-    std::span<char> span(message, std::size(message) - 1);
-    auto            hasMessage = fmt && *fmt;
-    appendExpression(span, info, true, "Assertion"sv, hasMessage);
+extern void failAbort(const ExpressionInfo& expressionInfo, const char* fmt, ...) {
+    char      message[1024];
+    std::span span(message, std::size(message) - 1);
+    auto      hasMessage = fmt && *fmt;
+    appendExpression(span, expressionInfo, true, "Assertion"sv, hasMessage);
     if (hasMessage) {
         va_list args;
         va_start(args, fmt);
@@ -112,16 +112,16 @@ extern void failAbort(const ExpressionInfo& info, const char* fmt, ...) {
     std::abort();
 }
 
-extern void failThrow(Errc ec, const ExpressionInfo& info, const char* fmt, ...) {
+extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char* fmt, ...) {
     if (ec == Errc::bad_alloc) {
         throw std::bad_alloc();
     }
 
-    char            message[1024];
-    std::span<char> span(message, std::size(message) - 1);
-    auto            hasMessage = fmt && *fmt;
+    char      message[1024];
+    std::span span(message, std::size(message) - 1);
+    auto      hasMessage = fmt && *fmt;
     if (ec == Errc::precondition_fail) {
-        appendExpression(span, info, false, "Precondition"sv, hasMessage);
+        appendExpression(span, expressionInfo, false, "Precondition"sv, hasMessage);
     }
     auto next = std::string_view{};
     if (hasMessage) {
@@ -140,7 +140,7 @@ extern void failThrow(Errc ec, const ExpressionInfo& info, const char* fmt, ...)
     append(span, next);
     append(span, std::generic_category().message(static_cast<int>(ec)));
     append(span, "\n");
-    appendExpression(span, info, false, info.expression.empty() ? ""sv : "check"sv, false);
+    appendExpression(span, expressionInfo, false, expressionInfo.expression.empty() ? ""sv : "check"sv, false);
     *span.data() = 0;
     switch (ec) {
         // logic
@@ -150,7 +150,7 @@ extern void failThrow(Errc ec, const ExpressionInfo& info, const char* fmt, ...)
         case Errc::out_of_range    : throw std::out_of_range(message);
         // runtime
         case Errc::overflow_error: throw std::overflow_error(message);
-        default                  : throw RuntimeError(ec, info.location, message);
+        default                  : throw RuntimeError(ec, expressionInfo.location, message);
     }
 }
 

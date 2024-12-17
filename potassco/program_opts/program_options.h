@@ -93,12 +93,12 @@ class OptionOutput;
 class OptionGroup {
 public:
     using OptionList      = std::vector<SharedOptPtr>;
-    using option_iterator = OptionList::const_iterator;
+    using option_iterator = OptionList::const_iterator; // NOLINT
 
     /*!
      * Creates a new group of options under the given caption.
      */
-    OptionGroup(std::string_view caption = "", DescriptionLevel descLevel = desc_level_default);
+    explicit OptionGroup(std::string_view caption = "", DescriptionLevel descLevel = desc_level_default);
 
     //! Returns the caption of this group.
     [[nodiscard]] const std::string& caption() const { return caption_; }
@@ -174,16 +174,16 @@ private:
     using KeyType        = std::size_t;
     using Name2Key       = std::map<std::string, KeyType>;
     using GroupList      = std::vector<OptionGroup>;
-    using index_iterator = Name2Key::const_iterator;
+    using index_iterator = Name2Key::const_iterator; // NOLINT
     using PrefixRange    = std::pair<index_iterator, index_iterator>;
     using OptionList     = OptionGroup::OptionList;
 
 public:
     //! Type for identifying an option within a context
-    using option_iterator = OptionList::const_iterator;
+    using option_iterator = OptionList::const_iterator; // NOLINT
     using OptionRange     = PrefixRange;
 
-    OptionContext(std::string_view caption = "", DescriptionLevel desc_default = desc_level_default);
+    explicit OptionContext(std::string_view caption = "", DescriptionLevel desc_default = desc_level_default);
 
     [[nodiscard]] const std::string& caption() const;
 
@@ -328,7 +328,7 @@ class ParsedValues {
 public:
     using OptionAndValue = std::pair<SharedOptPtr, std::string>;
     using Values         = std::vector<OptionAndValue>;
-    using iterator       = Values::const_iterator;
+    using iterator       = Values::const_iterator; // NOLINT
 
     /*!
      * \param a_ctx The OptionContext for which this object stores raw-values.
@@ -418,10 +418,10 @@ public:
               form) {}
     //! Writes formatted option descriptions to given std::string.
     explicit OptionOutputImpl(std::string& str, const Formatter& form = Formatter())
-        : OptionOutputImpl([&str](std::string_view view) { str.append(view.data(), std::size(view)); }, form) {}
+        : OptionOutputImpl([&str](std::string_view view) { str.append(std::data(view), std::size(view)); }, form) {}
     //! Writes formatted option descriptions to given std::ostream.
     explicit OptionOutputImpl(std::ostream& os, const Formatter& form = Formatter())
-        : OptionOutputImpl([&os](std::string_view view) { os.write(view.data(), std::ssize(view)); }, form) {}
+        : OptionOutputImpl([&os](std::string_view view) { os.write(std::data(view), std::ssize(view)); }, form) {}
     //! Writes formatted option descriptions to given sink.
     explicit OptionOutputImpl(Sink sink, const Formatter& form = Formatter())
         : sink_(std::move(sink))

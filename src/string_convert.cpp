@@ -61,8 +61,7 @@ std::from_chars_result parseChar(std::string_view in, unsigned char& out) {
         return Parse::error(in);
     }
 
-    std::string_view::size_type pos;
-    if (in.size() > 1 && in.front() == '\\' && (pos = c_from.find(in[1])) != std::string_view::npos) {
+    if (auto pos = in[0] == '\\' ? c_from.find(in[in.size() > 1]) : std::string_view::npos; pos < c_to.size()) {
         out = static_cast<unsigned char>(c_to[pos]);
         return Parse::success(in, 2);
     }
@@ -207,26 +206,23 @@ std::from_chars_result fromChars(std::string_view in, bool& out) {
     if (in.empty()) {
         return Parse::error(in);
     }
-
     if (in.starts_with('0') || in.starts_with('1')) {
         out = in[0] == '1';
         return Parse::success(in, 1);
     }
-    else if (in.starts_with("no") || in.starts_with("on")) {
+    if (in.starts_with("no") || in.starts_with("on")) {
         out = in[0] == 'o';
         return Parse::success(in, 2);
     }
-    else if (in.starts_with("off") || in.starts_with("yes")) {
+    if (in.starts_with("off") || in.starts_with("yes")) {
         out = in[0] == 'y';
         return Parse::success(in, 3);
     }
-    else if (in.starts_with("false") || in.starts_with("true")) {
+    if (in.starts_with("false") || in.starts_with("true")) {
         out = in[0] == 't';
         return Parse::success(in, 4u + static_cast<unsigned>(not out));
     }
-    else {
-        return Parse::error(in);
-    }
+    return Parse::error(in);
 }
 
 } // namespace Potassco

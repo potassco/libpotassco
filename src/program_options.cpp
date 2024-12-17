@@ -41,13 +41,13 @@ namespace Potassco::ProgramOptions {
 ///////////////////////////////////////////////////////////////////////////////
 // DefaultFormat
 ///////////////////////////////////////////////////////////////////////////////
-std::size_t DefaultFormat::format(std::string& buf, const Option& o, std::size_t maxW) {
+std::size_t DefaultFormat::format(std::string& buffer, const Option& o, std::size_t maxW) {
     auto        bufSize = std::max(maxW, o.maxColumn()) + 3;
     const auto* arg     = o.argName();
     auto        np      = ""sv;
     auto        ap      = ""sv;
     if (o.value()->isNegatable()) {
-        if (!*arg) {
+        if (not *arg) {
             np = "[no-]"sv;
         }
         else {
@@ -55,43 +55,43 @@ std::size_t DefaultFormat::format(std::string& buf, const Option& o, std::size_t
             bufSize += ap.size();
         }
     }
-    const auto startSize = buf.size();
-    buf.reserve(startSize + bufSize);
-    buf.append("  --"sv).append(np).append(o.name());
+    const auto startSize = buffer.size();
+    buffer.reserve(startSize + bufSize);
+    buffer.append("  --"sv).append(np).append(o.name());
     if (o.value()->isImplicit() && *arg) {
-        buf.append("[="sv).append(arg).append(ap).append("]"sv);
+        buffer.append("[="sv).append(arg).append(ap).append("]"sv);
     }
     if (auto c = o.alias(); c) {
-        buf.append(",-"sv).append(1, c);
+        buffer.append(",-"sv).append(1, c);
     }
     if (not o.value()->isImplicit()) {
-        buf.append(1, not o.alias() ? '=' : ' ').append(arg).append(ap);
+        buffer.append(1, not o.alias() ? '=' : ' ').append(arg).append(ap);
     }
-    if (auto sz = buf.size() - startSize; sz < maxW) {
-        buf.append(maxW - sz, ' ');
+    if (auto sz = buffer.size() - startSize; sz < maxW) {
+        buffer.append(maxW - sz, ' ');
     }
-    return buf.size() - startSize;
+    return buffer.size() - startSize;
 }
-std::size_t DefaultFormat::format(std::string& buf, const char* desc, const Value& val, std::size_t) {
+std::size_t DefaultFormat::format(std::string& buffer, const char* desc, const Value& val, std::size_t) {
     std::size_t minS = strlen(desc);
     const char* temp = nullptr;
     if (not desc) {
         desc = "";
     }
 
-    const auto startSize = buf.size();
-    buf.reserve(startSize + minS + 2);
-    buf.append(1, ':').append(1, ' ');
+    const auto startSize = buffer.size();
+    buffer.reserve(startSize + minS + 2);
+    buffer.append(1, ':').append(1, ' ');
     for (const char* look;; ++desc) {
         look = desc;
         while (*look && *look != '%') { ++look; }
         if (look != desc) {
-            buf.append(desc, look);
+            buffer.append(desc, look);
         }
-        if (!*look++ || !*look) {
+        if (not *look++ || not *look) {
             break;
         }
-        else if (*look == 'D') {
+        if (*look == 'D') {
             temp = val.defaultsTo();
         }
         else if (*look == 'A') {
@@ -101,16 +101,16 @@ std::size_t DefaultFormat::format(std::string& buf, const char* desc, const Valu
             temp = val.implicit();
         }
         else {
-            buf.push_back(*look);
+            buffer.push_back(*look);
         }
         if (temp) {
-            buf.append(temp);
+            buffer.append(temp);
         }
         desc = look;
         temp = nullptr;
     }
-    buf.push_back('\n');
-    return buf.size() - startSize;
+    buffer.push_back('\n');
+    return buffer.size() - startSize;
 }
 std::size_t DefaultFormat::format(std::string& buffer, const OptionGroup& grp) {
     const auto startSize = buffer.size();
@@ -150,18 +150,18 @@ const char* Value::arg() const {
     return isFlag() ? "" : "<arg>";
 }
 
-Value* Value::desc(DescType t, const char* n) {
-    if (n == nullptr) {
+Value* Value::desc(DescType t, const char* d) {
+    if (d == nullptr) {
         return this;
     }
     if (t == desc_implicit) {
         implicit_ = 1;
-        if (!*n) {
+        if (not *d) {
             return this;
         }
     }
     if (descFlag_ == 0 || descFlag_ == t) {
-        desc_.value = n;
+        desc_.value = d;
         descFlag_   = static_cast<uint8_t>(t);
         return this;
     }
@@ -173,7 +173,7 @@ Value* Value::desc(DescType t, const char* n) {
         descFlag_                                     = desc_pack;
         desc_.pack[oldKey]                            = oldVal;
     }
-    desc_.pack[t >> 1u] = n;
+    desc_.pack[t >> 1u] = d;
     return this;
 }
 const char* Value::desc(DescType t) const {
@@ -296,7 +296,7 @@ OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, con
                 ++x;
             }
         }
-        if (!*n || *x || level > desc_level_hidden) {
+        if (not *n || *x || level > desc_level_hidden) {
             throw Error(std::string("Invalid Key '").append(name).append("'"));
         }
         val->level(static_cast<DescriptionLevel>(level));
@@ -318,11 +318,11 @@ OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, con
 ///////////////////////////////////////////////////////////////////////////////
 // class OptionContext
 ///////////////////////////////////////////////////////////////////////////////
-OptionContext::OptionContext(std::string_view cap, DescriptionLevel def) : caption_(cap), descLevel_(def) {}
+OptionContext::OptionContext(std::string_view caption, DescriptionLevel def) : caption_(caption), descLevel_(def) {}
 
-const std::string& OptionContext::caption() const { return caption_; }
-void               OptionContext::setActiveDescLevel(DescriptionLevel x) { descLevel_ = std::min(x, desc_level_all); }
-size_t             OptionContext::findGroupKey(const std::string& name) const {
+auto   OptionContext::caption() const -> const std::string& { return caption_; }
+void   OptionContext::setActiveDescLevel(DescriptionLevel level) { descLevel_ = std::min(level, desc_level_all); }
+size_t OptionContext::findGroupKey(const std::string& name) const {
     for (size_t i = 0; i != groups_.size(); ++i) {
         if (groups_[i].caption() == name) {
             return i;
@@ -331,22 +331,22 @@ size_t             OptionContext::findGroupKey(const std::string& name) const {
     return static_cast<size_t>(-1);
 }
 
-OptionContext& OptionContext::add(const OptionGroup& options) {
-    size_t k = findGroupKey(options.caption());
+OptionContext& OptionContext::add(const OptionGroup& group) {
+    size_t k = findGroupKey(group.caption());
     if (k >= groups_.size()) {
         // add as new group
         k = groups_.size();
-        groups_.emplace_back(options.caption(), options.descLevel());
+        groups_.emplace_back(group.caption(), group.descLevel());
     }
-    for (const auto& opt : options) { insertOption(k, opt); }
-    groups_[k].setDescriptionLevel(std::min(options.descLevel(), groups_[k].descLevel()));
+    for (const auto& opt : group) { insertOption(k, opt); }
+    groups_[k].setDescriptionLevel(std::min(group.descLevel(), groups_[k].descLevel()));
     return *this;
 }
 
 OptionContext& OptionContext::addAlias(const std::string& aliasName, option_iterator option) {
     if (option != end() && not aliasName.empty()) {
-        auto k = static_cast<KeyType>(option - begin());
-        if (not index_.insert(Name2Key::value_type(aliasName, k)).second) {
+        if (auto k = static_cast<KeyType>(option - begin());
+            not index_.insert(Name2Key::value_type(aliasName, k)).second) {
             throw DuplicateOption(caption(), aliasName);
         }
     }
@@ -354,8 +354,7 @@ OptionContext& OptionContext::addAlias(const std::string& aliasName, option_iter
 }
 
 const OptionGroup& OptionContext::findGroup(const std::string& name) const {
-    std::size_t x = findGroupKey(name);
-    if (x < groups_.size()) {
+    if (std::size_t x = findGroupKey(name); x < groups_.size()) {
         return groups_[x];
     }
     throw ContextError(caption(), ContextError::unknown_group, name);
@@ -377,16 +376,12 @@ void OptionContext::insertOption(size_t groupId, const SharedOptPtr& opt) {
     const string& l = opt->name();
     KeyType       k(options_.size());
     if (opt->alias()) {
-        char        sName[2] = {'-', opt->alias()};
-        std::string shortName(sName, 2);
-        if (not index_.insert(Name2Key::value_type(shortName, k)).second) {
+        if (char sName[2] = {'-', opt->alias()}; not index_.try_emplace({sName, 2}, k).second) {
             throw DuplicateOption(caption(), l);
         }
     }
-    if (not l.empty()) {
-        if (not index_.insert(Name2Key::value_type(l, k)).second) {
-            throw DuplicateOption(caption(), l);
-        }
+    if (not l.empty() && not index_.try_emplace(l, k).second) {
+        throw DuplicateOption(caption(), l);
     }
     options_.push_back(opt);
     groups_[groupId].options_.push_back(opt);
@@ -639,11 +634,10 @@ private:
         // either -o value or -o[value|opts]
         char optn[2];
         optn[1] = '\0';
-        SharedOptPtr o;
         while (*optName) {
             optn[0]         = *optName;
             const char* val = optName + 1;
-            if ((o = getOption(optn, OptionContext::find_alias)).get()) {
+            if (auto o = getOption(optn, OptionContext::find_alias); o.get()) {
                 if (o->value()->isImplicit()) {
                     // -ovalue or -oopts
                     if (not o->value()->isFlag()) {
@@ -651,14 +645,12 @@ private:
                         addOptionValue(o, val);
                         return true;
                     }
-                    else {
-                        // -o + more options
-                        addOptionValue(o, "");
-                        ++optName;
-                    }
+                    // -o + more options
+                    addOptionValue(o, "");
+                    ++optName;
                 }
-                else if (*val != 0 || (val = next()) != nullptr) {
-                    // -ovalue or -o value
+                else if (val = *val == 0 ? next() : val; val) {
+                    //  -ovalue or -o value
                     addOptionValue(o, val);
                     return true;
                 }
@@ -673,10 +665,9 @@ private:
         return true;
     }
     bool handleLongOpt(const char* optName) {
-        string            name(optName);
-        string            value;
-        string::size_type p = name.find('=');
-        if (p != string::npos) {
+        string name(optName);
+        string value;
+        if (auto p = name.find('='); p != string::npos) {
             value.assign(name, p + 1, string::npos);
             name.erase(p, string::npos);
         }
@@ -686,7 +677,8 @@ private:
             try {
                 on = getOption(optName + 3, OptionContext::find_name_or_prefix);
             }
-            catch (...) {
+            catch (...) { // NOLINT(*-empty-catch)
+                // ignore - will try name next.
             }
             if (on.get() && not on->value()->isNegatable()) {
                 on.reset();
@@ -730,7 +722,6 @@ class ArgvParser : public CommandLineParser {
 public:
     ArgvParser(ParseContext& ctx, int startPos, int endPos, const char* const* argv, unsigned cmdFlags)
         : CommandLineParser(ctx, cmdFlags)
-        , currentArg_(nullptr)
         , argPos_(startPos)
         , endPos_(endPos)
         , argv_(argv) {}
@@ -740,7 +731,7 @@ private:
         currentArg_ = argPos_ != endPos_ ? argv_[argPos_++] : nullptr;
         return currentArg_;
     }
-    const char*        currentArg_;
+    const char*        currentArg_{nullptr};
     int                argPos_;
     int                endPos_;
     const char* const* argv_;
@@ -759,12 +750,13 @@ private:
     const char* next() override {
         // skip leading white
         while (std::isspace(static_cast<unsigned char>(*cmd_))) { ++cmd_; }
-        if (!*cmd_) {
+        if (not *cmd_) {
             return nullptr;
         }
         tok_.clear();
+        static constexpr std::string_view special{"\"'\\"};
         // find end of current arg
-        for (char c, t = ' ', n; (c = *cmd_) != 0; ++cmd_) {
+        for (char c, t = ' '; (c = *cmd_) != 0; ++cmd_) {
             if (c == t) {
                 if (t == ' ') {
                     break;
@@ -774,15 +766,12 @@ private:
             else if ((c == '\'' || c == '"') && t == ' ') {
                 t = c;
             }
-            else if (c != '\\') {
+            else if (c != '\\' || special.find(cmd_[1]) == std::string_view::npos) {
                 tok_ += c;
-            }
-            else if ((n = cmd_[1]) == '"' || n == '\'' || n == '\\') {
-                tok_ += n;
-                ++cmd_;
             }
             else {
-                tok_ += c;
+                tok_ += cmd_[1];
+                ++cmd_;
             }
         }
         return tok_.c_str();
@@ -824,25 +813,24 @@ private:
     void doParse() override {
         [[maybe_unused]] auto lineNr = 0;
 
-        std::string  sectionName;       // current section name
-        std::string  sectionValue;      // current section value
-        bool         inSection = false; // true if multi line section value
-        FindType     ft        = OptionContext::find_name_or_prefix;
-        SharedOptPtr opt;
+        std::string sectionName;       // current section name
+        std::string sectionValue;      // current section value
+        bool        inSection = false; // true if multi line section value
+        FindType    ft        = OptionContext::find_name_or_prefix;
         // reads the config file.
         // A config file may only contain empty lines, single line comments or
         // sections structured in a name = value fashion.
         // value can span multiple lines, but parts in different lines than name
-        // must not contain a '='-Character.
+        // must not contain a `=`-Character.
         for (std::string line; std::getline(in_, line);) {
             ++lineNr;
             trimLeft(line);
             trimRight(line);
 
-            if (line.empty() || line.find('#') == 0) {
+            if (line.empty() || line.starts_with('#')) {
                 // An empty line or single line comment stops a multi line section value.
                 if (inSection) {
-                    if ((opt = getOption(sectionName.c_str(), ft)).get()) {
+                    if (auto opt = getOption(sectionName.c_str(), ft); opt.get()) {
                         addOptionValue(opt, sectionValue);
                     }
                     inSection = false;
@@ -853,7 +841,7 @@ private:
             if (auto pos = line.find('='); pos != std::string::npos) {
                 // A new section terminates a multi line section value.
                 // First process the current section value...
-                if (inSection && (opt = getOption(sectionName.c_str(), ft)).get()) {
+                if (auto opt = inSection ? getOption(sectionName.c_str(), ft) : SharedOptPtr{}; opt.get()) {
                     addOptionValue(opt, sectionValue);
                 }
                 // ...then save the new section's value.
@@ -871,7 +859,7 @@ private:
             }
         }
         if (inSection) { // file does not end with an empty line
-            if ((opt = getOption(sectionName.c_str(), ft)).get()) {
+            if (auto opt = getOption(sectionName.c_str(), ft); opt.get()) {
                 addOptionValue(opt, sectionValue);
             }
         }
@@ -906,10 +894,11 @@ public:
 
 } // end unnamed namespace
 
-ParsedValues parseCommandLine(int& argc, char** argv, const OptionContext& o, bool allowUnreg, PosOption po,
+ParsedValues parseCommandLine(int& argc, char** argv, const OptionContext& ctx, bool allowUnreg, PosOption posParser,
                               unsigned flags) {
-    DefaultContext ctx(o, allowUnreg, std::move(po));
-    return static_cast<DefaultContext&>(parseCommandLine(argc, argv, ctx, flags)).parsed;
+    DefaultContext parseCtx(ctx, allowUnreg, std::move(posParser));
+    parseCommandLine(argc, argv, parseCtx, flags);
+    return parseCtx.parsed;
 }
 ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsigned flags) {
     while (argv[argc]) { ++argc; }
@@ -922,85 +911,78 @@ ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsign
     argv[argc] = nullptr;
     return ctx;
 }
-ParsedValues parseCommandArray(const char* const* argv, int nArgs, const OptionContext& o, bool allowUnreg,
-                               PosOption po, unsigned flags) {
-    DefaultContext ctx(o, allowUnreg, std::move(po));
-    ArgvParser     parser(ctx, 0, nArgs, argv, flags);
+ParsedValues parseCommandArray(const char* const* argv, int nArgs, const OptionContext& ctx, bool allowUnreg,
+                               PosOption posParser, unsigned flags) {
+    DefaultContext parseCtx(ctx, allowUnreg, std::move(posParser));
+    ArgvParser     parser(parseCtx, 0, nArgs, argv, flags);
     parser.parse();
-    return static_cast<DefaultContext&>(ctx).parsed;
+    return parseCtx.parsed;
 }
 ParseContext& parseCommandString(const char* cmd, ParseContext& ctx, unsigned flags) {
     return CommandStringParser(cmd, ctx, flags).parse();
 }
-ParsedValues parseCommandString(const std::string& cmd, const OptionContext& o, bool allowUnreg, PosOption po,
+ParsedValues parseCommandString(const std::string& cmd, const OptionContext& ctx, bool allowUnreg, PosOption posParser,
                                 unsigned flags) {
-    DefaultContext ctx(o, allowUnreg, std::move(po));
-    return static_cast<DefaultContext&>(CommandStringParser(cmd.c_str(), ctx, flags).parse()).parsed;
+    DefaultContext parseCtx(ctx, allowUnreg, std::move(posParser));
+    CommandStringParser(cmd.c_str(), parseCtx, flags).parse();
+    return parseCtx.parsed;
 }
 
 ParsedValues parseCfgFile(std::istream& in, const OptionContext& o, bool allowUnreg) {
-    DefaultContext ctx(o, allowUnreg, nullptr);
-    return static_cast<DefaultContext&>(CfgFileParser(ctx, in).parse()).parsed;
+    DefaultContext parseCtx(o, allowUnreg, nullptr);
+    CfgFileParser(parseCtx, in).parse();
+    return parseCtx.parsed;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // Errors
 ///////////////////////////////////////////////////////////////////////////////
-static std::string quote(const std::string& x) { return std::string("'").append(x).append("'"); }
+static std::string quote(const std::string& x) { return std::string(1, '\'').append(x).append(1, '\''); }
 static std::string format(SyntaxError::Type t, const std::string& key) {
-    std::string ret("SyntaxError: ");
-    ret += quote(key);
-    switch (t) {
-        case SyntaxError::missing_value : ret += " requires a value!"; break;
-        case SyntaxError::extra_value   : ret += " does not take a value!"; break;
-        case SyntaxError::invalid_format: ret += " unrecognized line!"; break;
-        default                         : ret += " unknown syntax!";
-    };
+    return std::string("SyntaxError: "sv).append(quote(key)).append([](SyntaxError::Type type) {
+        switch (type) {
+            case SyntaxError::missing_value : return " requires a value!"sv;
+            case SyntaxError::extra_value   : return " does not take a value!"sv;
+            case SyntaxError::invalid_format: return " unrecognized line!"sv;
+            default                         : return " unknown syntax!"sv;
+        }
+    }(t));
+}
+static std::string formatContext(const std::string& ctx) {
+    std::string ret;
+    if (not ctx.empty()) {
+        ret.append("In context "sv).append(quote(ctx)).append(": "sv);
+    }
     return ret;
 }
 static std::string format(ContextError::Type t, const std::string& ctx, const std::string& key,
                           const std::string& alt) {
-    std::string ret;
-    if (not ctx.empty()) {
-        ret += "In context ";
-        ret += quote(ctx);
-        ret += ": ";
-    }
+    std::string ret = formatContext(ctx);
     switch (t) {
-        case ContextError::duplicate_option: ret += "duplicate option: "; break;
-        case ContextError::unknown_option  : ret += "unknown option: "; break;
-        case ContextError::ambiguous_option: ret += "ambiguous option: "; break;
-        case ContextError::unknown_group   : ret += "unknown group: "; break;
-        default                            : ret += "unknown error in: ";
-    };
-    ret += quote(key);
+        case ContextError::duplicate_option: ret.append("duplicate option: "sv); break;
+        case ContextError::unknown_option  : ret.append("unknown option: "sv); break;
+        case ContextError::ambiguous_option: ret.append("ambiguous option: "sv); break;
+        case ContextError::unknown_group   : ret.append("unknown group: "sv); break;
+        default                            : ret.append("unknown error in: "sv);
+    }
+    ret.append(quote(key));
     if (t == ContextError::ambiguous_option && not alt.empty()) {
-        ret += " could be:\n";
-        ret += alt;
+        ret.append(" could be:\n"sv).append(alt);
     }
     return ret;
 }
 static std::string format(ValueError::Type t, const std::string& ctx, const std::string& key,
                           const std::string& value) {
-    std::string ret;
-    const char* x = "";
-    if (not ctx.empty()) {
-        ret += "In context ";
-        ret += quote(ctx);
-        ret += ": ";
-    }
-    switch (t) {
-        case ValueError::multiple_occurrences: ret += "multiple occurrences: "; break;
-        case ValueError::invalid_default     : x = "default "; [[fallthrough]];
+    std::string ret = formatContext(ctx);
+    switch (std::string_view x; t) {
+        case ValueError::multiple_occurrences: ret.append("multiple occurrences: "sv); break;
+        case ValueError::invalid_default     : x = "default "sv; [[fallthrough]];
         case ValueError::invalid_value:
-            ret += quote(value);
-            ret += " invalid ";
-            ret += x;
-            ret += "value for: ";
+            ret.append(quote(value)).append(" invalid "sv).append(x).append("value for: "sv);
             break;
-        default: ret += "unknown error in: ";
-    };
-    ret += quote(key);
+        default: ret.append("unknown error in: "sv);
+    }
+    ret.append(quote(key));
     return ret;
 }
 SyntaxError::SyntaxError(Type t, const std::string& key) : Error(format(t, key)), key_(key), type_(t) {}

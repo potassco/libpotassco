@@ -76,7 +76,7 @@ constexpr auto id_max = static_cast<Id_t>(-1);
 //! Atom ids are positive integers in the range [atom_min;atom_max].
 using Atom_t = uint32_t;
 //! Minimum value for atom ids (must not be 0).
-constexpr auto atom_min = static_cast<Atom_t>(1);
+constexpr auto atom_min = static_cast<Atom_t>(1u);
 //! Maximum value for atom ids.
 constexpr auto atom_max = static_cast<Atom_t>(((1u) << 31) - 1);
 //! Literals are signed atoms.
@@ -84,24 +84,24 @@ using Lit_t = int32_t;
 //! (Literal) weights are integers.
 using Weight_t = int32_t;
 //! A literal with an associated weight.
-struct WeightLit_t {
+struct WeightLit {
     Lit_t    lit;    //!< Literal.
     Weight_t weight; //!< Associated weight.
 
-    friend constexpr bool operator==(const WeightLit_t& lhs, const WeightLit_t& rhs) noexcept  = default;
-    friend constexpr auto operator<=>(const WeightLit_t& lhs, const WeightLit_t& rhs) noexcept = default;
-    friend constexpr auto operator==(const WeightLit_t& lhs, Lit_t rhs) noexcept {
+    friend constexpr bool operator==(const WeightLit& lhs, const WeightLit& rhs) noexcept  = default;
+    friend constexpr auto operator<=>(const WeightLit& lhs, const WeightLit& rhs) noexcept = default;
+    friend constexpr auto operator==(const WeightLit& lhs, Lit_t rhs) noexcept {
         return lhs.lit == rhs && lhs.weight == 1;
     }
-    friend constexpr auto operator<=>(const WeightLit_t& lhs, Lit_t rhs) noexcept {
-        return lhs <=> WeightLit_t{.lit = rhs, .weight = 1};
+    friend constexpr auto operator<=>(const WeightLit& lhs, Lit_t rhs) noexcept {
+        return lhs <=> WeightLit{.lit = rhs, .weight = 1};
     }
 };
 
 using IdSpan        = std::span<const Id_t>;
 using AtomSpan      = std::span<const Atom_t>;
 using LitSpan       = std::span<const Lit_t>;
-using WeightLitSpan = std::span<const WeightLit_t>;
+using WeightLitSpan = std::span<const WeightLit>;
 //! Convert a single lvalue into a span with one element.
 template <typename T>
 requires(std::is_lvalue_reference_v<T>)
@@ -110,33 +110,33 @@ constexpr auto toSpan(T&& x) -> std::span<std::remove_reference_t<T>> {
 }
 
 //! Supported rule head types.
-enum class Head_t : unsigned { disjunctive = 0, choice = 1 };
-POTASSCO_SET_DEFAULT_ENUM_MAX(Head_t::choice);
+enum class HeadType : unsigned { disjunctive = 0, choice = 1 };
+POTASSCO_SET_DEFAULT_ENUM_MAX(HeadType::choice);
 
 //! Supported rule body types.
-enum class Body_t : unsigned { normal = 0, sum = 1, count = 2 };
-POTASSCO_SET_DEFAULT_ENUM_MAX(Body_t::count);
+enum class BodyType : unsigned { normal = 0, sum = 1, count = 2 };
+POTASSCO_SET_DEFAULT_ENUM_MAX(BodyType::count);
 
-//! Type representing an external value.
-enum class Value_t : unsigned { free = 0, true_ = 1, false_ = 2, release = 3 };
-[[maybe_unused]] consteval auto enable_meta(std::type_identity<Value_t>) {
-    using enum Value_t;
+//! Type representing a truth or external value.
+enum class TruthValue : unsigned { free = 0, true_ = 1, false_ = 2, release = 3 };
+[[maybe_unused]] consteval auto enable_meta(std::type_identity<TruthValue>) {
+    using enum TruthValue;
     using namespace std::literals;
     return EnumEntries(free, "free"sv, true_, "true"sv, false_, "false"sv, release, "release"sv);
 }
 
 //! Supported modifications for domain heuristic.
-enum class Heuristic_t : unsigned { level = 0, sign = 1, factor = 2, init = 3, true_ = 4, false_ = 5 };
-[[maybe_unused]] consteval auto enable_ops(std::type_identity<Heuristic_t>) -> CmpOps;
-[[maybe_unused]] consteval auto enable_meta(std::type_identity<Heuristic_t>) {
-    using enum Heuristic_t;
+enum class DomModifier : unsigned { level = 0, sign = 1, factor = 2, init = 3, true_ = 4, false_ = 5 };
+[[maybe_unused]] consteval auto enable_ops(std::type_identity<DomModifier>) -> CmpOps;
+[[maybe_unused]] consteval auto enable_meta(std::type_identity<DomModifier>) {
+    using enum DomModifier;
     using namespace std::literals;
     return EnumEntries(level, "level"sv, sign, "sign"sv, factor, "factor"sv, init, "init"sv, true_, "true"sv, false_,
                        "false"sv);
 }
 
-//! Supported aspif directives.
-enum class Directive_t : unsigned {
+//! Supported aspif statements.
+enum class AspifType : unsigned {
     end       = 0,
     rule      = 1,
     minimize  = 2,
@@ -149,7 +149,7 @@ enum class Directive_t : unsigned {
     theory    = 9,
     comment   = 10
 };
-POTASSCO_SET_DEFAULT_ENUM_MAX(Directive_t::comment);
+POTASSCO_SET_DEFAULT_ENUM_MAX(AspifType::comment);
 
 //! Basic callback interface for constructing a logic program.
 class AbstractProgram {
@@ -161,9 +161,9 @@ public:
     virtual void beginStep();
 
     //! Add the given rule to the program.
-    virtual void rule(Head_t ht, const AtomSpan& head, const LitSpan& body) = 0;
+    virtual void rule(HeadType ht, const AtomSpan& head, const LitSpan& body) = 0;
     //! Add the given sum rule to the program.
-    virtual void rule(Head_t ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) = 0;
+    virtual void rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) = 0;
     //! Add the given minimize statement to the program.
     virtual void minimize(Weight_t prio, const WeightLitSpan& lits) = 0;
 
@@ -178,13 +178,13 @@ public:
     virtual void project(const AtomSpan& atoms);
     //! Output @c str whenever condition is true in a stable model.
     virtual void output(const std::string_view& str, const LitSpan& condition);
-    //! If `v` is not equal to `Value_t::release`, mark `a` as external and assume value `v`. Otherwise, treat `a` as
+    //! If `v` is not equal to `TruthValue::release`, mark `a` as external and assume value `v`. Otherwise, treat `a` as
     //! regular atom.
-    virtual void external(Atom_t a, Value_t v);
+    virtual void external(Atom_t a, TruthValue v);
     //! Assume the given literals to true during solving.
     virtual void assume(const LitSpan& lits);
     //! Apply the given heuristic modification to atom @c a whenever condition is true.
-    virtual void heuristic(Atom_t a, Heuristic_t t, int bias, unsigned prio, const LitSpan& condition);
+    virtual void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& condition);
     //! Assume an edge between @c s and @c t whenever condition is true.
     virtual void acycEdge(int s, int t, const LitSpan& condition);
     //@}
@@ -230,13 +230,13 @@ constexpr Atom_t atom(Atom_t atom) { return atom; }
 //! Returns the atom of the given literal.
 constexpr Atom_t atom(Lit_t lit) { return static_cast<Atom_t>(lit >= 0 ? lit : -lit); }
 //! Returns the atom of the given weight literal.
-constexpr Atom_t atom(const WeightLit_t& w) { return atom(w.lit); }
+constexpr Atom_t atom(const WeightLit& w) { return atom(w.lit); }
 //! Returns the positive literal of the given atom.
 constexpr Lit_t lit(Atom_t atom) { return static_cast<Lit_t>(atom); }
 //! Identity function for literals.
 constexpr Lit_t lit(Lit_t lit) { return lit; }
 //! Returns the literal of the given weight literal.
-constexpr Lit_t lit(const WeightLit_t& w) { return w.lit; }
+constexpr Lit_t lit(const WeightLit& w) { return w.lit; }
 //! Returns the negative literal of the given atom.
 constexpr Lit_t neg(Atom_t a) { return -lit(a); }
 //! Returns the complement of the given literal.
@@ -246,7 +246,7 @@ constexpr Weight_t weight(Atom_t) { return 1; }
 //! Returns the weight of the given literal, which is always 1.
 constexpr Weight_t weight(Lit_t) { return 1; }
 //! Returns the weight of the given weight literal.
-constexpr Weight_t weight(const WeightLit_t& w) { return w.weight; }
+constexpr Weight_t weight(const WeightLit& w) { return w.weight; }
 
 ///@}
 
@@ -326,9 +326,9 @@ public:
     static constexpr auto max_count = sizeof(T) * CHAR_BIT;
 
     //! Creates an empty set, i.e. all bits are zero.
-    constexpr Bitset() noexcept : set_{} {}
+    constexpr Bitset() noexcept = default;
     //! Creates a set with the given elements, i.e. bits at the given positions are set.
-    constexpr Bitset(std::initializer_list<ElemType> elems) : set_{} {
+    constexpr Bitset(std::initializer_list<ElemType> elems) {
         for (StorageType zero{}; auto e : elems) { set_ |= Potassco::set_bit(zero, +e); }
     }
     //! Constructs a bitset with all bits in `r` set.
@@ -353,13 +353,12 @@ public:
 
 private:
     constexpr explicit Bitset(StorageType r) : set_(r) {}
-    StorageType set_;
+    StorageType set_{0};
 };
 static_assert(Bitset<uint32_t>::max_count == 32);
 static_assert(Bitset<uint32_t>{}.rep() == 0u);
 static_assert(Bitset<uint32_t>::fromRep(8u).contains(3));
 static_assert(Bitset<uint32_t>::fromRep(15u).count() == 4u);
-static_assert(Bitset<uint32_t>{1, 2, 3}.rep() == 14u);
 
 class DynamicBitset {
 public:
@@ -413,7 +412,7 @@ class RuleBuilder;
  * a pointer referencing a buffer internal to the string, making relocation non-trivial.
  * In contrast, this class uses an SSO implementation that is more similar to the one from libc++.
  */
-class ConstString {
+class ConstString final {
 public:
     using trivially_relocatable = std::true_type; // NOLINT
     //! Supported creation modes.
