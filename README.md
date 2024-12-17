@@ -1,6 +1,8 @@
 # libpotassco
 
-[![Build Status master](https://badges.herokuapp.com/travis/potassco/libpotassco?branch=master&label=master)](https://travis-ci.org/potassco/libpotassco?branch=master)
+![Build Status master](https://github.com/potassco/libpotassco/actions/workflows/test.yml/badge.svg?branch=master)
+![Build Status dev](https://github.com/potassco/libpotassco/actions/workflows/test.yml/badge.svg?branch=dev)
+![Build Status dev-20](https://github.com/potassco/libpotassco/actions/workflows/test.yml/badge.svg?branch=dev-20)
 
 libpotassco is a small C++ utility library used by various potassco projects
 that mostly provides functions and types for
