@@ -1,6 +1,3 @@
-include(CTest)
-include(Catch)
-enable_testing()
 add_executable(test_potassco_lp)
 target_sources(test_potassco_lp PRIVATE
     test_aspif.cpp

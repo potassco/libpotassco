@@ -17,6 +17,7 @@ option(LIB_POTASSCO_INSTALL_LIB "whether to install libpotassco" OFF)
 option(LIB_POTASSCO_INSTALL_VERSIONED "whether to use a versioned install layout" OFF)
 cmake_dependent_option(LIB_POTASSCO_TESTS_ENABLE_DBG_HEAP "enable windows debug heap in catch2" OFF "LIB_POTASSCO_BUILD_TESTS" OFF)
 cmake_dependent_option(LIB_POTASSCO_BUILD_STATIC "link lpconvert statically if supported" OFF "LIB_POTASSCO_BUILD_APP" ON)
+cmake_dependent_option(LIB_POTASSCO_SETUP_CATCH2 "setup third_party/Catch2" OFF "NOT LIB_POTASSCO_BUILD_TESTS" ON)
 
 if(LIB_POTASSCO_INSTALL_VERSIONED)
     set(include_dest "potassco-${LIB_POTASSCO_VERSION}")
@@ -56,6 +57,24 @@ else()
     SET(CMAKE_STATIC_LINKER_FLAGS_RELEASE "${CMAKE_STATIC_LINKER_FLAGS_RELEASE} ${VC_RELEASE_LINK_OPTIONS}")
 endif()
 
+########################################################################################################################
+### Third party stuff                                                                                                ###
+########################################################################################################################
+add_subdirectory(third_party/amc)
+if(NOT AMC_PEDANTIC)
+    # NOTE: This should be part of the AMC cmake config.
+    target_compile_definitions(amc INTERFACE AMC_NONSTD_FEATURES)
+endif()
+
+if(LIB_POTASSCO_SETUP_CATCH2)
+    set(CATCH_BUILD_STATIC_LIBRARY ON CACHE INTERNAL " " FORCE)
+    set(CATCH_CONFIG_WINDOWS_CRTDBG ${LIB_POTASSCO_TESTS_ENABLE_DBG_HEAP} CACHE INTERNAL " " FORCE)
+    add_subdirectory(third_party/Catch2)
+    include(CTest)
+    include(Catch)
+endif()
+########################################################################################################################
+
 add_library(potassco_default_warnings INTERFACE)
 add_library(potassco::potassco_default_warnings ALIAS potassco_default_warnings)
 if(MSVC)
@@ -70,29 +89,12 @@ target_compile_options(potassco_default_warnings
     $<$<COMPILE_LANGUAGE:CXX>:${PROJECT_WARNINGS_CXX}>)
 
 add_subdirectory(src)
-add_subdirectory(third_party/amc)
-if(NOT AMC_PEDANTIC)
-    # NOTE: This should be part of the AMC cmake config.
-    target_compile_definitions(amc INTERFACE AMC_NONSTD_FEATURES)
-endif()
-
-get_directory_property(IS_SUBPROJECT PARENT_DIRECTORY)
-
-if(LIB_POTASSCO_BUILD_TESTS OR IS_SUBPROJECT)
-    set(CATCH_BUILD_STATIC_LIBRARY ON CACHE INTERNAL " " FORCE)
-    set(CATCH_CONFIG_WINDOWS_CRTDBG ${LIB_POTASSCO_TESTS_ENABLE_DBG_HEAP} CACHE INTERNAL " " FORCE)
-    add_subdirectory(third_party/Catch2)
-    if(IS_SUBPROJECT)
-        set(CMAKE_MODULE_PATH " ${CMAKE_MODULE_PATH}" PARENT_SCOPE)
-    endif()
+if(LIB_POTASSCO_BUILD_APP)
+    add_subdirectory(app)
 endif()
 
 if(LIB_POTASSCO_BUILD_TESTS)
-    enable_testing()
     add_subdirectory(tests)
-endif()
-if(LIB_POTASSCO_BUILD_APP)
-    add_subdirectory(app)
 endif()
 
 # optional doc target
