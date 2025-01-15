@@ -139,7 +139,7 @@ enum class DummyEnum : uint8_t {
     eight = 8,
 };
 POTASSCO_SET_DEFAULT_ENUM_MAX(DummyEnum::eight);
-[[maybe_unused]] consteval auto enable_ops(std::type_identity<DummyEnum>) -> CmpOps { return {}; }
+POTASSCO_ENABLE_CMP_OPS(DummyEnum);
 
 } // namespace
 

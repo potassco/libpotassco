@@ -119,21 +119,13 @@ POTASSCO_SET_DEFAULT_ENUM_MAX(BodyType::count);
 
 //! Type representing a truth or external value.
 enum class TruthValue : unsigned { free = 0, true_ = 1, false_ = 2, release = 3 };
-[[maybe_unused]] consteval auto enable_meta(std::type_identity<TruthValue>) {
-    using enum TruthValue;
-    using namespace std::literals;
-    return EnumEntries(free, "free"sv, true_, "true"sv, false_, "false"sv, release, "release"sv);
-}
+POTASSCO_SET_ENUM_ENTRIES(TruthValue, {free, "free"sv}, {true_, "true"sv}, {false_, "false"sv}, {release, "release"sv});
 
 //! Supported modifications for domain heuristic.
 enum class DomModifier : unsigned { level = 0, sign = 1, factor = 2, init = 3, true_ = 4, false_ = 5 };
-[[maybe_unused]] consteval auto enable_ops(std::type_identity<DomModifier>) -> CmpOps;
-[[maybe_unused]] consteval auto enable_meta(std::type_identity<DomModifier>) {
-    using enum DomModifier;
-    using namespace std::literals;
-    return EnumEntries(level, "level"sv, sign, "sign"sv, factor, "factor"sv, init, "init"sv, true_, "true"sv, false_,
-                       "false"sv);
-}
+POTASSCO_SET_ENUM_ENTRIES(DomModifier, {level, "level"sv}, {sign, "sign"sv}, {factor, "factor"sv}, {init, "init"sv},
+                          {true_, "true"sv}, {false_, "false"sv});
+POTASSCO_ENABLE_CMP_OPS(DomModifier);
 
 //! Supported aspif statements.
 enum class AspifType : unsigned {

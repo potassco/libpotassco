@@ -40,7 +40,7 @@ enum class ClauseType : unsigned {
     transient        = 2u, //!< Removable clause associated with current solving step.
     transient_locked = 3u  //!< Unremovable clause associated with current solving step.
 };
-[[maybe_unused]] consteval auto enable_ops(std::type_identity<ClauseType>) -> BitOps;
+POTASSCO_ENABLE_BIT_OPS(ClauseType);
 
 //! Named constants.
 enum class StatisticsType {

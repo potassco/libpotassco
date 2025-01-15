@@ -90,15 +90,6 @@ struct EnumMeta<EnumT, std::void_t<decltype(enable_meta(c_type<EnumT>))>> : std:
     static constexpr std::string_view name(EnumT e) { return c_meta.name(e); }
 };
 
-struct BitOps {};
-struct CmpOps {};
-template <typename... O>
-struct AllOps : O... {};
-template <typename T, typename Op>
-concept HasOps = requires(T) {
-    { enable_ops(c_type<T>) } -> std::convertible_to<Op>;
-};
-
 template <std::size_t N>
 struct FixedString {
     constexpr FixedString(std::string_view s) {
@@ -143,6 +134,13 @@ constexpr void addEntry(std::pair<EnumT, std::string_view>*& out) {
         *out++ = {V, enum_name<EnumT, V>()};
     }
 }
+template <typename EnumT, typename... Args>
+constexpr void addEntries(std::pair<EnumT, std::string_view>* out, EnumT e, std::string_view n, Args... args) {
+    *out++ = {e, n};
+    if constexpr (sizeof...(args) != 0) {
+        addEntries(out, args...);
+    }
+}
 // NOLINTEND
 } // namespace Detail
 
@@ -150,9 +148,6 @@ constexpr void addEntry(std::pair<EnumT, std::string_view>*& out) {
  * \addtogroup BasicTypes
  */
 ///@{
-using Detail::AllOps;
-using Detail::BitOps;
-using Detail::CmpOps;
 
 //! Meta type for simple (consecutive) enums with @c Count elements starting at @c First.
 /*!
@@ -200,8 +195,6 @@ struct DefaultEnum {
 
 //! Meta type for enums with @c N explicit elements, where each element is an enumerator and its (stringified) name.
 /*!
- * To associate entry metadata for some enum Foo defined in namespace X, define a consteval function
- * <tt>auto enable_meta(std::type_identity<Foo>) { return Potassco::EnumEntries{...}; }</tt> in namespace X.
  * \note Enumerators shall have unique numeric values.
  */
 template <typename EnumT, std::size_t N>
@@ -210,13 +203,6 @@ struct EnumEntries {
     using container_type            = std::array<element_type, N>;        // NOLINT
     using UT                        = std::underlying_type_t<EnumT>;      // NOLINT
     static constexpr auto null_elem = element_type{};
-    template <typename... Args>
-    explicit constexpr EnumEntries(Args... args) {
-        static_assert(N != 0 && sizeof...(Args) == N * 2);
-        add(vals.data(), args...);
-        std::sort(vals.begin(), vals.end(),
-                  [](const auto& lhs, const auto& rhs) { return to_underlying(lhs.first) < to_underlying(rhs.first); });
-    }
     explicit constexpr EnumEntries(const element_type* base) {
         for (std::size_t i = 0; i != N; ++i) { vals[i] = base[i]; }
         std::sort(vals.begin(), vals.end(),
@@ -240,24 +226,39 @@ struct EnumEntries {
         return it != vals.end() && it->first == e ? &*it : &null_elem;
     }
     constexpr const container_type& entries() const noexcept { return vals; }
-    template <typename... Args>
-    constexpr void add(element_type* out, EnumT e1, std::string_view s1, Args... rest) {
-        *out++ = element_type{e1, s1};
-        if constexpr (sizeof...(rest)) {
-            add(out, rest...);
-        }
-    }
 
     container_type vals{};
 };
 
+//! Returns enum entries from the given arguments.
 template <typename EnumT, typename... Args>
-EnumEntries(EnumT e1, std::string_view n1, Args...) -> EnumEntries<EnumT, (sizeof...(Args) + 2) / 2>;
+consteval auto makeEntries(EnumT e1, std::string_view n1,
+                           Args... args) -> EnumEntries<EnumT, (sizeof...(Args) + 2) / 2> {
+    constexpr auto                     N = (sizeof...(Args) + 2) / 2;
+    std::pair<EnumT, std::string_view> r[N];
+    Detail::addEntries(r, e1, n1, args...);
+    return EnumEntries<EnumT, N>(r);
+}
+
+//! Convenience macro for specifying metadata for enums with explicitly named entries.
+/*!
+ * \param E   The enum type for which metadata is specified.
+ * \param ... List of entries given as {<dcl>, "<name>"} pairs, where <dcl> is an enumerator of E and "<name>" its
+ *            name.
+ */
+#define POTASSCO_SET_ENUM_ENTRIES(E, ...)                                                                              \
+    [[maybe_unused]] consteval auto enable_meta(std::type_identity<E>) {                                               \
+        using enum E;                                                                                                  \
+        using namespace std::literals;                                                                                 \
+        constexpr std::pair<E, std::string_view> e[] = {__VA_ARGS__};                                                  \
+        return Potassco::EnumEntries<E, std::size(e)>(e);                                                              \
+    }                                                                                                                  \
+    static_assert(Potassco::HasEnumEntries<E>)
 
 //! Returns valid enum entries of the given enum in the range [Min, Max].
 template <typename EnumT, auto Min = 0, auto Max = 128>
 requires(std::is_enum_v<EnumT> && Max >= Min)
-constexpr auto reflectEntries() {
+consteval auto reflectEntries() {
     constexpr auto all = []<auto... Is>(std::index_sequence<Is...>) {
         std::array<std::pair<EnumT, std::string_view>, sizeof...(Is)> r;
         auto*                                                         p = r.data();
@@ -266,6 +267,17 @@ constexpr auto reflectEntries() {
     }(std::make_index_sequence<(Max - Min) + 1>());
     return EnumEntries<EnumT, all.second>{all.first.data()};
 }
+
+//! Convenience macro for specifying metadata for enums with reflected names.
+/*!
+ * \param E   The enum type for which metadata is specified.
+ * \param ... Optional numeric reflection range (default is [0;128])
+ */
+#define POTASSCO_REFLECT_ENUM_ENTRIES(E, ...)                                                                          \
+    [[maybe_unused]] consteval auto enable_meta(std::type_identity<E>) {                                               \
+        return Potassco::reflectEntries<E, __VA_ARGS__>();                                                             \
+    }                                                                                                                  \
+    static_assert(Potassco::HasEnumEntries<E>)
 
 //! Concept for scoped enums.
 template <typename EnumT>
@@ -278,14 +290,6 @@ concept HasEnumMeta = std::is_enum_v<EnumT> && Detail::EnumMeta<EnumT>::value;
 //! Concept for enums whose metadata includes individual entries.
 template <typename EnumT>
 concept HasEnumEntries = HasEnumMeta<EnumT> && Detail::EnumMeta<EnumT>::meta_entries;
-
-//! Concept for enums with support for heterogeneous comparison operators.
-template <typename T>
-concept HasCmpOps = ScopedEnum<T> && Detail::HasOps<T, CmpOps>;
-
-//! Concept for enums with support for bit operations.
-template <typename T>
-concept HasBitOps = std::is_enum_v<T> && Detail::HasOps<T, BitOps>;
 
 //! Returns the elements of the given enum as an array of (name, "name")-pairs.
 /*!
@@ -356,79 +360,51 @@ requires(std::is_enum_v<T>)
     return (to_underlying(x) & to_underlying(y)) == to_underlying(y);
 }
 ///@}
-//! Opt-in operators for scoped enums.
-/*!
- * To enable certain opt-in operators for some scoped enum Foo defined in namespace X, declare a (consteval) function
- * <tt>consteval auto enable_ops(std::type_identity<Foo>) -> P</tt> in namespace X, where P is a type convertible to
- * Potassco::CmpOps, Potassco::BitOps, or both.
- * If namespace X is different from Potassco, then also add <tt>using namespace Potassco::Ops</tt> to namespace X.
- */
-inline namespace Ops {
-//! Opt-in heterogeneous comparison operators for scoped enums.
-/*!
- * \note Scoped enums E for which <tt>enable_ops(std::type_identity<E>)</tt> returns a type convertible to
- *       Potassco::CmpOps can be implicitly compared to their underlying type.
- *       Furthermore, unary operator+ can be used to convert members of E to their underlying numeric value.
- */
-///@{
-template <HasCmpOps T>
-[[nodiscard]] constexpr auto operator==(T lhs, std::underlying_type_t<T> rhs) noexcept -> bool {
-    return Potassco::to_underlying(lhs) == rhs;
-}
-template <HasCmpOps T>
-[[nodiscard]] constexpr decltype(auto) operator<=>(T lhs, std::underlying_type_t<T> rhs) noexcept {
-    return Potassco::to_underlying(lhs) <=> rhs;
-}
-template <HasCmpOps T>
-[[nodiscard]] constexpr auto operator+(T v) noexcept -> std::underlying_type_t<T> {
-    return Potassco::to_underlying(v);
-}
-//! Opt-in bit operations for enums.
-/*!
- * \note Scoped enums E for which <tt>enable_ops(std::type_identity<E>)</tt> returns a type convertible to
- *       Potassco::BitOps support bitwise operators on their underlying type.
- */
-///@{
-template <HasBitOps T>
-[[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator~(T a) noexcept -> T {
-    return static_cast<T>(~Potassco::to_underlying(a));
-}
-template <HasBitOps T>
-[[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator|(T a, T b) noexcept -> T {
-    return static_cast<T>(Potassco::to_underlying(a) | Potassco::to_underlying(b));
-}
-template <HasBitOps T>
-POTASSCO_FORCE_INLINE constexpr auto operator|=(T& a, T b) noexcept -> T& {
-    return a = a | b;
-}
-template <HasBitOps T>
-[[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator&(T a, T b) noexcept -> T {
-    return static_cast<T>(Potassco::to_underlying(a) & Potassco::to_underlying(b));
-}
-template <HasBitOps T>
-POTASSCO_FORCE_INLINE constexpr auto operator&=(T& a, T b) noexcept -> T& {
-    return a = a & b;
-}
-template <HasBitOps T>
-[[nodiscard]] POTASSCO_FORCE_INLINE constexpr auto operator^(T a, T b) noexcept -> T {
-    return static_cast<T>(Potassco::to_underlying(a) ^ Potassco::to_underlying(b));
-}
-template <HasBitOps T>
-POTASSCO_FORCE_INLINE constexpr auto operator^=(T& a, T b) noexcept -> T& {
-    return a = a ^ b;
-}
-///@}
 
-} // namespace Ops
+//! Opt-in macro for enabling heterogeneous comparison operators for a given scoped enum type.
+/*!
+ * A scoped enum E for which POTASSCO_ENABLE_CMP_OPS(E) has been called can be implicitly compared to its underlying
+ * type. Furthermore, the unary operator+ can be used to convert members of E to their underlying numeric value.
+ *
+ * \note If E is a class-local enum, POTASSCO_ENABLE_CMP_OPS(E, friend) can be used to enable comparison operators
+ *       from within the class definition.
+ */
+#define POTASSCO_ENABLE_CMP_OPS(E, ...)                                                                                \
+    [[nodiscard]] POTASSCO_E_OP(==, (E lhs, std::underlying_type_t<E> rhs), __VA_ARGS__)->bool {                       \
+        return Potassco::to_underlying(lhs) == rhs;                                                                    \
+    }                                                                                                                  \
+    [[nodiscard]] POTASSCO_E_OP(<=>, (E lhs, std::underlying_type_t<E> rhs), __VA_ARGS__) {                            \
+        return Potassco::to_underlying(lhs) <=> rhs;                                                                   \
+    }                                                                                                                  \
+    [[nodiscard]] POTASSCO_E_OP(+, (E v), __VA_ARGS__)->std::underlying_type_t<E> {                                    \
+        return Potassco::to_underlying(v);                                                                             \
+    }                                                                                                                  \
+    static_assert(Potassco::ScopedEnum<E>)
+
+//! Opt-in macro for enabling bit operations for a given enum type.
+/*!
+ * Use POTASSCO_ENABLE_BIT_OPS(E) to enable bitwise operators on the underlying type of enum E.
+ *
+ * \note If E is a class-local enum, POTASSCO_ENABLE_BIT_OPS(E, friend) can be used to enable bitwise operators from
+ *       within the class definition.
+ */
+#define POTASSCO_ENABLE_BIT_OPS(E, ...)                                                                                \
+    [[nodiscard]] POTASSCO_E_OP(~, (E a), __VA_ARGS__)->E { return static_cast<E>(~Potassco::to_underlying(a)); }      \
+    [[nodiscard]] POTASSCO_E_OP(|, (E a, E b), __VA_ARGS__)->E {                                                       \
+        return static_cast<E>(Potassco::to_underlying(a) | Potassco::to_underlying(b));                                \
+    }                                                                                                                  \
+    POTASSCO_E_OP(|=, (E & a, E b), __VA_ARGS__)->E& { return a = a | b; }                                             \
+    [[nodiscard]] POTASSCO_E_OP(&, (E a, E b), __VA_ARGS__)->E {                                                       \
+        return static_cast<E>(Potassco::to_underlying(a) & Potassco::to_underlying(b));                                \
+    }                                                                                                                  \
+    POTASSCO_E_OP(&=, (E & a, E b), __VA_ARGS__)->E& { return a = a & b; }                                             \
+    [[nodiscard]] POTASSCO_E_OP(^, (E a, E b), __VA_ARGS__)->E {                                                       \
+        return static_cast<E>(Potassco::to_underlying(a) ^ Potassco::to_underlying(b));                                \
+    }                                                                                                                  \
+    POTASSCO_E_OP(^=, (E & a, E b), __VA_ARGS__)->E& { return a = a ^ b; }                                             \
+    static_assert(std::is_enum_v<E>)
+
+#define POTASSCO_E_OP(op, arg, ...)                                                                                    \
+    [[maybe_unused]] POTASSCO_FORCE_INLINE __VA_ARGS__ constexpr auto operator op arg noexcept
 
 } // namespace Potassco
-using Potassco::Ops::operator&;
-using Potassco::Ops::operator|;
-using Potassco::Ops::operator^;
-using Potassco::Ops::operator~;
-using Potassco::Ops::operator&=;
-using Potassco::Ops::operator|=;
-using Potassco::Ops::operator^=;
-using Potassco::Ops::operator==;
-using Potassco::Ops::operator<=>;
-using Potassco::Ops::operator+;
