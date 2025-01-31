@@ -47,11 +47,11 @@ struct Rule {
         Sum     agg;
     };
     //! Named constructor for creating a rule.
-    static Rule normal(HeadType ht, const AtomSpan& head, const LitSpan& body);
+    static Rule normal(HeadType ht, AtomSpan head, LitSpan body);
     //! Named constructor for creating a sum rule.
-    static Rule sum(HeadType ht, const AtomSpan& head, const Sum& sum);
+    static Rule sum(HeadType ht, AtomSpan head, const Sum& sum);
     //! Named constructor for creating a sum rule.
-    static Rule sum(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits);
+    static Rule sum(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan lits);
     //! Returns whether the rule has a normal body, i.e. whether the body is a conjunction of literals.
     [[nodiscard]] bool normal() const { return bt == BodyType::normal; }
     //! Returns whether the body of the rule is a sum aggregate.

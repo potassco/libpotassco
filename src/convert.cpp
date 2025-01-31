@@ -143,7 +143,7 @@ struct SmodelsConvert::SmData {
         x.head  = 1;
         return x.sm();
     }
-    RuleBuilder& mapHead(const AtomSpan& h, HeadType ht = HeadType::disjunctive) {
+    RuleBuilder& mapHead(AtomSpan h, HeadType ht = HeadType::disjunctive) {
         rule.clear().start(ht);
         for (auto a : h) { rule.addHead(mapHeadAtom(a)); }
         if (h.empty()) {
@@ -152,11 +152,11 @@ struct SmodelsConvert::SmData {
         return rule;
     }
     template <class T>
-    RuleBuilder& mapBody(const std::span<const T>& in) {
+    RuleBuilder& mapBody(std::span<const T> in) {
         for (const auto& x : in) { rule.addGoal(mapLit(x)); }
         return rule;
     }
-    SymTab::iterator addOutput(Atom_t atom, const std::string_view& str) {
+    SymTab::iterator addOutput(Atom_t atom, std::string_view str) {
         auto [it, added] = symTab.try_emplace(atom, str);
         POTASSCO_CHECK_PRE(added, "Redefinition: atom '%u:%.*s' already shown as '%s'", atom,
                            static_cast<int>(str.size()), str.data(), it->second.c_str());
@@ -164,7 +164,7 @@ struct SmodelsConvert::SmData {
         return it;
     }
 
-    void addMinimize(Weight_t prio, const WeightLitSpan& lits) {
+    void addMinimize(Weight_t prio, WeightLitSpan lits) {
         if (minimize.empty() || minimize.back().prio != prio) {
             minimize.push_back({.prio = prio, .startPos = minLits.size(), .endPos = minLits.size()});
         }
@@ -217,7 +217,7 @@ SmodelsConvert::SmodelsConvert(AbstractProgram& out, bool ext)
 SmodelsConvert::~SmodelsConvert() = default;
 Lit_t    SmodelsConvert::get(Lit_t in) const { return data_->mapLit(in); }
 unsigned SmodelsConvert::maxAtom() const { return data_->next - 1; }
-Atom_t   SmodelsConvert::makeAtom(const LitSpan& cond, bool named) {
+Atom_t   SmodelsConvert::makeAtom(LitSpan cond, bool named) {
     Atom_t id;
     if (cond.size() != 1 || cond[0] < 0 || (data_->mapAtom(atom(cond[0])).show && named)) {
         // aux :- cond.
@@ -233,13 +233,13 @@ Atom_t   SmodelsConvert::makeAtom(const LitSpan& cond, bool named) {
 }
 void SmodelsConvert::initProgram(bool inc) { out_.initProgram(inc); }
 void SmodelsConvert::beginStep() { out_.beginStep(); }
-void SmodelsConvert::rule(HeadType ht, const AtomSpan& head, const LitSpan& body) {
+void SmodelsConvert::rule(HeadType ht, AtomSpan head, LitSpan body) {
     if (not head.empty() || ht == HeadType::disjunctive) {
         data_->mapHead(head, ht).startBody();
         data_->mapBody(body).end(&out_);
     }
 }
-void SmodelsConvert::rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
+void SmodelsConvert::rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan body) {
     if (not head.empty() || ht == HeadType::disjunctive) {
         POTASSCO_CHECK_PRE(std::ranges::none_of(body, [](const auto wl) { return weight(wl) < 0; }),
                            "negative weights in body are not supported");
@@ -262,14 +262,14 @@ void SmodelsConvert::rule(HeadType ht, const AtomSpan& head, Weight_t bound, con
     }
 }
 
-void SmodelsConvert::minimize(Weight_t prio, const WeightLitSpan& lits) { data_->addMinimize(prio, lits); }
-void SmodelsConvert::output(const std::string_view& str, const LitSpan& cond) {
+void SmodelsConvert::minimize(Weight_t prio, WeightLitSpan lits) { data_->addMinimize(prio, lits); }
+void SmodelsConvert::output(std::string_view str, LitSpan cond) {
     // create a unique atom for cond and set its name to str
     data_->addOutput(makeAtom(cond, true), str);
 }
 
 void SmodelsConvert::external(Atom_t a, TruthValue v) { data_->addExternal(a, v); }
-void SmodelsConvert::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& cond) {
+void SmodelsConvert::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan cond) {
     if (not ext_) {
         out_.heuristic(a, t, bias, prio, cond);
     }
@@ -277,7 +277,7 @@ void SmodelsConvert::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio,
     Atom_t heuPred = makeAtom(cond, true);
     data_->addHeuristic(a, t, bias, prio, heuPred);
 }
-void SmodelsConvert::acycEdge(int s, int t, const LitSpan& condition) {
+void SmodelsConvert::acycEdge(int s, int t, LitSpan condition) {
     if (not ext_) {
         out_.acycEdge(s, t, condition);
     }

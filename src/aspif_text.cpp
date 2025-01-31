@@ -366,7 +366,7 @@ struct AspifTextOutput::Data {
     [[nodiscard]] LitSpan theoryCondition(Id_t id) const {
         return {conditions.data() + id + 1, static_cast<size_t>(conditions[id])};
     }
-    Id_t addTheoryCondition(const LitSpan& cond) {
+    Id_t addTheoryCondition(LitSpan cond) {
         if (conditions.empty()) {
             conditions.push_back(0);
         }
@@ -387,7 +387,7 @@ struct AspifTextOutput::Data {
         return not name.empty() && isLower(name[0]);
     }
 
-    void addOutput(const std::string_view& str, const LitSpan& cond) {
+    void addOutput(std::string_view str, LitSpan cond) {
         out.push_back(&*strings.try_emplace(str, id_max).first);
         push(AspifType::output).push(out.size() - 1).push(cond);
     }
@@ -447,7 +447,7 @@ struct AspifTextOutput::Data {
         atoms[atom] = &c_gen_name;
         return false;
     }
-    void assignTheoryAtomName(Atom_t atom, const std::string_view& name) {
+    void assignTheoryAtomName(Atom_t atom, std::string_view name) {
         POTASSCO_CHECK_PRE(atom >= startAtom, "Redefinition: theory atom '%u:%.*s' already defined in a previous step",
                            atom, static_cast<int>(name.size()), name.data());
         assignAtomName(atom, name);
@@ -461,7 +461,7 @@ struct AspifTextOutput::Data {
         return &atoms[atom]->first;
     }
 
-    static std::pair<std::string_view, int> predicate(const std::string_view& name) {
+    static std::pair<std::string_view, int> predicate(std::string_view name) {
         auto id   = name.substr(0, name.find('('));
         auto args = name.substr(id.size());
         if (args.size() < 3 || args.back() != ')') { // zero arity - pred or pred()
@@ -485,17 +485,17 @@ struct AspifTextOutput::Data {
     }
     template <std::integral T>
     requires(sizeof(T) == sizeof(uint32_t))
-    Data& push(const std::span<T>& span) {
+    Data& push(std::span<T> span) {
         push(span.size());
         directives.append(span.begin(), span.end());
         return *this;
     }
-    Data& push(const WeightLitSpan& span) {
+    Data& push(WeightLitSpan span) {
         directives.reserve(safe_cast<RawVec::size_type>(directives.size() + (2 * span.size()) + 1));
         push(span.size());
-        for (const auto& wl : span) {
-            push(wl.lit);
-            push(wl.weight);
+        for (const auto& [lit, weight] : span) {
+            push(lit);
+            push(weight);
         }
         return *this;
     }
@@ -544,10 +544,10 @@ void AspifTextOutput::beginStep() {
         data_->startAtom = std::max(size_cast<Atom_t>(data_->atoms), data_->maxGenAtom + 1);
     }
 }
-void AspifTextOutput::rule(HeadType ht, const AtomSpan& head, const LitSpan& body) {
+void AspifTextOutput::rule(HeadType ht, AtomSpan head, LitSpan body) {
     data_->push(AspifType::rule).push(ht).push(head).push(BodyType::normal).push(body);
 }
-void AspifTextOutput::rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) {
+void AspifTextOutput::rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan lits) {
     if (lits.empty()) {
         AspifTextOutput::rule(ht, head, {});
     }
@@ -562,27 +562,27 @@ void AspifTextOutput::rule(HeadType ht, const AtomSpan& head, Weight_t bound, co
         for (const auto& wl : lits) { data_->push(Potassco::lit(wl)); }
     }
 }
-void AspifTextOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
+void AspifTextOutput::minimize(Weight_t prio, WeightLitSpan lits) {
     data_->push(AspifType::minimize).push(prio).push(lits);
 }
-void AspifTextOutput::output(const std::string_view& str, const LitSpan& cond) {
+void AspifTextOutput::output(std::string_view str, LitSpan cond) {
     auto atom = cond.size() == 1 && cond.front() > 0 ? Potassco::atom(cond.front()) : 0;
     if (atom == 0 || not Data::isValidAtomName(str) || not data_->assignAtomName(atom, str)) {
         data_->addOutput(str, cond);
     }
 }
 void AspifTextOutput::external(Atom_t a, TruthValue v) { data_->push(AspifType::external).push(a).push(v); }
-void AspifTextOutput::assume(const LitSpan& lits) { data_->push(AspifType::assume).push(lits); }
-void AspifTextOutput::project(const AtomSpan& atoms) { data_->push(AspifType::project).push(atoms); }
-void AspifTextOutput::acycEdge(int s, int t, const LitSpan& condition) {
+void AspifTextOutput::assume(LitSpan lits) { data_->push(AspifType::assume).push(lits); }
+void AspifTextOutput::project(AtomSpan atoms) { data_->push(AspifType::project).push(atoms); }
+void AspifTextOutput::acycEdge(int s, int t, LitSpan condition) {
     data_->push(AspifType::edge).push(s).push(t).push(condition);
 }
-void AspifTextOutput::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& condition) {
+void AspifTextOutput::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan condition) {
     data_->push(AspifType::heuristic).push(a).push(condition).push(bias).push(prio).push(t);
 }
 void AspifTextOutput::theoryTerm(Id_t termId, int number) { data_->theory.addTerm(termId, number); }
-void AspifTextOutput::theoryTerm(Id_t termId, const std::string_view& name) { data_->theory.addTerm(termId, name); }
-void AspifTextOutput::theoryTerm(Id_t termId, int compound, const IdSpan& args) {
+void AspifTextOutput::theoryTerm(Id_t termId, std::string_view name) { data_->theory.addTerm(termId, name); }
+void AspifTextOutput::theoryTerm(Id_t termId, int compound, IdSpan args) {
     if (compound >= 0) {
         data_->theory.addTerm(termId, static_cast<Id_t>(compound), args);
     }
@@ -590,13 +590,13 @@ void AspifTextOutput::theoryTerm(Id_t termId, int compound, const IdSpan& args) 
         data_->theory.addTerm(termId, Potassco::enum_cast<TupleType>(compound).value(), args);
     }
 }
-void AspifTextOutput::theoryElement(Id_t id, const IdSpan& terms, const LitSpan& cond) {
+void AspifTextOutput::theoryElement(Id_t id, IdSpan terms, LitSpan cond) {
     data_->theory.addElement(id, terms, data_->addTheoryCondition(cond));
 }
-void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) {
+void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements) {
     data_->theory.addAtom(atomOrZero, termId, elements);
 }
-void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) {
+void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements, Id_t op, Id_t rhs) {
     data_->theory.addAtom(atomOrZero, termId, elements, op, rhs);
 }
 

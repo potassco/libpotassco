@@ -85,36 +85,32 @@ template <Potassco::ScopedEnum E>
 namespace {
 class ReadObserver final : public Test::ReadObserver {
 public:
-    void rule(HeadType ht, const AtomSpan& head, const LitSpan& body) override {
+    void rule(HeadType ht, AtomSpan head, LitSpan body) override {
         rules.push_back({ht, {begin(head), end(head)}, BodyType::normal, bound_none, {}});
         Vec<WeightLit>& wb = rules.back().body;
         std::ranges::for_each(body, [&wb](Lit_t x) { wb.push_back({x, 1}); });
     }
-    void rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override {
+    void rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan body) override {
         rules.push_back({ht, {begin(head), end(head)}, BodyType::sum, bound, {begin(body), end(body)}});
     }
-    void minimize(Weight_t prio, const WeightLitSpan& lits) override {
-        min.push_back({prio, {begin(lits), end(lits)}});
-    }
-    void project(const AtomSpan& atoms) override { projects.insert(projects.end(), begin(atoms), end(atoms)); }
-    void output(const std::string_view& str, const LitSpan& cond) override {
+    void minimize(Weight_t prio, WeightLitSpan lits) override { min.push_back({prio, {begin(lits), end(lits)}}); }
+    void project(AtomSpan atoms) override { projects.insert(projects.end(), begin(atoms), end(atoms)); }
+    void output(std::string_view str, LitSpan cond) override {
         shows.push_back({{begin(str), end(str)}, {begin(cond), end(cond)}});
     }
 
     void external(Atom_t a, TruthValue v) override { externals.emplace_back(a, v); }
-    void assume(const LitSpan& lits) override { assumes.insert(assumes.end(), begin(lits), end(lits)); }
+    void assume(LitSpan lits) override { assumes.insert(assumes.end(), begin(lits), end(lits)); }
     void theoryTerm(Id_t termId, int number) override { theory.addTerm(termId, number); }
-    void theoryTerm(Id_t termId, const std::string_view& name) override { theory.addTerm(termId, name); }
-    void theoryTerm(Id_t termId, int cId, const IdSpan& args) override {
+    void theoryTerm(Id_t termId, std::string_view name) override { theory.addTerm(termId, name); }
+    void theoryTerm(Id_t termId, int cId, IdSpan args) override {
         theory.addTerm(termId, static_cast<Id_t>(cId), args);
     }
-    void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan&) override {
-        theory.addElement(elementId, terms, 0u);
-    }
-    void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) override {
+    void theoryElement(Id_t elementId, IdSpan terms, LitSpan) override { theory.addElement(elementId, terms, 0u); }
+    void theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements) override {
         theory.addAtom(atomOrZero, termId, elements);
     }
-    void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) override {
+    void theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements, Id_t op, Id_t rhs) override {
         theory.addAtom(atomOrZero, termId, elements, op, rhs);
     }
 

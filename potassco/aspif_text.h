@@ -32,14 +32,14 @@ namespace Potassco {
 /*!
  * \ingroup ParseType
  */
-class AspifTextInput : public ProgramReader {
+class AspifTextInput final : public ProgramReader {
 public:
     //! Creates a new object and associates it with the given output if any.
     explicit AspifTextInput(AbstractProgram* out);
     //! Sets the program to which parsed elements should be output.
     void setOutput(AbstractProgram& out);
 
-protected:
+private:
     //! Checks whether stream starts with a valid token.
     bool doAttach(bool& inc) override;
     //! Attempts to parse the current step or throws an exception on error.
@@ -51,7 +51,6 @@ protected:
     //! Parses statements until next step directive or input is exhausted.
     void parseStatements();
 
-private:
     bool   matchDirective();
     void   matchRule(char peek);
     void   matchAtoms(std::string_view sv);
@@ -68,6 +67,7 @@ private:
     void   matchAtomArg();
     void   matchStr();
     void   push(char c);
+
     struct Data;
     AbstractProgram* out_;
     Data*            data_;
@@ -78,7 +78,7 @@ private:
  * Writes a logic program in human-readable text format.
  * \ingroup WriteType
  */
-class AspifTextOutput : public AbstractProgram {
+class AspifTextOutput final : public AbstractProgram {
 public:
     explicit AspifTextOutput(std::ostream& os);
     ~AspifTextOutput() override;
@@ -86,22 +86,22 @@ public:
 
     void initProgram(bool incremental) override;
     void beginStep() override;
-    void rule(HeadType ht, const AtomSpan& head, const LitSpan& body) override;
-    void rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) override;
-    void minimize(Weight_t prio, const WeightLitSpan& lits) override;
-    void output(const std::string_view& str, const LitSpan& cond) override;
+    void rule(HeadType ht, AtomSpan head, LitSpan body) override;
+    void rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan lits) override;
+    void minimize(Weight_t prio, WeightLitSpan lits) override;
+    void output(std::string_view str, LitSpan cond) override;
     void external(Atom_t a, TruthValue v) override;
-    void assume(const LitSpan& lits) override;
-    void project(const AtomSpan& atoms) override;
-    void acycEdge(int s, int t, const LitSpan& condition) override;
-    void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& condition) override;
+    void assume(LitSpan lits) override;
+    void project(AtomSpan atoms) override;
+    void acycEdge(int s, int t, LitSpan condition) override;
+    void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan condition) override;
 
     void theoryTerm(Id_t termId, int number) override;
-    void theoryTerm(Id_t termId, const std::string_view& name) override;
-    void theoryTerm(Id_t termId, int compound, const IdSpan& args) override;
-    void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond) override;
-    void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) override;
-    void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) override;
+    void theoryTerm(Id_t termId, std::string_view name) override;
+    void theoryTerm(Id_t termId, int compound, IdSpan args) override;
+    void theoryElement(Id_t elementId, IdSpan terms, LitSpan cond) override;
+    void theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements) override;
+    void theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements, Id_t op, Id_t rhs) override;
     void endStep() override;
 
 private:

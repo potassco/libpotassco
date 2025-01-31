@@ -130,15 +130,6 @@ public:
 protected:
     using StreamType = BufferedStream;
     using WLit_t     = WeightLit;
-    //! Shall return true if the format of the input stream is supported by this object.
-    /*!
-     * \param[out] inc Whether the input stream represents an incremental program.
-     */
-    virtual bool doAttach(bool& inc) = 0;
-    //! Shall parse the next program step.
-    virtual bool doParse() = 0;
-    //! Shall reset any parsing state.
-    virtual void doReset();
     //! Returns the associated input stream.
     [[nodiscard]] StreamType* stream() const;
     //! Extracts and discards characters up to and including the next newline.
@@ -152,7 +143,7 @@ protected:
     //! Throws a std::exception with the current line and given message if cnd is false.
     void require(bool cnd, const char* msg) const { static_cast<void>(cnd || (error(msg), false)); }
     //! Attempts to match the given string.
-    bool match(const std::string_view& word) { return stream()->match(word); }
+    bool match(std::string_view word) { return stream()->match(word); }
     //! Extracts the given character or fails with a std::exception.
     void matchChar(char c);
     //! Extracts an atom (i.e. a positive integer > 0) or fails with a std::exception.
@@ -207,6 +198,16 @@ protected:
     }
 
 private:
+    //! Shall return true if the format of the input stream is supported by this object.
+    /*!
+     * \param[out] inc Whether the input stream represents an incremental program.
+     */
+    virtual bool doAttach(bool& inc) = 0;
+    //! Shall parse the next program step.
+    virtual bool doParse() = 0;
+    //! Shall reset any parsing state.
+    virtual void doReset();
+
     StreamType* str_    = nullptr;
     Atom_t      varMax_ = atom_max;
     bool        inc_    = false;

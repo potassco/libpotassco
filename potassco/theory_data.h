@@ -115,7 +115,7 @@ public:
 
 private:
     friend class TheoryData;
-    TheoryElement(const IdSpan& terms, const Id_t* c);
+    TheoryElement(IdSpan terms, const Id_t* c);
     void     setCondition(Id_t c);
     uint32_t nTerms_ : 31;
     uint32_t nCond_  : 1;
@@ -150,7 +150,7 @@ public:
 
 private:
     friend class TheoryData;
-    TheoryAtom(Id_t atom, Id_t term, const IdSpan& elements, const Id_t* op, const Id_t* rhs);
+    TheoryAtom(Id_t atom, Id_t term, IdSpan elements, const Id_t* op, const Id_t* rhs);
     uint32_t atom_  : 31;
     uint32_t guard_ : 1;
     Id_t     termId_;
@@ -184,9 +184,9 @@ public:
      * Each element in elements shall be an id associated with an atom element
      * eventually added via addElement().
      */
-    void addAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements);
+    void addAtom(Id_t atomOrZero, Id_t termId, IdSpan elements);
     //! Adds a new theory atom with guard and right hand side.
-    void addAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs);
+    void addAtom(Id_t atomOrZero, Id_t termId, IdSpan elements, Id_t op, Id_t rhs);
 
     //! Adds a new theory atom element with the given id.
     /*!
@@ -194,7 +194,7 @@ public:
      * eventually added via one of the addTerm() overloads.
      * \note If cond is @c cond_deferred, the condition may later be changed via a call to @c setCondition().
      */
-    void addElement(Id_t elementId, const IdSpan& terms, Id_t cond = cond_deferred);
+    void addElement(Id_t elementId, IdSpan terms, Id_t cond = cond_deferred);
     //! Changes the condition of the element with the given id.
     /*!
      * \pre The element was previously added with condition @c cond_deferred.
@@ -204,7 +204,7 @@ public:
     //! Adds a new number term with the given id.
     void addTerm(Id_t termId, int number);
     //! Adds a new symbolic term with the given name and id.
-    void addTerm(Id_t termId, const std::string_view& name);
+    void addTerm(Id_t termId, std::string_view name);
     //! Adds a new symbolic term with the given name and id.
     void addTerm(Id_t termId, const char* name);
     //! Adds a new function term with the given id.
@@ -212,9 +212,9 @@ public:
      * The parameter funcSym represents the name of the function and shall be the id of a symbolic term.
      * Each element in args shall be an id of a theory term.
      */
-    void addTerm(Id_t termId, Id_t funcSym, const IdSpan& args);
+    void addTerm(Id_t termId, Id_t funcSym, IdSpan args);
     //! Adds a new tuple term with the given id.
-    void addTerm(Id_t termId, TupleType type, const IdSpan& args);
+    void addTerm(Id_t termId, TupleType type, IdSpan args);
 
     //! Removes the term with the given id.
     /*!

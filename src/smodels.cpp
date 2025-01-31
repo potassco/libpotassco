@@ -37,12 +37,15 @@ using namespace std::literals;
 // SmodelsInput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct SmodelsInput::StringTab {
-    bool addUnique(const std::string_view& name, Id_t id) { return map.try_emplace(name, id).second; }
-    Id_t tryAdd(const std::string_view& name, Id_t id) {
+    auto addShared(std::string_view name, Id_t id) {
+        ConstString str(name, ConstString::create_shared);
+        return map.try_emplace(std::move(str), id);
+    }
+    Id_t tryAdd(std::string_view name, Id_t id) {
         auto it = map.find(name);
         return it != map.end() ? it->second : map.emplace_hint(it, name, id)->second;
     }
-    [[nodiscard]] Id_t findOr(const std::string_view& name, Id_t orVal) const {
+    [[nodiscard]] Id_t findOr(std::string_view name, Id_t orVal = 0u) const {
         if (auto it = map.find(name); it != map.end()) {
             return it->second;
         }
@@ -53,16 +56,12 @@ struct SmodelsInput::StringTab {
     StringMap map;
 };
 
-SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts, AtomLookup lookup)
-    : out_(out)
-    , lookup_(std::move(lookup))
-    , opts_(opts) {
+SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts) : out_(out), opts_(opts) {
     if (opts_.cEdge) {
         nodes_ = std::make_unique<StringTab>();
     }
-    if (opts_.cHeuristic && not lookup_) {
-        atoms_  = std::make_unique<StringTab>();
-        lookup_ = [this](std::string_view name) { return atoms_->findOr(name, 0); };
+    if (opts_.cHeuristic) {
+        atoms_ = std::make_unique<StringTab>();
     }
 }
 SmodelsInput::~SmodelsInput() = default;
@@ -214,7 +213,7 @@ bool SmodelsInput::readSymbols() {
         else if (opts_.cHeuristic && matchDomHeuPred(name, n0, heuType, bias, prio)) {
             auto type = static_cast<uint32_t>(heuType);
             auto def  = Deferred{.cond = atom, .bias = bias, .prio = prio, .type = type, .atom = 0, .sizeOrId = 0};
-            if (def.setAtom(lookup_(n0))) {
+            if (def.setAtom(atoms_->findOr(n0))) {
                 std::memcpy(deferredDom.alloc(def_size).data(), &def, def_size);
             }
             else { // atom n0 not (yet) seen - lookup again later
@@ -222,22 +221,18 @@ bool SmodelsInput::readSymbols() {
                 auto space = deferredDom.alloc(def_size + n0.size());
                 std::memcpy(space.data(), &def, def_size);
                 std::memcpy(space.data() + def_size, n0.data(), n0.size());
-                if (opts_.filter && not atoms_) {
-                    atoms_  = std::make_unique<StringTab>();
-                    lookup_ = [this, prev = std::move(lookup_)](std::string_view aName) {
-                        auto a = atoms_->findOr(aName, 0);
-                        return a || not prev ? a : prev(aName);
-                    };
-                }
             }
             filter = opts_.filter;
         }
-        if (not filter) {
-            out_.output(name, toSpan(atom));
-        }
         if (atoms_) {
-            POTASSCO_CHECK_PRE(atoms_->addUnique(name, Potassco::atom(atom)), "Redefinition: atom '%s' already exists",
-                               scratch.data());
+            auto [it, added] = atoms_->addShared(name, Potassco::atom(atom));
+            POTASSCO_CHECK_PRE(added, "Redefinition: atom '%s' already exists", scratch.data());
+            if (not filter) {
+                out_.outputAtom(Potassco::atom(atom), it->first);
+            }
+        }
+        else if (not filter) {
+            out_.output(name, toSpan(atom));
         }
     }
     for (auto dom = deferredDom.view(); dom.size() >= def_size;) {
@@ -249,7 +244,7 @@ bool SmodelsInput::readSymbols() {
             auto name = std::string_view{std::data(dom), data.sizeOrId};
             POTASSCO_ASSERT(dom.size() >= data.sizeOrId);
             dom.remove_prefix(data.sizeOrId);
-            atomId = lookup_(name);
+            atomId = atoms_->findOr(name);
         }
         if (atomId) {
             out_.heuristic(atomId, static_cast<DomModifier>(data.type), data.bias, data.prio, toSpan(data.cond));
@@ -403,7 +398,7 @@ SmodelsOutput& SmodelsOutput::add(unsigned i) {
     os_ << " " << i;
     return *this;
 }
-SmodelsOutput& SmodelsOutput::add(HeadType ht, const AtomSpan& head) {
+SmodelsOutput& SmodelsOutput::add(HeadType ht, AtomSpan head) {
     if (head.empty()) {
         POTASSCO_CHECK_PRE(false_ != 0 && ht == HeadType::disjunctive, "empty head requires false atom");
         fHead_ = true;
@@ -416,13 +411,13 @@ SmodelsOutput& SmodelsOutput::add(HeadType ht, const AtomSpan& head) {
     return *this;
 }
 
-SmodelsOutput& SmodelsOutput::add(const LitSpan& lits) {
+SmodelsOutput& SmodelsOutput::add(LitSpan lits) {
     unsigned neg = negSize(lits), size = size_cast<unsigned>(lits);
     add(size).add(neg);
     print(os_, lits, neg, size - neg);
     return *this;
 }
-SmodelsOutput& SmodelsOutput::add(Weight_t bound, const WeightLitSpan& lits, bool card) {
+SmodelsOutput& SmodelsOutput::add(Weight_t bound, WeightLitSpan lits, bool card) {
     unsigned neg = negSize(lits), size = size_cast<unsigned>(lits);
     if (not card) {
         add(static_cast<unsigned>(bound));
@@ -433,7 +428,7 @@ SmodelsOutput& SmodelsOutput::add(Weight_t bound, const WeightLitSpan& lits, boo
     }
     print(os_, lits, neg, size - neg);
     if (not card) {
-        print(os_, lits, neg, size - neg, [](const WeightLit& wl) { return wl.weight >= 0 ? wl.weight : -wl.weight; });
+        print(os_, lits, neg, size - neg, [](WeightLit wl) { return wl.weight >= 0 ? wl.weight : -wl.weight; });
     }
     return *this;
 }
@@ -452,7 +447,7 @@ void SmodelsOutput::beginStep() {
         startRule(SmodelsType::clasp_increment).add(0).endRule();
     }
 }
-void SmodelsOutput::rule(HeadType ht, const AtomSpan& head, const LitSpan& body) {
+void SmodelsOutput::rule(HeadType ht, AtomSpan head, LitSpan body) {
     if (head.empty() && ht == HeadType::choice) {
         return;
     }
@@ -462,7 +457,7 @@ void SmodelsOutput::rule(HeadType ht, const AtomSpan& head, const LitSpan& body)
                                      : SmodelsType::basic;
     startRule(rt).add(ht, head).add(body).endRule();
 }
-void SmodelsOutput::rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
+void SmodelsOutput::rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan body) {
     if (head.empty() && ht == HeadType::choice) {
         return;
     }
@@ -478,10 +473,10 @@ void SmodelsOutput::rule(HeadType ht, const AtomSpan& head, Weight_t bound, cons
     }
     startRule(rt).add(ht, head).add(bound, body, rt == SmodelsType::cardinality).endRule();
 }
-void SmodelsOutput::minimize(Weight_t, const WeightLitSpan& lits) {
+void SmodelsOutput::minimize(Weight_t, WeightLitSpan lits) {
     startRule(SmodelsType::optimize).add(0, lits, false).endRule();
 }
-void SmodelsOutput::output(const std::string_view& str, const LitSpan& cond) {
+void SmodelsOutput::output(std::string_view str, LitSpan cond) {
     POTASSCO_CHECK_PRE(sec_ <= 1, "adding symbols after compute not supported");
     POTASSCO_CHECK_PRE(cond.size() == 1 && lit(cond.front()) > 0,
                        "general output directive not supported in smodels format");
@@ -502,7 +497,7 @@ void SmodelsOutput::external(Atom_t a, TruthValue t) {
         startRule(SmodelsType::clasp_release_ext).add(a).endRule();
     }
 }
-void SmodelsOutput::assume(const LitSpan& lits) {
+void SmodelsOutput::assume(LitSpan lits) {
     POTASSCO_CHECK_PRE(sec_ < 2, "at most one compute statement supported in smodels format");
     while (sec_ != 2) {
         startRule(SmodelsType::end).endRule();

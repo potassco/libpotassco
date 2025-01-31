@@ -126,8 +126,8 @@ public:
      * that was created with @c Solver::addVariable(), it is also considered volatile.
      *
      */
-    [[nodiscard]] virtual bool addClause(const LitSpan& clause, ClauseType prop) = 0;
-    bool                       addClause(const LitSpan& clause) { return addClause(clause, ClauseType::learnt); }
+    [[nodiscard]] virtual bool addClause(LitSpan clause, ClauseType prop) = 0;
+    bool                       addClause(LitSpan clause) { return addClause(clause, ClauseType::learnt); }
 
     //! Adds a new volatile variable to this solver instance.
     /*!
@@ -170,9 +170,9 @@ public:
     using ChangeList = LitSpan;
     virtual ~AbstractPropagator();
     //! Shall propagate the newly assigned literals given in @c changes.
-    virtual void propagate(AbstractSolver& solver, const LitSpan& changes) = 0;
+    virtual void propagate(AbstractSolver& solver, LitSpan changes) = 0;
     //! May update internal state of the newly unassigned literals given in @c undo.
-    virtual void undo(const AbstractSolver& solver, const LitSpan& undo) = 0;
+    virtual void undo(const AbstractSolver& solver, LitSpan undo) = 0;
     //! Similar to propagate but called on an assignment without a list of changes.
     virtual void check(AbstractSolver& solver) = 0;
 };

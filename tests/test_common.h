@@ -59,10 +59,10 @@ public:
     void beginStep() override { ++nStep; }
     void endStep() override {}
 
-    void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& cond) override {
+    void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan cond) override {
         heuristics.push_back({a, t, bias, prio, {begin(cond), end(cond)}});
     }
-    void acycEdge(int s, int t, const LitSpan& cond) override { edges.push_back({s, t, {begin(cond), end(cond)}}); }
+    void           acycEdge(int s, int t, LitSpan cond) override { edges.push_back({s, t, {begin(cond), end(cond)}}); }
     Vec<Heuristic> heuristics;
     Vec<Edge>      edges;
     int            nStep       = 0;

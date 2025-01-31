@@ -33,7 +33,7 @@ namespace Potassco {
 /*!
  * \ingroup WriteType
  */
-class SmodelsConvert : public AbstractProgram {
+class SmodelsConvert final : public AbstractProgram {
 public:
     //! Creates a new object that passes converted programs to @c out.
     /*!
@@ -52,19 +52,19 @@ public:
     //! Calls @c beginStep() on the associated output program.
     void beginStep() override;
     //! Converts the given rule into one or more smodels rules.
-    void rule(HeadType t, const AtomSpan& head, const LitSpan& body) override;
+    void rule(HeadType t, AtomSpan head, LitSpan body) override;
     //! Converts the given rule into one or more smodels rules or throws an exception if body contains negative weights.
-    void rule(HeadType t, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override;
+    void rule(HeadType t, AtomSpan head, Weight_t bound, WeightLitSpan body) override;
     //! Converts literals associated with a priority to a set of corresponding smodels minimize rules.
-    void minimize(Weight_t prio, const WeightLitSpan& lits) override;
+    void minimize(Weight_t prio, WeightLitSpan lits) override;
     //! Adds an atom with the given name that is equivalent to the condition to the symbol table.
-    void output(const std::string_view& name, const LitSpan& cond) override;
+    void output(std::string_view name, LitSpan cond) override;
     //! Marks the atom that is equivalent to @c 'a' as external.
     void external(Atom_t a, TruthValue v) override;
     //! Adds an @a _heuristic predicate over the given atom to the symbol table that is equivalent to @c condition.
-    void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& condition) override;
+    void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan condition) override;
     //! Adds an @a _edge(s,t) predicate to the symbol table that is equivalent to @c condition.
-    void acycEdge(int s, int t, const LitSpan& condition) override;
+    void acycEdge(int s, int t, LitSpan condition) override;
 
     //! Finalizes conversion and calls @c endStep() on the associated output program.
     void endStep() override;
@@ -74,9 +74,9 @@ public:
     //! Returns the max used smodels atom (valid atoms are [1..n]).
     [[nodiscard]] unsigned maxAtom() const;
 
-protected:
+private:
     //! Creates a (named) atom that is equivalent to the given condition.
-    Atom_t makeAtom(const LitSpan& lits, bool named);
+    Atom_t makeAtom(LitSpan lits, bool named);
     //! Processes all outstanding conversions.
     void flush();
     //! Converts external atoms.
@@ -88,7 +88,6 @@ protected:
     //! Converts (atom,name) pairs to output directives.
     void flushSymbols();
 
-private:
     struct SmData;
     AbstractProgram&        out_;
     std::unique_ptr<SmData> data_;

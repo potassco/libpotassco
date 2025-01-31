@@ -31,7 +31,7 @@
 #include <utility>
 
 namespace Potassco {
-Rule Rule::normal(HeadType ht, const AtomSpan& head, const LitSpan& body) {
+Rule Rule::normal(HeadType ht, AtomSpan head, LitSpan body) {
     Rule r;
     r.ht   = ht;
     r.head = head;
@@ -39,7 +39,7 @@ Rule Rule::normal(HeadType ht, const AtomSpan& head, const LitSpan& body) {
     r.cond = body;
     return r;
 }
-Rule Rule::sum(HeadType ht, const AtomSpan& head, const Sum& sum) {
+Rule Rule::sum(HeadType ht, AtomSpan head, const Sum& sum) {
     Rule r;
     r.ht   = ht;
     r.head = head;
@@ -47,9 +47,7 @@ Rule Rule::sum(HeadType ht, const AtomSpan& head, const Sum& sum) {
     r.agg  = sum;
     return r;
 }
-Rule Rule::sum(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& lits) {
-    return sum(ht, head, {lits, bound});
-}
+Rule Rule::sum(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan lits) { return sum(ht, head, {lits, bound}); }
 /////////////////////////////////////////////////////////////////////////////////////////
 // RuleBuilder
 /////////////////////////////////////////////////////////////////////////////////////////

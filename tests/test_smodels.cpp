@@ -59,7 +59,7 @@ using Rule_t = SmodelsType;
 
 class ReadObserver : public Test::ReadObserver {
 public:
-    void rule(HeadType ht, const AtomSpan& head, const LitSpan& body) override {
+    void rule(HeadType ht, AtomSpan head, LitSpan body) override {
         if (head.empty()) {
             if (ht == HeadType::choice) {
                 return;
@@ -78,7 +78,7 @@ public:
             rules[rt].push_back(std::move(r));
         }
     }
-    void rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override {
+    void rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan body) override {
         REQUIRE(size(head) == 1);
         REQUIRE(ht == HeadType::disjunctive);
         std::vector<int> r(1, lit(head[0]));
@@ -93,7 +93,7 @@ public:
         }
         rules[hasWeights ? Rule_t::weight : Rule_t::cardinality].push_back(std::move(r));
     }
-    void minimize(Weight_t prio, const WeightLitSpan& lits) override {
+    void minimize(Weight_t prio, WeightLitSpan lits) override {
         std::vector<int> r;
         r.reserve((size(lits) * 2) + 1);
         r.push_back(prio);
@@ -103,11 +103,12 @@ public:
         }
         rules[Rule_t::optimize].push_back(std::move(r));
     }
-    void project(const AtomSpan&) override {}
-    void output(const std::string_view& str, const LitSpan& cond) override {
+    void project(AtomSpan) override {}
+    void output(std::string_view str, LitSpan cond) override {
         REQUIRE(size(cond) == 1);
         atoms[*begin(cond)].assign(begin(str), end(str));
     }
+    void outputAtom(Atom_t a, const ConstString& str) override { atoms[lit(a)].assign(str.view()); }
 
     void external(Atom_t a, TruthValue v) override {
         if (v != TruthValue::release) {
@@ -117,7 +118,7 @@ public:
             rules[Rule_t::clasp_release_ext].push_back(RawRule{static_cast<int>(a)});
         }
     }
-    void assume(const LitSpan&) override {}
+    void assume(LitSpan) override {}
 
     using RuleMap = std::map<Rule_t, std::vector<std::vector<int>>>;
     using AtomMap = std::unordered_map<int, std::string>;
@@ -709,18 +710,7 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
         writer.output("_heuristic(f(\"a,b(c,d)\"),factor,2,1)", toSpan(h4));
         writer.output("f(\"a,b(c,d)\")", toSpan(b));
         writer.endStep();
-        SECTION("via default lookup") { REQUIRE(readSmodels(str, observer, opts) == 0); }
-        SECTION("via user lookup") {
-            SmodelsInput reader(observer, opts, [&](std::string_view name) {
-                for (const auto& [id, n] : observer.atoms) {
-                    if (n == name) {
-                        return static_cast<Atom_t>(id);
-                    }
-                }
-                return static_cast<Atom_t>(0);
-            });
-            readProgram(str, reader);
-        }
+        REQUIRE(readSmodels(str, observer, opts) == 0);
 
         REQUIRE(observer.heuristics.size() == 4);
         Heuristic exp[] = {{static_cast<Atom_t>(a), DomModifier::sign, -1, 1, {h1}},

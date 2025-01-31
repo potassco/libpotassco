@@ -143,6 +143,8 @@ enum class AspifType : unsigned {
 };
 POTASSCO_SET_DEFAULT_ENUM_MAX(AspifType::comment);
 
+class ConstString;
+
 //! Basic callback interface for constructing a logic program.
 class AbstractProgram {
 public:
@@ -153,11 +155,11 @@ public:
     virtual void beginStep();
 
     //! Add the given rule to the program.
-    virtual void rule(HeadType ht, const AtomSpan& head, const LitSpan& body) = 0;
+    virtual void rule(HeadType ht, AtomSpan head, LitSpan body) = 0;
     //! Add the given sum rule to the program.
-    virtual void rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) = 0;
+    virtual void rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan body) = 0;
     //! Add the given minimize statement to the program.
-    virtual void minimize(Weight_t prio, const WeightLitSpan& lits) = 0;
+    virtual void minimize(Weight_t prio, WeightLitSpan lits) = 0;
 
     /*!
      * \name Advanced
@@ -167,18 +169,23 @@ public:
      */
     //@{
     //! Mark the given list of atoms as projection atoms.
-    virtual void project(const AtomSpan& atoms);
+    virtual void project(AtomSpan atoms);
     //! Output @c str whenever condition is true in a stable model.
-    virtual void output(const std::string_view& str, const LitSpan& condition);
+    virtual void output(std::string_view str, LitSpan condition);
+    //! Output @c str whenever condition is true in a stable model.
+    /*!
+     * \note By default, this function simply delegates to output().
+     */
+    virtual void outputAtom(Atom_t a, const ConstString& str);
     //! If `v` is not equal to `TruthValue::release`, mark `a` as external and assume value `v`. Otherwise, treat `a` as
     //! regular atom.
     virtual void external(Atom_t a, TruthValue v);
     //! Assume the given literals to true during solving.
-    virtual void assume(const LitSpan& lits);
+    virtual void assume(LitSpan lits);
     //! Apply the given heuristic modification to atom @c a whenever condition is true.
-    virtual void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& condition);
+    virtual void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan condition);
     //! Assume an edge between @c s and @c t whenever condition is true.
-    virtual void acycEdge(int s, int t, const LitSpan& condition);
+    virtual void acycEdge(int s, int t, LitSpan condition);
     //@}
 
     /*!
@@ -191,15 +198,15 @@ public:
     //! Add a new number term.
     virtual void theoryTerm(Id_t termId, int number);
     //! Add a new symbolic term.
-    virtual void theoryTerm(Id_t termId, const std::string_view& name);
+    virtual void theoryTerm(Id_t termId, std::string_view name);
     //! Add a new compound (function or tuple) term.
-    virtual void theoryTerm(Id_t termId, int cId, const IdSpan& args);
+    virtual void theoryTerm(Id_t termId, int cId, IdSpan args);
     //! Add a new theory atom element.
-    virtual void theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond);
+    virtual void theoryElement(Id_t elementId, IdSpan terms, LitSpan cond);
     //! Add a new theory atom consisting of the given elements, which have to be added eventually.
-    virtual void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements);
+    virtual void theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements);
     //! Add a new theory atom with guard and right hand side.
-    virtual void theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs);
+    virtual void theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements, Id_t op, Id_t rhs);
     //@}
 
     //! Called once after all rules and directives of the current program step were added.

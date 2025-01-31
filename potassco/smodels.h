@@ -49,10 +49,8 @@ enum class SmodelsType : unsigned {
 };
 
 //! Class for parsing logic programs in (extended) smodels format.
-class SmodelsInput : public ProgramReader {
+class SmodelsInput final : public ProgramReader {
 public:
-    //! (Optional) lookup function for finding atoms by name. Should return 0 if given name is not a known atom.
-    using AtomLookup = std::function<Atom_t(std::string_view name)>;
     //! Options for configuring reading of smodels format.
     struct Options {
         //! Enable clasp extensions for handling incremental programs.
@@ -81,14 +79,11 @@ public:
         bool filter{false};
     };
     //! Creates a new parser object that calls @c out on each parsed element.
-    /*!
-     * \note The (optional) lookup function is used to lookup atoms referenced in @a _heuristic predicates.
-     *       If not given, SmodelsInput maintains an internal lookup table for this.
-     */
-    SmodelsInput(AbstractProgram& out, const Options& opts, AtomLookup lookup = nullptr);
+    SmodelsInput(AbstractProgram& out, const Options& opts);
     ~SmodelsInput() override;
 
-protected:
+private:
+    struct StringTab;
     //! Checks whether stream starts with a valid smodels token.
     bool doAttach(bool& inc) override;
     //! Parses the current step and throws exception on error.
@@ -100,21 +95,17 @@ protected:
     //! Resets internal parsing state.
     void doReset() override;
     //! Reads the current rule block.
-    virtual bool readRules();
+    bool readRules();
     //! Reads the current smodels symbol table block.
-    virtual bool readSymbols();
+    bool readSymbols();
     //! Reads the current compute statement.
-    virtual bool readCompute();
+    bool readCompute();
     //! Reads an optional external block and the number of models.
-    virtual bool readExtra();
-
-private:
-    struct StringTab;
+    bool readExtra();
     void matchBody(RuleBuilder& rule);
     void matchSum(RuleBuilder& rule, bool weights);
 
     AbstractProgram&           out_;
-    AtomLookup                 lookup_;
     std::unique_ptr<StringTab> atoms_;
     std::unique_ptr<StringTab> nodes_;
     Options                    opts_;
@@ -140,7 +131,7 @@ int readSmodels(std::istream& prg, AbstractProgram& out, const SmodelsInput::Opt
  * \note The class only supports program constructs that can be directly
  * expressed in smodels numeric format.
  */
-class SmodelsOutput : public AbstractProgram {
+class SmodelsOutput final : public AbstractProgram {
 public:
     //! Creates a new object and associates it with the given output stream.
     /*!
@@ -162,45 +153,40 @@ public:
     //! Starts a new step.
     void beginStep() override;
     //! Writes a basic, choice, or disjunctive rule or throws an exception if rule is not representable.
-    void rule(HeadType ht, const AtomSpan& head, const LitSpan& body) override;
+    void rule(HeadType ht, AtomSpan head, LitSpan body) override;
     //! Writes a cardinality or weight rule or throws an exception if rule is not representable.
-    void rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) override;
+    void rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan body) override;
     //! Writes the given minimize rule while ignoring its priority.
-    void minimize(Weight_t prio, const WeightLitSpan& lits) override;
+    void minimize(Weight_t prio, WeightLitSpan lits) override;
     //! Writes the entry (atom, str) to the symbol table provided that condition equals atom.
     /*!
      * \note Symbols shall only be added once after all rules were added.
      */
-    void output(const std::string_view& str, const LitSpan& cond) override;
+    void output(std::string_view str, LitSpan cond) override;
     //! Writes @c lits as a compute statement.
     /*!
      * \note The function shall be called at most once per step and only after all rules and symbols were added.
      */
-    void assume(const LitSpan& lits) override;
+    void assume(LitSpan lits) override;
     //! Requires enableClaspExt or throws exception.
     void external(Atom_t a, TruthValue v) override;
     //! Terminates the current step.
     void endStep() override;
 
-protected:
+private:
     //! Starts writing a rule of type @c rt.
     SmodelsOutput& startRule(SmodelsType rt);
     //! Writes the given head.
-    SmodelsOutput& add(HeadType ht, const AtomSpan& head);
+    SmodelsOutput& add(HeadType ht, AtomSpan head);
     //! Writes the given normal body in smodels format, i.e. @c size(lits) @c size(B-) atoms in B- atoms in B+
-    SmodelsOutput& add(const LitSpan& lits);
+    SmodelsOutput& add(LitSpan lits);
     //! Writes the given extended body in smodels format.
-    SmodelsOutput& add(Weight_t bound, const WeightLitSpan& lits, bool card);
+    SmodelsOutput& add(Weight_t bound, WeightLitSpan lits, bool card);
     //! Writes @c i.
     SmodelsOutput& add(unsigned i);
     //! Terminates the active rule by writing a newline.
     SmodelsOutput& endRule();
-    //! Returns whether the current program is incremental.
-    [[nodiscard]] bool incremental() const { return inc_; }
-    //! Returns whether clasp extensions are enabled.
-    [[nodiscard]] bool extended() const { return ext_; }
 
-private:
     std::ostream& os_;
     Atom_t        false_;
     int           sec_;

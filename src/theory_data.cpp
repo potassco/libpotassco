@@ -46,9 +46,7 @@ static constexpr std::size_t computeExtraBytes(const T& arg [[maybe_unused]]) {
 }
 
 struct TheoryTerm::FuncData {
-    FuncData(int32_t b, const IdSpan& a) : base(b), size(static_cast<uint32_t>(a.size())) {
-        std::ranges::copy(a, args);
-    }
+    FuncData(int32_t b, IdSpan a) : base(b), size(static_cast<uint32_t>(a.size())) { std::ranges::copy(a, args); }
     int32_t  base;
     uint32_t size;
     POTASSCO_WARNING_BEGIN_RELAXED
@@ -92,7 +90,7 @@ TupleType TheoryTerm::tuple() const {
 uint32_t TheoryTerm::size() const { return type() == Type::compound ? func()->size : 0; }
 auto     TheoryTerm::begin() const -> iterator { return type() == Type::compound ? func()->args : nullptr; }
 auto TheoryTerm::end() const -> iterator { return type() == Type::compound ? func()->args + func()->size : nullptr; }
-TheoryElement::TheoryElement(const IdSpan& terms, const Id_t* c)
+TheoryElement::TheoryElement(IdSpan terms, const Id_t* c)
     : nTerms_(static_cast<uint32_t>(terms.size()))
     , nCond_(c != nullptr) {
     std::ranges::copy(terms, term_);
@@ -103,7 +101,7 @@ TheoryElement::TheoryElement(const IdSpan& terms, const Id_t* c)
 Id_t TheoryElement::condition() const { return nCond_ == 0 ? 0 : term_[nTerms_]; }
 void TheoryElement::setCondition(Id_t c) { term_[nTerms_] = c; }
 
-TheoryAtom::TheoryAtom(Id_t a, Id_t term, const IdSpan& args, const Id_t* op, const Id_t* rhs)
+TheoryAtom::TheoryAtom(Id_t a, Id_t term, IdSpan args, const Id_t* op, const Id_t* rhs)
     : atom_(a)
     , guard_(op != nullptr)
     , termId_(term)
@@ -167,7 +165,7 @@ void TheoryData::addTerm(Id_t termId, int number) {
     auto& term = setTerm(termId);
     term       = (static_cast<uint64_t>(number) << 2) | to_underlying(TheoryTermType::number);
 }
-void TheoryData::addTerm(Id_t termId, const std::string_view& name) {
+void TheoryData::addTerm(Id_t termId, std::string_view name) {
     auto& term = setTerm(termId);
     term       = assertPtr(Data::allocCString(name), TheoryTermType::symbol);
     POTASSCO_DEBUG_ASSERT(getTerm(termId).symbol() == name);
@@ -176,12 +174,12 @@ void TheoryData::addTerm(Id_t termId, const char* name) {
     return addTerm(termId, {name, name ? std::strlen(name) : 0});
 }
 
-void TheoryData::addTerm(Id_t termId, Id_t funcId, const IdSpan& args) {
+void TheoryData::addTerm(Id_t termId, Id_t funcId, IdSpan args) {
     using D    = TheoryTerm::FuncData;
     auto& term = setTerm(termId);
     term       = assertPtr(Data::allocConstruct<D>(static_cast<int32_t>(funcId), args), TheoryTermType::compound);
 }
-void TheoryData::addTerm(Id_t termId, TupleType type, const IdSpan& args) {
+void TheoryData::addTerm(Id_t termId, TupleType type, IdSpan args) {
     using D    = TheoryTerm::FuncData;
     auto& term = setTerm(termId);
     term       = assertPtr(Data::allocConstruct<D>(static_cast<int32_t>(type), args), TheoryTermType::compound);
@@ -192,7 +190,7 @@ void TheoryData::removeTerm(Id_t termId) {
         data_->terms[termId] = c_nul_term;
     }
 }
-void TheoryData::addElement(Id_t id, const IdSpan& terms, Id_t cId) {
+void TheoryData::addElement(Id_t id, IdSpan terms, Id_t cId) {
     if (not hasElement(id)) {
         data_->elems.resize(std::max(numTerms(), id + 1));
     }
@@ -203,10 +201,10 @@ void TheoryData::addElement(Id_t id, const IdSpan& terms, Id_t cId) {
     data_->elems[id] = Data::allocConstruct<TheoryElement>(terms, cId != 0 ? &cId : nullptr);
 }
 
-void TheoryData::addAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elems) {
+void TheoryData::addAtom(Id_t atomOrZero, Id_t termId, IdSpan elems) {
     data_->atoms.push_back(Data::allocConstruct<TheoryAtom>(atomOrZero, termId, elems, nullptr, nullptr));
 }
-void TheoryData::addAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elems, Id_t op, Id_t rhs) {
+void TheoryData::addAtom(Id_t atomOrZero, Id_t termId, IdSpan elems, Id_t op, Id_t rhs) {
     data_->atoms.push_back(Data::allocConstruct<TheoryAtom>(atomOrZero, termId, elems, &op, &rhs));
 }
 

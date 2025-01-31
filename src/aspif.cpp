@@ -217,12 +217,12 @@ AspifOutput& AspifOutput::add(T x) {
     return *this;
 }
 template <typename T>
-AspifOutput& AspifOutput::add(const std::span<const T>& lits) {
+AspifOutput& AspifOutput::add(std::span<const T> lits) {
     os_ << " " << lits.size();
     for (const auto& l : lits) { os_ << " " << l; }
     return *this;
 }
-AspifOutput& AspifOutput::add(const std::string_view& str) {
+AspifOutput& AspifOutput::add(std::string_view str) {
     os_ << " " << str.size() << " ";
     os_.write(str.data(), std::ssize(str));
     return *this;
@@ -238,43 +238,41 @@ void AspifOutput::initProgram(bool inc) {
     }
     os_ << '\n';
 }
-void AspifOutput::rule(HeadType ht, const AtomSpan& head, const LitSpan& body) {
+void AspifOutput::rule(HeadType ht, AtomSpan head, LitSpan body) {
     startDir(AspifType::rule).add(ht).add(head).add(BodyType::normal).add(body).endDir();
 }
-void AspifOutput::rule(HeadType ht, const AtomSpan& head, Weight_t bound, const WeightLitSpan& body) {
+void AspifOutput::rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan body) {
     startDir(AspifType::rule).add(ht).add(head).add(BodyType::sum).add(bound).add(body).endDir();
 }
-void AspifOutput::minimize(Weight_t prio, const WeightLitSpan& lits) {
+void AspifOutput::minimize(Weight_t prio, WeightLitSpan lits) {
     startDir(AspifType::minimize).add(prio).add(lits).endDir();
 }
-void AspifOutput::output(const std::string_view& str, const LitSpan& cond) {
+void AspifOutput::output(std::string_view str, LitSpan cond) {
     startDir(AspifType::output).add(str).add(cond).endDir();
 }
 void AspifOutput::external(Atom_t a, TruthValue v) { startDir(AspifType::external).add(a).add(v).endDir(); }
-void AspifOutput::assume(const LitSpan& lits) { startDir(AspifType::assume).add(lits).endDir(); }
-void AspifOutput::project(const AtomSpan& atoms) { startDir(AspifType::project).add(atoms).endDir(); }
-void AspifOutput::acycEdge(int s, int t, const LitSpan& cond) {
-    startDir(AspifType::edge).add(s).add(t).add(cond).endDir();
-}
-void AspifOutput::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, const LitSpan& cond) {
+void AspifOutput::assume(LitSpan lits) { startDir(AspifType::assume).add(lits).endDir(); }
+void AspifOutput::project(AtomSpan atoms) { startDir(AspifType::project).add(atoms).endDir(); }
+void AspifOutput::acycEdge(int s, int t, LitSpan cond) { startDir(AspifType::edge).add(s).add(t).add(cond).endDir(); }
+void AspifOutput::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan cond) {
     startDir(AspifType::heuristic).add(t).add(a).add(bias).add(prio).add(cond).endDir();
 }
 void AspifOutput::theoryTerm(Id_t termId, int number) {
     startDir(AspifType::theory).add(TheoryType::number).add(termId).add(number).endDir();
 }
-void AspifOutput::theoryTerm(Id_t termId, const std::string_view& name) {
+void AspifOutput::theoryTerm(Id_t termId, std::string_view name) {
     startDir(AspifType::theory).add(TheoryType::symbol).add(termId).add(name).endDir();
 }
-void AspifOutput::theoryTerm(Id_t termId, int cId, const IdSpan& args) {
+void AspifOutput::theoryTerm(Id_t termId, int cId, IdSpan args) {
     startDir(AspifType::theory).add(TheoryType::compound).add(termId).add(cId).add(args).endDir();
 }
-void AspifOutput::theoryElement(Id_t elementId, const IdSpan& terms, const LitSpan& cond) {
+void AspifOutput::theoryElement(Id_t elementId, IdSpan terms, LitSpan cond) {
     startDir(AspifType::theory).add(TheoryType::element).add(elementId).add(terms).add(cond).endDir();
 }
-void AspifOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements) {
+void AspifOutput::theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements) {
     startDir(AspifType::theory).add(TheoryType::atom).add(atomOrZero).add(termId).add(elements).endDir();
 }
-void AspifOutput::theoryAtom(Id_t atomOrZero, Id_t termId, const IdSpan& elements, Id_t op, Id_t rhs) {
+void AspifOutput::theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements, Id_t op, Id_t rhs) {
     startDir(AspifType::theory)
         .add(TheoryType::atom_with_guard)
         .add(atomOrZero)
