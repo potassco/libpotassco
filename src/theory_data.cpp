@@ -238,11 +238,10 @@ void TheoryData::update() {
 uint32_t TheoryData::numAtoms() const { return data_->atoms.size(); }
 uint32_t TheoryData::numTerms() const { return data_->terms.size(); }
 uint32_t TheoryData::numElems() const { return data_->elems.size(); }
-void     TheoryData::resizeAtoms(uint32_t newSize) { data_->atoms.resize(newSize); }
+void     TheoryData::resizeAtoms(uint32_t n) { data_->atoms.resize(n); }
 void     TheoryData::destroyAtom(TheoryAtom* atom) { DestroyT{}(atom); }
-auto     TheoryData::begin() const -> atom_iterator { return data_->atoms.begin(); }
-auto     TheoryData::currBegin() const -> atom_iterator { return begin() + data_->frame.atom; }
-auto     TheoryData::end() const -> atom_iterator { return begin() + numAtoms(); }
+auto     TheoryData::atoms() const -> AtomView { return data_->atoms; }
+auto     TheoryData::currAtoms() const -> AtomView { return atoms().subspan(data_->frame.atom); }
 bool     TheoryData::hasTerm(Id_t id) const { return id < numTerms() && data_->terms[id].data_ != c_nul_term; }
 bool     TheoryData::isNewTerm(Id_t id) const { return hasTerm(id) && id >= data_->frame.term; }
 bool     TheoryData::hasElement(Id_t id) const { return id < numElems() && data_->elems[id] != nullptr; }
@@ -256,9 +255,7 @@ const TheoryElement& TheoryData::getElement(Id_t id) const {
     return *data_->elems[id];
 }
 void TheoryData::accept(Visitor& out, VisitMode m) const {
-    for (atom_iterator aIt = m == visit_current ? currBegin() : begin(), aEnd = end(); aIt != aEnd; ++aIt) {
-        out.visit(*this, **aIt);
-    }
+    for (const auto* a : m == visit_current ? currAtoms() : atoms()) { out.visit(*this, *a); }
 }
 void TheoryData::accept(const TheoryTerm& t, Visitor& out, VisitMode m) const {
     if (t.type() == TheoryTermType::compound) {

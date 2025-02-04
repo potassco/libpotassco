@@ -163,10 +163,9 @@ private:
 //! A type for storing and looking up theory atoms and their elements and terms.
 class TheoryData {
 public:
-    //! Iterator type for iterating over the theory atoms of a TheoryData object.
-    using atom_iterator = const TheoryAtom* const*; // NOLINT
-    using Term          = TheoryTerm;
-    using Element       = TheoryElement;
+    using AtomView = std::span<const TheoryAtom* const>;
+    using Term     = TheoryTerm;
+    using Element  = TheoryElement;
     TheoryData();
     ~TheoryData();
     TheoryData(TheoryData&&) = delete;
@@ -226,12 +225,10 @@ public:
 
     //! Returns the number of stored theory atoms.
     [[nodiscard]] uint32_t numAtoms() const;
-    //! Returns an iterator pointing to the first theory atom.
-    [[nodiscard]] atom_iterator begin() const;
-    //! Returns an iterator pointing to the first theory atom added after last call to update.
-    [[nodiscard]] atom_iterator currBegin() const;
-    //! Returns an iterator marking the end of the range of theory atoms.
-    [[nodiscard]] atom_iterator end() const;
+    //! Returns a view over all theory atoms.
+    [[nodiscard]] auto atoms() const -> AtomView;
+    //! Returns a view over all theory atoms added after last call to update.
+    [[nodiscard]] auto currAtoms() const -> AtomView;
     //! Returns whether this object stores a term with the given id.
     [[nodiscard]] bool hasTerm(Id_t id) const;
     //! Returns whether the given term was added after last call to update.
@@ -248,15 +245,16 @@ public:
     //! Removes all theory atoms @c a for which @c f(a) returns true.
     template <class F>
     void filter(const F& f) {
-        auto** j   = const_cast<TheoryAtom**>(currBegin());
-        auto   pop = 0u;
-        for (atom_iterator it = j, end = this->end(); it != end; ++it) {
-            if (auto atom = (*it)->atom(); not atom || not f(**it)) {
-                *j++ = const_cast<TheoryAtom*>(*it);
+        auto   pop   = 0u;
+        auto   range = currAtoms();
+        auto** j     = const_cast<TheoryAtom**>(range.data());
+        for (const auto* a : range) {
+            if (auto atom = a->atom(); not atom || not f(*a)) {
+                *j++ = const_cast<TheoryAtom*>(a);
             }
             else {
                 ++pop;
-                destroyAtom(const_cast<TheoryAtom*>(*it));
+                destroyAtom(const_cast<TheoryAtom*>(a));
             }
         }
         resizeAtoms(numAtoms() - pop);

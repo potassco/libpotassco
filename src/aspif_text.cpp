@@ -654,13 +654,13 @@ std::ostream& AspifTextOutput::Data::printTheoryAtom(std::ostream& os, const The
     return os;
 }
 void AspifTextOutput::Data::visitTheoryAtoms(std::ostream& os) {
-    for (auto it = theory.currBegin(), end = theory.end(); it != end; ++it) {
-        if (auto atom = (*it)->atom(); not atom) {
-            printTheoryAtom(os, **it) << ".\n";
+    for (const auto* a : theory.currAtoms()) {
+        if (auto atom = a->atom(); not atom) {
+            printTheoryAtom(os, *a) << ".\n";
         }
         else {
             std::ostringstream str;
-            printTheoryAtom(str, **it);
+            printTheoryAtom(str, *a);
             assignTheoryAtomName(atom, std::move(str).str());
         }
     }
