@@ -42,14 +42,6 @@ enum class ClauseType : unsigned {
 };
 POTASSCO_ENABLE_BIT_OPS(ClauseType);
 
-//! Named constants.
-enum class StatisticsType {
-    empty = 0, //!< Empty (invalid) object.
-    value = 1, //!< Single statistic value that is convertible to a double.
-    array = 2, //!< Composite object mapping int keys to statistics types.
-    map   = 3  //!< Composite object mapping string keys to statistics types.
-};
-
 //! Represents an assignment of a particular solver.
 class AbstractAssignment {
 public:
@@ -195,6 +187,13 @@ public:
     virtual Lit_t decide(Id_t solverId, const AbstractAssignment& assignment, Lit_t fallback) = 0;
 };
 
+//! Supported (solver) statistics types.
+enum class StatisticsType {
+    value = 0, //!< Single statistic value that is convertible to a double.
+    array = 1, //!< Composite object mapping int keys to statistics types.
+    map   = 2  //!< Composite object mapping string keys to statistics types.
+};
+
 //! Base class for providing (solver) statistics.
 /*!
  * Functions in this interface taking a key as parameter
@@ -220,7 +219,7 @@ public:
 
     /*!
      * \name Array
-     * Functions in this group shall only be called on Array objects.
+     * Functions in this group shall only be called on StatisticsType::array objects.
      */
     //@{
     //! Returns the element at the given zero-based index.
@@ -242,7 +241,7 @@ public:
 
     /*!
      * \name Map
-     * Functions in this group shall only be called on Map objects.
+     * Functions in this group shall only be called on StatisticsType::map objects.
      */
     //@{
     //! Returns the name of the ith element in the given map.
@@ -281,7 +280,7 @@ public:
     //@}
     /*!
      * \name Value
-     * Functions in this group shall only be called on Value objects.
+     * Functions in this group shall only be called on StatisticsType::value objects.
      */
     //@{
     //! Returns the statistic value associated with the given key.
