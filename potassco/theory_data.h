@@ -223,6 +223,12 @@ public:
      */
     void removeTerm(Id_t termId);
 
+    //! Returns whether this object is emtpy, i.e. does not store any terms, elements, or atoms.
+    [[nodiscard]] bool empty() const;
+    //! Returns the number of stored theory terms.
+    [[nodiscard]] uint32_t numTerms() const;
+    //! Returns the number of stored theory elements.
+    [[nodiscard]] uint32_t numElems() const;
     //! Returns the number of stored theory atoms.
     [[nodiscard]] uint32_t numAtoms() const;
     //! Returns a view over all theory atoms.
@@ -287,9 +293,6 @@ public:
 
 private:
     struct DestroyT;
-    [[nodiscard]] uint32_t numTerms() const;
-    [[nodiscard]] uint32_t numElems() const;
-
     TheoryTerm& setTerm(Id_t);
     void        resizeAtoms(uint32_t n);
     static void destroyAtom(TheoryAtom*);

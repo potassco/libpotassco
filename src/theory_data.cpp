@@ -235,6 +235,7 @@ void TheoryData::update() {
     data_->frame.term = numTerms();
     data_->frame.elem = numElems();
 }
+bool     TheoryData::empty() const { return data_->terms.empty() && data_->elems.empty() && data_->atoms.empty(); }
 uint32_t TheoryData::numAtoms() const { return data_->atoms.size(); }
 uint32_t TheoryData::numTerms() const { return data_->terms.size(); }
 uint32_t TheoryData::numElems() const { return data_->elems.size(); }
