@@ -25,13 +25,13 @@
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <source_location>
 #include <string_view>
 #include <type_traits>
 #include <utility>
-
 namespace Potassco {
 #if defined(__cpp_lib_to_underlying) && __cpp_lib_to_underlying == 202102L
 using std::to_underlying;
@@ -119,19 +119,19 @@ struct EnumMetaBase {
 };
 template <typename EnumT, EnumT V>
 requires std::is_enum_v<EnumT>
-[[nodiscard]] constexpr auto enum_name() {
+[[nodiscard]] constexpr auto enumName() {
     constexpr auto func = fn<V>();
     constexpr auto name = func.substr(EnumMetaBase::start, func.size() - EnumMetaBase::rest - EnumMetaBase::start);
     constexpr auto dcl  = name.starts_with('(') ? name : name.substr(name.find_last_of("::") + 1);
     static_assert(not dcl.empty());
     return data<FixedString<dcl.size()>{dcl.data()}>();
 }
-static_assert(enum_name<_enum, _enum::VALUE>() == std::string_view("VALUE"));
+static_assert(enumName<_enum, _enum::VALUE>() == std::string_view("VALUE"));
 template <typename EnumT, EnumT V>
 requires std::is_enum_v<EnumT>
 constexpr void addEntry(std::pair<EnumT, std::string_view>*& out) {
-    if constexpr (*enum_name<EnumT, V>() != '(') {
-        *out++ = {V, enum_name<EnumT, V>()};
+    if constexpr (*enumName<EnumT, V>() != '(') {
+        *out++ = {V, enumName<EnumT, V>()};
     }
 }
 template <typename EnumT, typename... Args>
@@ -140,6 +140,13 @@ constexpr void addEntries(std::pair<EnumT, std::string_view>* out, EnumT e, std:
     if constexpr (sizeof...(args) != 0) {
         addEntries(out, args...);
     }
+}
+template <typename Op, typename E, typename... Args>
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr E applyBitOp(Op op, E arg1, Args... args) noexcept {
+#if defined(__clang__)
+    [[clang::suppress]] // suppress clang analyzer warning optin.core.EnumCastOutOfRange
+#endif
+    return static_cast<E>(op(Potassco::to_underlying(arg1), Potassco::to_underlying(args)...));
 }
 // NOLINTEND
 } // namespace Detail
@@ -389,17 +396,17 @@ requires(std::is_enum_v<T>)
  *       within the class definition.
  */
 #define POTASSCO_ENABLE_BIT_OPS(E, ...)                                                                                \
-    [[nodiscard]] POTASSCO_E_OP(~, (E a), __VA_ARGS__)->E { return static_cast<E>(~Potassco::to_underlying(a)); }      \
+    [[nodiscard]] POTASSCO_E_OP(~, (E a), __VA_ARGS__)->E { return Potassco::Detail::applyBitOp(std::bit_not{}, a); }  \
     [[nodiscard]] POTASSCO_E_OP(|, (E a, E b), __VA_ARGS__)->E {                                                       \
-        return static_cast<E>(Potassco::to_underlying(a) | Potassco::to_underlying(b));                                \
+        return Potassco::Detail::applyBitOp(std::bit_or{}, a, b);                                                      \
     }                                                                                                                  \
     POTASSCO_E_OP(|=, (E & a, E b), __VA_ARGS__)->E& { return a = a | b; }                                             \
     [[nodiscard]] POTASSCO_E_OP(&, (E a, E b), __VA_ARGS__)->E {                                                       \
-        return static_cast<E>(Potassco::to_underlying(a) & Potassco::to_underlying(b));                                \
+        return Potassco::Detail::applyBitOp(std::bit_and{}, a, b);                                                     \
     }                                                                                                                  \
     POTASSCO_E_OP(&=, (E & a, E b), __VA_ARGS__)->E& { return a = a & b; }                                             \
     [[nodiscard]] POTASSCO_E_OP(^, (E a, E b), __VA_ARGS__)->E {                                                       \
-        return static_cast<E>(Potassco::to_underlying(a) ^ Potassco::to_underlying(b));                                \
+        return Potassco::Detail::applyBitOp(std::bit_xor{}, a, b);                                                     \
     }                                                                                                                  \
     POTASSCO_E_OP(^=, (E & a, E b), __VA_ARGS__)->E& { return a = a ^ b; }                                             \
     static_assert(std::is_enum_v<E>)
