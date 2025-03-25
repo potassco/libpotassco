@@ -155,12 +155,103 @@ public:
     //@}
 };
 
+//! Supported check modes for propagators.
+enum class PropagatorCheckMode {
+    no       = 0u, //!< Never call AbstractPropagator::check().
+    total    = 1u, //!< Call AbstractPropagator::check() only on total assignment.
+    fixpoint = 2u, //!< Call AbstractPropagator::check() on every propagation fixpoint.
+    both     = 3u  //!< Call AbstractPropagator::check() on every fixpoint and total assignment.
+};
+
+//! Supported undo modes for propagators.
+enum class PropagatorUndoMode {
+    def    = 0u, //!< Call AbstractPropagator::undo() only on levels with non-empty changelist.
+    always = 1u  //!< Call AbstractPropagator::undo() on all levels that have been propagated or checked.
+};
+
 //! Base class for implementing propagators.
 class AbstractPropagator {
 public:
     //! Type for representing a set of literals that have recently changed.
     using ChangeList = LitSpan;
+
+    //! Interface for initializing a propagator.
+    class Init {
+    public:
+        using CheckMode = PropagatorCheckMode;
+        using UndoMode  = PropagatorUndoMode;
+        virtual ~Init();
+        //! Returns the check mode of the propagator.
+        [[nodiscard]] virtual auto checkMode() const -> CheckMode = 0;
+        //! Returns the undo mode of the propagator.
+        [[nodiscard]] virtual auto undoMode() const -> UndoMode = 0;
+        //! Returns the current (top-level) assignment.
+        [[nodiscard]] virtual auto assignment() const -> const AbstractAssignment& = 0;
+        //! Returns the number of solvers that will be active during solving.
+        [[nodiscard]] virtual auto numSolver() const -> uint32_t = 0;
+        //! Maps the given program literal to a solver literal.
+        [[nodiscard]] virtual auto solverLiteral(Lit_t lit) const -> Lit_t = 0;
+
+        //! Sets the check mode for the propagator.
+        virtual void setCheckMode(CheckMode m) = 0;
+        //! Sets the undo mode for the propagator.
+        /*!
+         * \note By default, AbstractPropagator::undo() is only called for levels on which
+         *       at least one watched literal has been assigned. However, if `m` is set
+         *       to `always`, AbstractPropagator::undo() is also called for levels L with an
+         *       empty change list if AbstractPropagator::check() has been called on L.
+         */
+        virtual void setUndoMode(UndoMode m) = 0;
+
+        //! Adds a watch for the given <b>solver literal</b> to all current and future solvers.
+        void addWatch(Lit_t lit);
+        //! Adds a watch for the given <b>solver literal</b> to the solver with the given id.
+        virtual void addWatch(Lit_t lit, uint32_t solverId) = 0;
+        //! Removes the watch for the given <b>solver literal</b> from all solvers.
+        void removeWatch(Lit_t lit);
+        //! Removes the watch for the given <b>solver literal</b> from the solver with the given id.
+        virtual void removeWatch(Lit_t lit, uint32_t solverId) = 0;
+        //! Freezes the variable of the given <b>solver literal</b>.
+        /*
+         * Solver variables that are not frozen are subject to simplification and might be removed in a preprocessing
+         * step after propagator initialization. A propagator should freeze all literals over which it might add clauses
+         * during propagation.
+         * \note Watched literals are automatically frozen.
+         */
+        virtual void freezeLiteral(Lit_t lit) = 0;
+        //! Creates a new <b>solver literal</b>.
+        /*!
+         * If `freeze` is true, `freezeLiteral()` is implicitly called on the new literal.
+         */
+        virtual Lit_t addLiteral(bool freeze) = 0;
+        //! Adds a clause over the given <b>solver literals</b>.
+        /*!
+         * \return false if the program became unsatisfiable
+         */
+        virtual bool addClause(LitSpan clause) = 0;
+        //! Adds a weight constraint over the given <b>solver literals</b>.
+        /*!
+         * Adds a constraint of form `con <=> { l=w | (l, w) in lits } ?= bound`, where:
+         *  - <=> is a left implication if `type` < 0,
+         *  - <=> is a right implication if `type` > 0,
+         *  - <=> is an equivalence if `type` = 0, and
+         *  - ?= is `>=` if `eq` is false and `==`, otherwise.
+         *
+         * \return false if the program became unsatisfiable
+         */
+        virtual bool addWeightConstraint(Lit_t con, WeightLitSpan lits, Weight_t bound, int32_t type, bool eq) = 0;
+        //! Adds a weak constraint over the given <b>solver literals</b>.
+        virtual void addMinimize(Weight_t prio, WeightLit lit) = 0;
+        //! Propagates consequences of the underlying problem excluding any registered propagators.
+        /*!
+         * \return false if the program becomes unsatisfiable.
+         */
+        virtual bool propagate() = 0;
+    };
+
     virtual ~AbstractPropagator();
+    //! Called before solving to initialize the propagator.
+    virtual void init(Init& init) = 0;
     //! Shall propagate the newly assigned literals given in @c changes.
     virtual void propagate(AbstractSolver& solver, LitSpan changes) = 0;
     //! May update internal state of the newly unassigned literals given in @c undo.
