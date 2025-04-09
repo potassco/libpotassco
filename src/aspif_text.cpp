@@ -714,6 +714,9 @@ std::ostream& AspifTextOutput::Data::printMinimize(std::ostream& os, const uint3
         os << sep << weight << '@' << prio << ',' << ++i;
         printName(os << " : ", lit);
     }
+    if (not *sep) { // keep empty minimize
+        os << "0@" << prio;
+    }
     return os << '}';
 }
 void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {

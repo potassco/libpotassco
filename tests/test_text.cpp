@@ -32,7 +32,7 @@
 
 namespace Potassco::Test::Text {
 
-bool read(AspifTextInput& in, std::stringstream& str) { return in.accept(str) && in.parse(); }
+bool read(ProgramReader& in, std::stringstream& str) { return in.accept(str) && in.parse(); }
 TEST_CASE("Text reader ", "[text]") {
     std::stringstream input, output;
     AspifOutput       out(output);
@@ -296,6 +296,15 @@ TEST_CASE("Text writer ", "[text]") {
                 "#minimize{1@0,1 : x_1; 2@0,2 : x_2; 1@0,3 : x_3}.\n#minimize{3@1,1 : not x_1; 1@1,2 : not "
                 "x_2; 1@1,3 : not x_3}.\n#show.\n");
     }
+    SECTION("empty minimize") {
+        AspifInput aspif(out);
+        input << "asp 1 0 0\n"
+              << "2 0 0\n"
+              << "0\n";
+        read(aspif, input);
+        REQUIRE(output.str() == "#minimize{0@0}.\n");
+    }
+
     SECTION("output statements") {
         input << "{x1;x2}.\n#output foo.\n#output bar : x1.\n#output \"Hello World\" : x2, not x1.";
         read(prg, input);

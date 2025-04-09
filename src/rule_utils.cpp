@@ -164,7 +164,7 @@ RuleBuilder& RuleBuilder::addGoal(WeightLit lit) {
         POTASSCO_CHECK_PRE(lit.weight == 1, "non-trivial weight literal not supported in normal body");
         extend(body_, lit.lit, "Body");
     }
-    else {
+    else if (lit.weight != 0) {
         extend(body_, lit, "Sum");
     }
     return *this;

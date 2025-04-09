@@ -640,6 +640,21 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
         REQUIRE(r.agg.bound == 2);
         REQUIRE(spanEq(r.agg.lits, rb.sum().lits));
     }
+    SECTION("ignore zero weight") {
+        rb.start().addHead(1).startSum(2).addGoal(2, 1).addGoal(-3, 0).addGoal(4, 2).end();
+        REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
+        REQUIRE(rb.bodyType() == BodyType::sum);
+        REQUIRE(rb.bound() == 2);
+        REQUIRE(spanEq(rb.sumLits(), std::vector<WeightLit>{{2, 1}, {4, 2}}));
+        REQUIRE(spanEq(rb.sum().lits, rb.sumLits()));
+        REQUIRE(rb.findSumLit(-3) == nullptr);
+
+        auto r = rb.rule();
+        REQUIRE(spanEq(r.head, rb.head()));
+        REQUIRE(r.bt == BodyType::sum);
+        REQUIRE(r.agg.bound == 2);
+        REQUIRE(spanEq(r.agg.lits, rb.sum().lits));
+    }
     SECTION("update bound") {
         rb.start().addHead(1).startSum(2).addGoal(2, 1).addGoal(-3, 1).addGoal(4, 2).setBound(3);
         REQUIRE(rb.bodyType() == BodyType::sum);
