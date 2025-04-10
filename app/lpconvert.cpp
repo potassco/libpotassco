@@ -58,7 +58,7 @@ public:
                   << "\nCopyright (C) Benjamin Kaufmann\n"
                      "License: The MIT License <https://opensource.org/licenses/MIT>\n";
     }
-    bool onUnhandledException(const char* msg) override {
+    bool onUnhandledException(const std::exception_ptr&, const char* msg) noexcept override {
         std::cerr << msg << "\n";
         return false;
     }

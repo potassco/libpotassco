@@ -50,7 +50,7 @@ struct MyApp : Application {
     void validateOptions(const OptionContext&, const ParsedOptions&, const ParsedValues&) override {}
     void onHelp(const std::string& str, DescriptionLevel) override { messages["help"].append(str); }
     void onVersion(const std::string& str) override { messages["version"].append(str); }
-    bool onUnhandledException(const char* err) override {
+    bool onUnhandledException(const std::exception_ptr&, const char* err) noexcept override {
         messages["error"].append(err);
         return false;
     }
@@ -83,23 +83,47 @@ TEST_CASE("Test application formatting", "[app]") {
                            "*** Warn : (TestApp): A warning\n"
                            "*** Info : (TestApp): Some info\n");
     }
-    SECTION("fail") {
+    SECTION("fail and stop") {
         char* argv[] = {(char*) "app", nullptr}; // NOLINT
         SECTION("noop if not running") {
-            REQUIRE_NOTHROW(app.fail(79, "Something is not right!", "Info line 1\nInfo line 2"));
-            REQUIRE(app.getExitCode() == EXIT_FAILURE);
+            SECTION("fail") {
+                REQUIRE_NOTHROW(app.fail(79, "Something is not right!", "Info line 1\nInfo line 2"));
+                REQUIRE(app.getExitCode() == EXIT_FAILURE);
+            }
+            SECTION("stop") {
+                REQUIRE_NOTHROW(app.stop(79));
+                REQUIRE(app.getExitCode() == EXIT_FAILURE);
+            }
         }
         SECTION("stop if running") {
-            app.doRun = [&]() {
-                app.fail(79, "Something is not right!", "Info line 1\nInfo line 2");
-                FAIL("should not be reached");
-                return 0;
-            };
-            REQUIRE(app.main(0, argv) == 79);
-            REQUIRE(app.getExitCode() == 79);
-            REQUIRE(app.messages["error"] == "*** ERROR: (TestApp): Something is not right!\n"
-                                             "*** Info : (TestApp): Info line 1\n"
-                                             "*** Info : (TestApp): Info line 2");
+            std::pair<int, std::string> expected;
+            const char*                 action = "";
+            SECTION("fail") {
+                action    = "fail";
+                app.doRun = [&] {
+                    app.fail(79, "Something is not right!", "Info line 1\nInfo line 2");
+                    FAIL("should not be reached");
+                    return 0;
+                };
+                expected.first  = 79;
+                expected.second = "*** ERROR: (TestApp): Something is not right!\n"
+                                  "*** Info : (TestApp): Info line 1\n"
+                                  "*** Info : (TestApp): Info line 2";
+            }
+            SECTION("stop") {
+                action    = "stop";
+                app.doRun = [&] {
+                    app.stop(12);
+                    FAIL("should not be reached");
+                    return 0;
+                };
+                expected.first  = 12;
+                expected.second = "";
+            }
+            CAPTURE(action);
+            REQUIRE(app.main(0, argv) == expected.first);
+            REQUIRE(app.getExitCode() == expected.first);
+            REQUIRE(app.messages["error"] == expected.second);
         }
     }
 }

@@ -104,6 +104,8 @@ static int fetchDec(T& x) {
 struct Application::Error final : std::runtime_error {
     explicit Error(const char* msg) : std::runtime_error(msg) {}
 };
+struct Application::Stop final : std::exception {};
+
 static Application* g_instance; // running instance (only valid during run()).
 
 Application::Application()
@@ -176,10 +178,7 @@ int Application::main(int argc, char** argv) {
         }
     }
     catch (...) {
-        char buffer[1024];
-        exitCode_ = exitCode_ == EXIT_SUCCESS ? EXIT_FAILURE : exitCode_;
-        auto ok   = formatActiveException(buffer);
-        fastExit_ = onUnhandledException(buffer) || not ok;
+        handleException();
     }
     if (fastExit_) {
         exit(exitCode_);
@@ -189,7 +188,45 @@ int Application::main(int argc, char** argv) {
 }
 
 Application* Application::getInstance() { return g_instance; }
-
+void         Application::handleException() {
+    char mem[1024];
+    auto buffer  = std::span<char>(mem);
+    auto current = std::current_exception();
+    int  code    = EXIT_FAILURE;
+    try {
+        throw;
+    }
+    catch (const ProgramOptions::Error& e) {
+        buffer      = buffer.subspan(formatMessage(buffer, message_error, "%s\n", e.what()));
+        std::ignore = formatMessage(buffer, message_info, "Try '--help' for usage information");
+    }
+    catch (const RuntimeError& e) {
+        auto m = e.message();
+        auto d = e.details();
+        buffer = buffer.subspan(formatMessage(buffer, message_error, "%.*s\n", static_cast<int>(m.size()), m.data()));
+        formatMessage(buffer, message_error, "%.*s", static_cast<int>(d.size()), d.data());
+    }
+    catch (const Error& e) {
+        snprintf(buffer.data(), buffer.size(), "%s", e.what());
+    }
+    catch (const Stop&) {
+        code = EXIT_SUCCESS;
+    }
+    catch (const std::exception& e) {
+        std::ignore = formatMessage(buffer, message_error, "%s", e.what());
+    }
+    catch (...) {
+        std::ignore = formatMessage(buffer, message_error, "Unknown exception");
+        fastExit_   = true;
+    }
+    exitCode_ = exitCode_ == EXIT_SUCCESS ? code : exitCode_;
+    if (code != EXIT_SUCCESS && onUnhandledException(current, mem)) {
+        fastExit_ = true;
+    }
+    if (fastExit_) {
+        exit(exitCode_);
+    }
+}
 void Application::setExitCode(int n) { exitCode_ = n; }
 int  Application::getExitCode() const { return exitCode_; }
 void Application::fail(int code, std::string_view message, std::string_view info) {
@@ -208,7 +245,16 @@ void Application::fail(int code, std::string_view message, std::string_view info
             setExitCode(code);
             throw Error(mem);
         }
-        std::ignore = onUnhandledException(mem);
+        std::ignore = onUnhandledException(nullptr, mem);
+        Application::exit(code);
+    }
+}
+void Application::stop(int code) {
+    if (this == getInstance()) {
+        if (not fastExit_) {
+            setExitCode(code);
+            throw Stop();
+        }
         Application::exit(code);
     }
 }
@@ -247,9 +293,17 @@ void Application::sigHandler(int sig) {
 // Called on timeout or signal.
 void Application::processSignal(int sigNum) {
     if (blockSignals() == 0) {
-        if (not onSignal(sigNum)) {
-            return;
-        } // block further signals
+        try {
+            auto fast = std::exchange(fastExit_, true);
+            POTASSCO_SCOPE_EXIT({ fastExit_ = fast; });
+            if (not onSignal(sigNum)) {
+                return; // block further signals
+            }
+        }
+        catch (...) {
+            handleException();
+            exit(exitCode_);
+        }
     }
     else if (pending_ == 0) { // signals are currently blocked because output is active
         pending_ = sigNum;
@@ -257,7 +311,7 @@ void Application::processSignal(int sigNum) {
     fetchDec(blocked_);
 }
 
-bool Application::onSignal(int x) { exit(EXIT_FAILURE | (128 + x)); }
+bool Application::onSignal(int x) { exit(128 + x); }
 
 static const char* prefix(Application::MessageType t) {
     switch (t) {
@@ -282,33 +336,6 @@ std::size_t Application::formatMessage(std::span<char> buffer, MessageType t, co
     auto r2   = std::vsnprintf(rest.data(), rest.size(), fmt, args);
     va_end(args);
     return r2 <= 0 ? static_cast<std::size_t>(0) : std::min(buffer.size() - 1, static_cast<std::size_t>(r1 + r2));
-}
-
-bool Application::formatActiveException(std::span<char> buffer) const {
-    try {
-        throw;
-    }
-    catch (const ProgramOptions::Error& e) {
-        buffer      = buffer.subspan(formatMessage(buffer, message_error, "%s\n", e.what()));
-        std::ignore = formatMessage(buffer, message_info, "Try '--help' for usage information");
-    }
-    catch (const RuntimeError& e) {
-        auto m = e.message();
-        auto d = e.details();
-        buffer = buffer.subspan(formatMessage(buffer, message_error, "%.*s\n", static_cast<int>(m.size()), m.data()));
-        formatMessage(buffer, message_error, "%.*s", static_cast<int>(d.size()), d.data());
-    }
-    catch (const Error& e) {
-        snprintf(buffer.data(), buffer.size(), "%s", e.what());
-    }
-    catch (const std::exception& e) {
-        std::ignore = formatMessage(buffer, message_error, "%s", e.what());
-    }
-    catch (...) {
-        std::ignore = formatMessage(buffer, message_error, "Unknown exception");
-        return false;
-    }
-    return true;
 }
 
 // Process command-line options.

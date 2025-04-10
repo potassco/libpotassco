@@ -75,6 +75,12 @@ public:
      * \note If the application is currently not running, this function is a noop.
      */
     void fail(int code, std::string_view message, std::string_view info = {});
+    //! Stops running application with given exit code.
+    /*!
+     * The function sets the given code as exit code and then stops the running application.
+     * \note If the application is currently not running, this function is a noop.
+     */
+    void stop(int code);
     //! Returns the application object that is running.
     static Application* getInstance();
 
@@ -133,7 +139,7 @@ protected:
      * The return value defines whether the application should exit immediately without calling destructors (true) or
      * just return from main() (false).
      */
-    virtual bool onUnhandledException(const char* msg) = 0;
+    virtual bool onUnhandledException(const std::exception_ptr& e, const char* msg) noexcept = 0;
     //! Called when a signal is received. The default terminates the application.
     virtual bool onSignal(int);
     //! Shall write any pending application output. Always called before the Application terminates.
@@ -142,7 +148,6 @@ protected:
 
     Application();
     virtual ~Application();
-    [[noreturn]] void exit(int exitCode);
 
     void setVerbose(unsigned v);
     void setAlarm(unsigned sec);
@@ -153,6 +158,7 @@ protected:
 
 private:
     struct Error;
+    struct Stop;
     struct Prefix {
         const Application* app;
         const char*        msg;
@@ -162,12 +168,13 @@ private:
         p.app->write(os, p.type, p.msg);
         return os;
     }
-    void               write(std::ostream& os, MessageType type, const char* msg) const;
-    bool               applyOptions(int argc, char** argv);
-    [[nodiscard]] bool formatActiveException(std::span<char> buffer) const;
-    static void        initInstance(Application& app);
-    static void        resetInstance(const Application& app);
-    static void        sigHandler(int sig);
+    void              write(std::ostream& os, MessageType type, const char* msg) const;
+    bool              applyOptions(int argc, char** argv);
+    void              handleException();
+    static void       initInstance(Application& app);
+    static void       resetInstance(const Application& app);
+    static void       sigHandler(int sig);
+    [[noreturn]] void exit(int exitCode);
 
     int      exitCode_; // application's exit code
     unsigned timeout_;  // active time limit or 0 for no limit
