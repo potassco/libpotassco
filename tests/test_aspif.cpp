@@ -313,13 +313,12 @@ TEST_CASE("Test ConstString", "[rule]") {
         ConstString      s(sv);
         ConstString      s2(s);
         REQUIRE(s == sv);
-        REQUIRE_FALSE(s.shareable());
         REQUIRE(s2 == sv);
+        REQUIRE(sv.data() != s.view().data());
         REQUIRE((void*) s.c_str() != (void*) s2.c_str());
         std::string large(32, 'x');
         ConstString s3(large);
         ConstString s4(s3);
-        REQUIRE_FALSE(s.shareable());
         REQUIRE(s3 == std::string_view{large});
         REQUIRE(s4 == std::string_view{large});
         REQUIRE((void*) s3.c_str() != (void*) s4.c_str());
@@ -333,32 +332,31 @@ TEST_CASE("Test ConstString", "[rule]") {
             REQUIRE(sc == sv);
             REQUIRE((void*) sc.c_str() != (void*) s2.c_str());
         }
+        SECTION("self assign") {
+            const void* old = s3.view().data();
+            s3              = s3; // NOLINT
+            REQUIRE(old == s3.view().data());
+        }
     }
-    SECTION("shallow copy") {
-        std::string_view sv("small");
-        ConstString      s(sv, ConstString::create_shared);
-        ConstString      s2(s);
-        REQUIRE(s == sv);
-        REQUIRE_FALSE(s.shareable());
-        REQUIRE(s2 == sv);
-        REQUIRE((void*) s.c_str() != (void*) s2.c_str());
-        std::string large(32, 'x');
-        ConstString s3(large, ConstString::create_shared);
-        ConstString s4(s3);
-        REQUIRE(s3.shareable());
-        REQUIRE(s4.shareable());
-        REQUIRE(s3 == std::string_view{large});
-        REQUIRE(s4 == std::string_view{large});
-        REQUIRE((void*) s3.c_str() == (void*) s4.c_str());
+    SECTION("borrow") {
+        std::string_view svSmall("small");
+        std::string_view svLarge("long string longer than sso");
+        ConstString      cSmall{ConstString::Borrow_t{}, svSmall};
+        ConstString      cLarge{ConstString::Borrow_t{}, svLarge};
+        REQUIRE(cSmall.view().data() == svSmall.data());
+        REQUIRE_FALSE(cSmall.small());
 
-        SECTION("assign") {
-            ConstString sc;
-            sc = s3;
-            REQUIRE(sc == std::string_view{large});
-            REQUIRE((void*) sc.c_str() == (void*) s3.c_str());
-            sc = s2;
-            REQUIRE(sc == sv);
-            REQUIRE((void*) sc.c_str() != (void*) s2.c_str());
+        REQUIRE(cLarge.view().data() == svLarge.data());
+        REQUIRE_FALSE(cLarge.small());
+
+        SECTION("materialize on copy") {
+            ConstString smallCopy(cSmall); // NOLINT
+            ConstString largeCopy(cLarge); // NOLINT
+            REQUIRE(smallCopy.small());
+            REQUIRE(smallCopy.view().data() != svSmall.data());
+
+            REQUIRE_FALSE(largeCopy.small());
+            REQUIRE(largeCopy.view().data() != svLarge.data());
         }
     }
     SECTION("move") {
@@ -371,21 +369,26 @@ TEST_CASE("Test ConstString", "[rule]") {
         ConstString s3(large);
         auto        old = static_cast<const void*>(s3.c_str());
         ConstString s4(std::move(s3));
-        REQUIRE(s3 == std::string_view{});
+        REQUIRE(s3 == std::string_view{}); // NOLINT
         REQUIRE(s4 == std::string_view(large));
         REQUIRE(s4.c_str() == old);
 
         SECTION("assign") {
             s = std::move(s2);
-            REQUIRE(s2 == std::string_view{});
+            REQUIRE(s2 == std::string_view{}); // NOLINT
             REQUIRE(s == sv);
 
             s3 = std::move(s4);
-            REQUIRE(s4 == std::string_view{});
+            REQUIRE(s4 == std::string_view{}); // NOLINT
             REQUIRE(s3 == std::string_view(large));
+            REQUIRE((const void*) s3.c_str() == old);
 
             s3 = ConstString();
             REQUIRE(s3 == std::string_view{});
+        }
+        SECTION("self assign") {
+            s4 = static_cast<ConstString&&>(s4); // avoid warning from std::move
+            REQUIRE((const void*) s4.c_str() == old);
         }
     }
     SECTION("compare") {
@@ -410,6 +413,11 @@ TEST_CASE("Test ConstString", "[rule]") {
         REQUIRE_FALSE(sv > s);
         REQUIRE(sv <= s);
         REQUIRE(s >= sv);
+    }
+    SECTION("map") {
+        StringMap<int> m;
+        REQUIRE(try_emplace(m, "foo", 22).second);
+        REQUIRE_FALSE(try_emplace(m, "foo", 23).second);
     }
 }
 template <typename T, typename U>

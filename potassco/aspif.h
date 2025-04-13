@@ -70,7 +70,7 @@ private:
 /*!
  * \ingroup WriteType
  */
-class AspifOutput final : public AbstractProgram {
+class AspifOutput : public AbstractProgram {
 public:
     //! Creates a new object and associates it with the given output stream.
     explicit AspifOutput(std::ostream& os);

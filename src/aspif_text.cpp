@@ -355,7 +355,7 @@ DomModifier AspifTextInput::matchHeuMod() {
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifTextOutput::Data {
     static_assert(amc::is_trivially_relocatable_v<ConstString>, "should be relocatable");
-    using StringMap = std::unordered_map<ConstString, Atom_t, std::hash<ConstString>, std::equal_to<>>;
+    using StringMap = Potassco::StringMap<Atom_t>;
     using AtomMap   = amc::SmallVector<StringMap::const_pointer, 64>;
     using LitVec    = amc::SmallVector<Lit_t, 64>;
     using RawVec    = amc::SmallVector<uint32_t, 4096>;
@@ -388,7 +388,7 @@ struct AspifTextOutput::Data {
     }
 
     void addOutput(std::string_view str, LitSpan cond) {
-        out.push_back(&*strings.try_emplace(str, id_max).first);
+        out.push_back(&*try_emplace(strings, str, id_max).first);
         push(AspifType::output).push(out.size() - 1).push(cond);
     }
 
@@ -434,7 +434,7 @@ struct AspifTextOutput::Data {
         if (a == 0) {
             name = id;
         }
-        auto* node = &*strings.try_emplace(name, atom).first;
+        auto* node = &*try_emplace(strings, name, atom).first;
         if (node->second == atom || node->second == id_max) { // assign tentative name to atom
             node->second = atom;
             atoms[atom]  = node;

@@ -108,7 +108,7 @@ public:
         REQUIRE(size(cond) == 1);
         atoms[*begin(cond)].assign(begin(str), end(str));
     }
-    void outputAtom(Atom_t a, const ConstString& str) override { atoms[lit(a)].assign(str.view()); }
+    void outputAtom(Atom_t a, std::string_view str) override { atoms[lit(a)].assign(str); }
 
     void external(Atom_t a, TruthValue v) override {
         if (v != TruthValue::release) {
@@ -713,6 +713,7 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
         REQUIRE(readSmodels(str, observer, opts) == 0);
 
         REQUIRE(observer.heuristics.size() == 4);
+
         Heuristic exp[] = {{static_cast<Atom_t>(a), DomModifier::sign, -1, 1, {h1}},
                            {static_cast<Atom_t>(a), DomModifier::true_, 1, 1, {h2}},
                            {static_cast<Atom_t>(b), DomModifier::level, -1, 10, {h3}},

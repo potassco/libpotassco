@@ -26,7 +26,6 @@
 #include <potassco/error.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cstring>
 #include <istream>
 #include <utility>
@@ -38,9 +37,9 @@ void AbstractProgram::initProgram(bool) {}
 void AbstractProgram::beginStep() {}
 void AbstractProgram::project(AtomSpan) { POTASSCO_UNSUPPORTED("projection directive not supported"); }
 void AbstractProgram::output(std::string_view, LitSpan) { POTASSCO_UNSUPPORTED("output directive not supported"); }
-void AbstractProgram::outputAtom(Atom_t a, const ConstString& str) {
+void AbstractProgram::outputAtom(Atom_t a, std::string_view name) {
     Lit_t c = lit(a);
-    output(str.view(), toSpan(c));
+    output(name, toSpan(c));
 }
 void AbstractProgram::external(Atom_t, TruthValue) { POTASSCO_UNSUPPORTED("external directive not supported"); }
 void AbstractProgram::assume(LitSpan) { POTASSCO_UNSUPPORTED("assumption directive not supported"); }
@@ -353,50 +352,41 @@ auto DynamicBitset::compare(const DynamicBitset& other) const -> std::strong_ord
 /////////////////////////////////////////////////////////////////////////////////////////
 // ConstString
 /////////////////////////////////////////////////////////////////////////////////////////
-using RefCount = std::atomic<int32_t>;
-ConstString::ConstString(std::string_view n, CreateMode m) {
-    if (n.size() > c_max_small) {
-        storage_[c_max_small] = static_cast<char>(c_large_tag + m);
-        auto  mem             = std::make_unique<char[]>((m == create_shared ? sizeof(RefCount) : 0) + n.size() + 1);
-        auto* buf             = mem.get();
-        if (m == create_shared) {
-            new (buf) RefCount(1);
-            buf += sizeof(RefCount);
-        }
-        *std::ranges::copy(n, buf).out = 0;
-        new (storage_) Large{.str = buf, .size = n.size()};
-        mem.release();
+ConstString::ConstString(std::string_view n) { // NOLINT(cppcoreguidelines-pro-type-member-init)
+    init(n);
+}
+ConstString::ConstString(const ConstString& o) : ConstString(o.view()) { POTASSCO_DEBUG_ASSERT(tag() != c_borrow_tag); }
+ConstString::ConstString(Borrow_t, std::string_view n) { // NOLINT(cppcoreguidelines-pro-type-member-init)
+    new (storage_) Large{.str = n.data(), .size = n.size()};
+    storage_[c_max_small] = static_cast<char>(c_borrow_tag);
+}
+void ConstString::init(std::string_view str) {
+    char* out = storage_;
+    if (str.size() > c_max_small) {
+        out = static_cast<char*>(::operator new[](str.size() + 1));
+        new (storage_) Large{.str = out, .size = str.size()};
+        storage_[c_max_small] = static_cast<char>(c_large_tag);
     }
     else {
-        *std::ranges::copy(n, storage_).out = 0;
-        storage_[c_max_small]               = static_cast<char>(c_max_small - n.size());
+        storage_[c_max_small] = static_cast<char>(c_max_small - str.size());
     }
-    POTASSCO_DEBUG_ASSERT(static_cast<std::string_view>(*this) == n);
+    *std::ranges::copy(str, out).out = 0;
 }
-ConstString::ConstString(const ConstString& o) : ConstString(not o.shareable() ? o.view() : std::string_view{}) {
-    if (o.shareable()) {
-        POTASSCO_DEBUG_ASSERT(not o.small());
-        storage_[c_max_small] = o.storage_[c_max_small];
-        new (storage_) Large{*o.large()};
-        addRef(1);
+void ConstString::release() { delete[] large()->str; }
+template <typename C>
+static void assignImpl(ConstString* self, C&& source) {
+    if (self != &source) {
+        self->~ConstString();
+        new (self) ConstString(std::forward<C>(source));
     }
 }
-ConstString& ConstString::operator=(const ConstString& other) {
-    if (this != &other) {
-        this->~ConstString();
-        new (this) ConstString(other);
-    }
+ConstString& ConstString::operator=(const ConstString& other) { // NOLINT(bugprone-unhandled-self-assignment)
+    assignImpl(this, other);
     return *this;
 }
-void ConstString::release() {
-    if (auto off = shareable() * sizeof(RefCount); off == 0 || addRef(-1) == 0) {
-        delete[] (large()->str - off);
-    }
-}
-int32_t ConstString::addRef(int32_t x) {
-    POTASSCO_DEBUG_ASSERT(shareable());
-    auto& r   = *reinterpret_cast<RefCount*>(large()->str - sizeof(RefCount));
-    return r += x;
+ConstString& ConstString::operator=(ConstString&& other) noexcept {
+    assignImpl(this, std::move(other));
+    return *this;
 }
 
 } // namespace Potassco

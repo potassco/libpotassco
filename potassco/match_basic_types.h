@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <ios>
 #include <iosfwd>
+#include <unordered_map>
 
 namespace Potassco {
 
@@ -125,7 +126,7 @@ public:
     void setMaxVar(Atom_t v) { varMax_ = v; }
 
     //! Unconditionally throws a std::exception with the current line and given message.
-    void error(const char* msg) const;
+    POTASSCO_ATTR_NORETURN void error(const char* msg) const;
 
 protected:
     using StreamType = BufferedStream;
@@ -218,6 +219,20 @@ bool matchTerm(std::string_view& input, std::string_view& termOut);
 //! Attaches the given stream to @c r and calls ProgramReader::parse() with the read mode set to
 //! ProgramReader::Complete.
 int readProgram(std::istream& str, ProgramReader& r);
+
+template <typename ValueType>
+using StringMap = std::unordered_map<ConstString, ValueType, std::hash<ConstString>, std::equal_to<>>;
+
+template <typename ValueType, typename... Args>
+auto try_emplace(StringMap<ValueType>& map, std::string_view key,
+                 Args&&... args) -> std::pair<typename StringMap<ValueType>::iterator, bool> {
+    // Create cheap "borrowed" key for lookup. If key is not in map, `try_emplace()` will copy-construct a key from `k`,
+    // thereby materializing a full string. Otoh, if map already contains an element with the given key, we avoid any
+    // unnecessary allocation.
+    // NOTE: Once we have C++26 with and its heterogeneous version of `try_emplace()`, this workaround can be removed.
+    ConstString k{ConstString::Borrow_t{}, key};
+    return map.try_emplace(k, std::forward<Args>(args)...);
+}
 
 } // namespace Potassco
 ///@}

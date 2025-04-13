@@ -172,11 +172,11 @@ public:
     virtual void project(AtomSpan atoms);
     //! Output @c str whenever condition is true in a stable model.
     virtual void output(std::string_view str, LitSpan condition);
-    //! Output @c str whenever condition is true in a stable model.
+    //! Output @c name whenever condition is true in a stable model.
     /*!
      * \note By default, this function simply delegates to output().
      */
-    virtual void outputAtom(Atom_t a, const ConstString& str);
+    virtual void outputAtom(Atom_t a, std::string_view name);
     //! If `v` is not equal to `TruthValue::release`, mark `a` as external and assume value `v`. Otherwise, treat `a` as
     //! regular atom.
     virtual void external(Atom_t a, TruthValue v);
@@ -414,23 +414,22 @@ class RuleBuilder;
 class ConstString final {
 public:
     using trivially_relocatable = std::true_type; // NOLINT
-    //! Supported creation modes.
-    enum CreateMode { create_unique, create_shared };
+    struct Borrow_t {};
     //! Creates an empty string.
     constexpr ConstString() noexcept {
+        reset();
         if (std::is_constant_evaluated()) {
-            std::fill(std::begin(storage_) + 1, std::end(storage_), static_cast<char>(0));
+            std::fill(std::begin(storage_) + 1, std::end(storage_) - 1, static_cast<char>(0));
         }
-        storage_[0]           = 0;
-        storage_[c_max_small] = static_cast<char>(c_max_small);
     }
-    //! Creates a string by coping @c n.
+    //! Creates a string by copying @c n.
+    explicit ConstString(std::string_view n);
+    //! Creates a string by borrowing @c n.
     /*!
-     * The creation mode determines how further copies are handled. If @c n exceeds the SSO limit and @c m is set to
-     * @c CreateMode::create_shared, further copies only increase an internal reference count.
+     * \note It is the caller's responsibility to ensure that the new object is only used as long as @c n is valid.
      */
-    ConstString(std::string_view n, CreateMode m = create_unique);
-    //! Creates a copy of @c o.
+    ConstString(Borrow_t, std::string_view n);
+    //! Creates a (deep) copy of @c o
     ConstString(const ConstString& o);
     //! "Steals" the content of @c o.
     constexpr ConstString(ConstString&& o) noexcept {
@@ -447,22 +446,15 @@ public:
             new (storage_) Large{*o.large()};
             storage_[c_max_small] = o.storage_[c_max_small];
         }
-        o.storage_[0]           = 0;
-        o.storage_[c_max_small] = static_cast<char>(c_max_small);
+        o.reset();
     }
     constexpr ~ConstString() {
-        if (not small()) {
+        if (tag() == c_large_tag) {
             release();
         }
     }
-    ConstString&           operator=(const ConstString& other);
-    constexpr ConstString& operator=(ConstString&& other) noexcept {
-        if (this != &other) {
-            this->~ConstString();
-            new (this) ConstString(std::move(other));
-        }
-        return *this;
-    }
+    ConstString& operator=(const ConstString& other);
+    ConstString& operator=(ConstString&& other) noexcept;
 
     //! Converts this string to a string_view.
     [[nodiscard]] constexpr explicit operator std::string_view() const { return {c_str(), size()}; }
@@ -471,31 +463,37 @@ public:
     //! Converts this string to a string_view.
     [[nodiscard]] constexpr std::string_view view() const { return static_cast<std::string_view>(*this); }
     //! Returns the length of this string.
-    [[nodiscard]] constexpr std::size_t size() const {
-        return small() ? c_max_small - static_cast<std::size_t>(storage_[c_max_small]) : large()->size;
-    }
+    [[nodiscard]] constexpr std::size_t size() const { return small() ? c_max_small - tag() : large()->size; }
     //! Returns the character at the given position, which shall be \< @c size().
     [[nodiscard]] constexpr char operator[](std::size_t pos) const { return c_str()[pos]; }
 
-    [[nodiscard]] constexpr bool small() const { return storage_[c_max_small] < c_large_tag; }
-    [[nodiscard]] constexpr bool shareable() const { return storage_[c_max_small] == c_large_tag + create_shared; }
+    [[nodiscard]] constexpr bool small() const { return tag() < c_large_tag; }
 
     friend bool operator==(const ConstString& lhs, const ConstString& rhs) { return lhs.view() == rhs.view(); }
     friend auto operator<=>(const ConstString& lhs, const ConstString& rhs) { return lhs.view() <=> rhs.view(); }
+    friend bool operator==(std::string_view lhs, const ConstString& rhs) { return lhs == rhs.view(); }
+    friend auto operator<=>(std::string_view lhs, const ConstString& rhs) { return lhs <=> rhs.view(); }
 
 private:
-    static constexpr auto c_max_small = 23;
-    static constexpr auto c_large_tag = c_max_small + 1;
+    static constexpr auto c_max_small  = 23u;
+    static constexpr auto c_large_tag  = c_max_small + 1u;
+    static constexpr auto c_borrow_tag = c_large_tag + 1u;
     struct Large {
-        char*       str;
+        const char* str;
         std::size_t size;
     };
-    [[nodiscard]] const Large* large() const { return reinterpret_cast<const Large*>(storage_); }
-    int32_t                    addRef(int32_t x);
-    void                       release();
+    void                            init(std::string_view str);
+    [[nodiscard]] const Large*      large() const { return reinterpret_cast<const Large*>(storage_); }
+    [[nodiscard]] constexpr uint8_t tag() const { return static_cast<uint8_t>(storage_[c_max_small]); }
+    void                            release();
+    constexpr void                  reset() {
+        storage_[0]           = 0;
+        storage_[c_max_small] = static_cast<char>(c_max_small);
+    }
     alignas(Large) char storage_[c_max_small + 1];
 };
-
+static_assert(ConstString{}.small());
+static_assert(ConstString{ConstString{}}.small());
 ///@}
 
 } // namespace Potassco

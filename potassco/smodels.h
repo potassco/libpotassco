@@ -83,7 +83,7 @@ public:
     ~SmodelsInput() override;
 
 private:
-    struct StringTab;
+    struct Extra;
     //! Checks whether stream starts with a valid smodels token.
     bool doAttach(bool& inc) override;
     //! Parses the current step and throws exception on error.
@@ -95,20 +95,20 @@ private:
     //! Resets internal parsing state.
     void doReset() override;
     //! Reads the current rule block.
-    bool readRules();
+    void readRules();
     //! Reads the current smodels symbol table block.
-    bool readSymbols();
+    void readSymbols();
     //! Reads the current compute statement.
-    bool readCompute();
+    void readCompute();
     //! Reads an optional external block and the number of models.
-    bool readExtra();
+    void readExtra();
     void matchBody(RuleBuilder& rule);
     void matchSum(RuleBuilder& rule, bool weights);
+    bool mapSymbol(Atom_t atom, std::string_view name);
 
-    AbstractProgram&           out_;
-    std::unique_ptr<StringTab> atoms_;
-    std::unique_ptr<StringTab> nodes_;
-    Options                    opts_;
+    AbstractProgram&       out_;
+    std::unique_ptr<Extra> extra_;
+    Options                opts_;
 };
 //! Tries to extract a heuristic modification from a given _heuristic/3 or _heuristic/4 predicate.
 bool matchDomHeuPred(std::string_view pred, std::string_view& atom, DomModifier& type, int& bias, unsigned& prio);

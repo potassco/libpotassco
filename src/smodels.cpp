@@ -31,39 +31,35 @@
 #include <ostream>
 #include <unordered_map>
 
+#include <amc/vector.hpp>
+
 namespace Potassco {
 using namespace std::literals;
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsInput
 /////////////////////////////////////////////////////////////////////////////////////////
-struct SmodelsInput::StringTab {
-    auto addShared(std::string_view name, Id_t id) {
-        ConstString str(name, ConstString::create_shared);
-        return map.try_emplace(std::move(str), id);
+struct SmodelsInput::Extra {
+    struct Dom {
+        Dom(const Id_t* a, DomModifier m, int b, unsigned p, Lit_t c) : atomId(a), mod(m), bias(b), prio(p), cond(c) {}
+        const Id_t* atomId;
+        DomModifier mod;
+        int         bias;
+        unsigned    prio;
+        Lit_t       cond;
+    };
+    void addDom(const Id_t* atomId, DomModifier mod, int bias, unsigned prio, Lit_t cond) {
+        dom.emplace_back(atomId, mod, bias, prio, cond);
     }
-    Id_t tryAdd(std::string_view name, Id_t id) {
-        auto it = map.find(name);
-        return it != map.end() ? it->second : map.emplace_hint(it, name, id)->second;
+    auto addAtom(std::string_view name, Id_t id) { return try_emplace(atoms, name, id); }
+    Id_t addNode(std::string_view name) {
+        return try_emplace(nodes, name, static_cast<Id_t>(nodes.size())).first->second;
     }
-    [[nodiscard]] Id_t findOr(std::string_view name, Id_t orVal = 0u) const {
-        if (auto it = map.find(name); it != map.end()) {
-            return it->second;
-        }
-        return orVal;
-    }
-    [[nodiscard]] uint32_t size() const noexcept { return size_cast<uint32_t>(map); }
-    using StringMap = std::unordered_map<ConstString, Id_t, std::hash<ConstString>, std::equal_to<>>;
-    StringMap map;
+    StringMap<Id_t>  atoms;
+    StringMap<Id_t>  nodes;
+    amc::vector<Dom> dom;
 };
 
-SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts) : out_(out), opts_(opts) {
-    if (opts_.cEdge) {
-        nodes_ = std::make_unique<StringTab>();
-    }
-    if (opts_.cHeuristic) {
-        atoms_ = std::make_unique<StringTab>();
-    }
-}
+SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts) : out_(out), opts_(opts) {}
 SmodelsInput::~SmodelsInput() = default;
 void SmodelsInput::doReset() {}
 bool SmodelsInput::doAttach(bool& inc) {
@@ -77,11 +73,12 @@ bool SmodelsInput::doAttach(bool& inc) {
 
 bool SmodelsInput::doParse() {
     out_.beginStep();
-    if (readRules() && readSymbols() && readCompute() && readExtra()) {
-        out_.endStep();
-        return true;
-    }
-    return false;
+    readRules();
+    readSymbols();
+    readCompute();
+    readExtra();
+    out_.endStep();
+    return true;
 }
 
 void SmodelsInput::matchBody(RuleBuilder& rule) {
@@ -119,13 +116,13 @@ void SmodelsInput::matchSum(RuleBuilder& rule, bool weights) {
     }
 }
 
-bool SmodelsInput::readRules() {
+void SmodelsInput::readRules() {
     RuleBuilder rule;
     Weight_t    minPrio = 0;
     for (SmodelsType rt; (rt = matchEnum<SmodelsType>("rule type expected")) != SmodelsType::end;) {
         rule.clear();
         switch (rt) {
-            default: error("unrecognized rule type"); return false;
+            default: error("unrecognized rule type");
             case SmodelsType::choice:
             case SmodelsType::disjunctive: // n a1...an
                 rule.start(rt == SmodelsType::choice ? HeadType::choice : HeadType::disjunctive);
@@ -165,36 +162,14 @@ bool SmodelsInput::readRules() {
                 break;
         }
     }
-    return true;
 }
 
-bool SmodelsInput::readSymbols() {
-    std::string_view n0, n1;
-    DynamicBuffer    scratch;
-    auto             heuType = DomModifier::init;
-    auto             bias    = 0;
-    auto             prio    = 0u;
-    struct Deferred {
-        constexpr bool setAtom(Atom_t a) {
-            if (a) {
-                sizeOrId = a;
-                atom     = 1;
-                return true;
-            }
-            return false;
-        }
-        Lit_t    cond;
-        int32_t  bias;
-        uint32_t prio;
-        uint32_t type     : 3;
-        uint32_t atom     : 1;
-        uint32_t sizeOrId : 28;
-    };
-    static constexpr auto def_size = sizeof(Deferred);
-    static_assert(def_size == 16);
-    DynamicBuffer deferredDom;
-
-    for (Lit_t atom; (atom = static_cast<Lit_t>(matchAtomOrZero())) != 0;) {
+void SmodelsInput::readSymbols() {
+    if (not extra_ && (opts_.cEdge || opts_.cHeuristic)) {
+        extra_ = std::make_unique<Extra>();
+    }
+    DynamicBuffer scratch;
+    for (Atom_t atom; (atom = matchAtomOrZero()) != 0;) {
         scratch.clear();
         matchChar(' ');
         for (char c; (c = get()) != '\n';) {
@@ -202,63 +177,55 @@ bool SmodelsInput::readSymbols() {
             scratch.push(c);
         }
         scratch.push(0);
-        auto name   = scratch.view(0, scratch.size() - 1);
-        auto filter = false;
-        if (opts_.cEdge && matchEdgePred(name, n0, n1)) {
-            auto s = static_cast<int>(nodes_->tryAdd(n0, nodes_->size()));
-            auto t = static_cast<int>(nodes_->tryAdd(n1, nodes_->size()));
-            out_.acycEdge(s, t, toSpan(atom));
-            filter = opts_.filter;
+        auto name = scratch.view(0, scratch.size() - 1);
+        if (not extra_ || not mapSymbol(atom, name)) {
+            out_.outputAtom(atom, name);
         }
-        else if (opts_.cHeuristic && matchDomHeuPred(name, n0, heuType, bias, prio)) {
-            auto type = static_cast<uint32_t>(heuType);
-            auto def  = Deferred{.cond = atom, .bias = bias, .prio = prio, .type = type, .atom = 0, .sizeOrId = 0};
-            if (def.setAtom(atoms_->findOr(n0))) {
-                std::memcpy(deferredDom.alloc(def_size).data(), &def, def_size);
+        if (opts_.cHeuristic) {
+            if (auto [it, added] = extra_->addAtom(name, atom); not added) {
+                POTASSCO_CHECK_PRE(it->second == 0, "Redefinition: atom '%s' already exists", scratch.data());
+                it->second = atom;
             }
-            else { // atom n0 not (yet) seen - lookup again later
-                POTASSCO_CHECK_PRE((def.sizeOrId = n0.size()) == n0.size(), "Name too long");
-                auto space = deferredDom.alloc(def_size + n0.size());
-                std::memcpy(space.data(), &def, def_size);
-                std::memcpy(space.data() + def_size, n0.data(), n0.size());
-            }
-            filter = opts_.filter;
-        }
-        if (atoms_) {
-            auto [it, added] = atoms_->addShared(name, Potassco::atom(atom));
-            POTASSCO_CHECK_PRE(added, "Redefinition: atom '%s' already exists", scratch.data());
-            if (not filter) {
-                out_.outputAtom(Potassco::atom(atom), it->first);
-            }
-        }
-        else if (not filter) {
-            out_.output(name, toSpan(atom));
         }
     }
-    for (auto dom = deferredDom.view(); dom.size() >= def_size;) {
-        Deferred data{};
-        std::memcpy(&data, dom.data(), def_size);
-        dom.remove_prefix(def_size);
-        auto atomId = data.sizeOrId;
-        if (not data.atom) {
-            auto name = std::string_view{std::data(dom), data.sizeOrId};
-            POTASSCO_ASSERT(dom.size() >= data.sizeOrId);
-            dom.remove_prefix(data.sizeOrId);
-            atomId = atoms_->findOr(name);
+    if (extra_) {
+        for (const auto& [atomId, mod, bias, prio, cond] : extra_->dom) {
+            if (*atomId) {
+                out_.heuristic(*atomId, mod, bias, prio, toSpan(cond));
+            }
         }
-        if (atomId) {
-            out_.heuristic(atomId, static_cast<DomModifier>(data.type), data.bias, data.prio, toSpan(data.cond));
-        }
+        extra_->dom.clear();
     }
-
     if (not incremental()) {
-        nodes_.reset();
-        atoms_.reset();
+        extra_.reset();
     }
-    return true;
 }
 
-bool SmodelsInput::readCompute() {
+bool SmodelsInput::mapSymbol(Atom_t atom, std::string_view name) {
+    std::string_view n0, n1;
+    auto             atomLit = lit(atom);
+    if (opts_.cEdge && matchEdgePred(name, n0, n1)) {
+        auto s = static_cast<int>(extra_->addNode(n0));
+        auto t = static_cast<int>(extra_->addNode(n1));
+        out_.acycEdge(s, t, toSpan(atomLit));
+        return opts_.filter;
+    }
+    auto heuType = DomModifier::init;
+    auto bias    = 0;
+    auto prio    = 0u;
+    if (opts_.cHeuristic && matchDomHeuPred(name, n0, heuType, bias, prio)) {
+        auto [it, added] = extra_->addAtom(n0, 0);
+        if (not added && it->second != 0) {
+            out_.heuristic(it->second, heuType, bias, prio, toSpan(atomLit));
+        }
+        else {
+            extra_->addDom(&it->second, heuType, bias, prio, atomLit);
+        }
+    }
+    return false;
+}
+
+void SmodelsInput::readCompute() {
     for (auto [part, pos] : {std::pair{"B+"sv, true}, std::pair{"B-"sv, false}}) {
         require(skipWs() && match(part), "compute statement expected");
         matchChar('\n');
@@ -269,15 +236,13 @@ bool SmodelsInput::readCompute() {
             out_.rule(HeadType::disjunctive, {}, toSpan(x));
         }
     }
-    return true;
 }
 
-bool SmodelsInput::readExtra() {
+void SmodelsInput::readExtra() {
     if (skipWs() && match("E"sv)) {
         for (Atom_t atom; (atom = matchAtomOrZero()) != 0;) { out_.external(atom, TruthValue::free); }
     }
     matchUint("number of models expected");
-    return true;
 }
 
 int readSmodels(std::istream& in, AbstractProgram& out, const SmodelsInput::Options& opts) {
