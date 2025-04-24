@@ -22,14 +22,28 @@
 // IN THE SOFTWARE.
 //
 #pragma once
-#include <potassco/basic_types.h>
 
+#include <potassco/basic_types.h>
+#include <potassco/error.h>
+
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace Potassco::Test {
 template <class T>
 using Vec = std::vector<T>;
+struct AtomicCond {
+    explicit AtomicCond(Atom_t& atom) : r(&atom) {}
+    operator LitSpan() const { return cond(); }       // NOLINT
+    operator Vec<Lit_t>() const { return {lit(*r)}; } // NOLINT
+    [[nodiscard]] auto cond() const -> LitSpan { return LitSpan{reinterpret_cast<Lit_t*>(r), 1}; }
+    Atom_t*            r;
 
+    friend bool operator==(AtomicCond lhs, LitSpan rhs) { return rhs.size() == 1 && rhs.front() == lit(*lhs.r); }
+    friend bool operator==(AtomicCond lhs, const Vec<Lit_t>& rhs) { return lhs == LitSpan{rhs}; }
+};
+inline auto toCond(Atom_t& atom) { return AtomicCond{atom}; }
 struct Rule {
     HeadType       ht;
     Vec<Atom_t>    head;
@@ -62,7 +76,19 @@ public:
     void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan cond) override {
         heuristics.push_back({a, t, bias, prio, {begin(cond), end(cond)}});
     }
-    void           acycEdge(int s, int t, LitSpan cond) override { edges.push_back({s, t, {begin(cond), end(cond)}}); }
+    void acycEdge(int s, int t, LitSpan cond) override { edges.push_back({s, t, {begin(cond), end(cond)}}); }
+    void outputAtom(Atom_t a, std::string_view str) override {
+        POTASSCO_CHECK_PRE(a, "invalid atom");
+        if (auto& s = atoms[lit(a)]; s.empty()) {
+            s = str;
+        }
+        else {
+            s.append(1, ';').append(str);
+        }
+    }
+
+    using AtomMap = std::unordered_map<int, std::string>;
+    AtomMap        atoms;
     Vec<Heuristic> heuristics;
     Vec<Edge>      edges;
     int            nStep       = 0;

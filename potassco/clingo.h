@@ -37,8 +37,8 @@ namespace Potassco {
 enum class ClauseType : unsigned {
     learnt           = 0u, //!< Cumulative removable (i.e. subject to nogood deletion) clause.
     locked           = 1u, //!< Cumulative unremovable clause.
-    transient        = 2u, //!< Removable clause associated with current solving step.
-    transient_locked = 3u  //!< Unremovable clause associated with current solving step.
+    transient        = 2u, //!< Removable clause associated with the current solving step.
+    transient_locked = 3u  //!< Unremovable clause associated with the current solving step.
 };
 POTASSCO_ENABLE_BIT_OPS(ClauseType);
 
@@ -56,11 +56,11 @@ public:
     [[nodiscard]] virtual uint32_t level() const = 0;
     //! Returns the number of decision literals that will not be backtracked while solving.
     [[nodiscard]] virtual uint32_t rootLevel() const = 0;
-    //! Returns whether @c lit is a valid literal in this assignment.
+    //! Returns whether `lit` is a valid literal in this assignment.
     [[nodiscard]] virtual bool hasLit(Lit_t lit) const = 0;
-    //! Returns the truth value that is currently assigned to @c lit or @c TruthValue::free if @c lit is unassigned.
+    //! Returns the truth value currently assigned to `lit` or `TruthValue::free` if `lit` is unassigned.
     [[nodiscard]] virtual TruthValue value(Lit_t lit) const = 0;
-    //! Returns the decision level on which @c lit was assigned or @c UINT32_MAX if @c lit is unassigned.
+    //! Returns the decision level on which `lit` was assigned or `UINT32_MAX` if `lit` is unassigned.
     [[nodiscard]] virtual uint32_t level(Lit_t lit) const = 0;
     //! Returns the decision literal of the given decision level.
     [[nodiscard]] virtual Lit_t decision(uint32_t) const = 0;
@@ -100,7 +100,7 @@ public:
 class AbstractSolver {
 public:
     virtual ~AbstractSolver();
-    //! Returns the id of the solver that is associated with this object.
+    //! Returns the id of the solver associated with this object.
     [[nodiscard]] virtual Id_t id() const = 0;
     //! Returns the current assignment of the solver.
     [[nodiscard]] virtual const AbstractAssignment& assignment() const = 0;
@@ -115,7 +115,7 @@ public:
      * \param prop   Properties to be associated with the new clause.
      *
      * \note If the given clause contains a volatile variable, i.e., a variable
-     * that was created with @c Solver::addVariable(), it is also considered volatile.
+     * that was created with `Solver::addVariable(),` it is also considered volatile.
      *
      */
     [[nodiscard]] virtual bool addClause(LitSpan clause, ClauseType prop) = 0;
@@ -123,7 +123,7 @@ public:
 
     //! Adds a new volatile variable to this solver instance.
     /*!
-     * The new variable is volatile, i.e., only valid within the current solving step,
+     * The new variable is volatile, i.e., only valid within the current solving step
      * and only added to this one particular solver instance.
      *
      * \return The positive literal of the new variable.
@@ -138,18 +138,18 @@ public:
      *
      * @{ */
 
-    //! Returns whether the active propagator watches @c lit in this solver instance.
+    //! Returns whether the active propagator watches `lit` in this solver instance.
     [[nodiscard]] virtual bool hasWatch(Lit_t lit) const = 0;
 
     //! Adds the active propagator to the list of propagators to be notified when the given literal is assigned in this
     //! solver instance.
     /*!
-     * \post @c hasWatch(lit) returns true.
+     * \post `hasWatch(lit)` returns true.
      */
     virtual void addWatch(Lit_t lit) = 0;
-    //! Removes the active propagator from the list of propagators watching @c lit in the given solver.
+    //! Removes the active propagator from the list of propagators watching `lit` in the given solver.
     /*!
-     * \post @c hasWatch(lit) returns false.
+     * \post `hasWatch(lit)` returns false.
      */
     virtual void removeWatch(Lit_t lit) = 0;
     //@}
@@ -242,7 +242,7 @@ public:
         virtual bool addWeightConstraint(Lit_t con, WeightLitSpan lits, Weight_t bound, int32_t type, bool eq) = 0;
         //! Adds a weak constraint over the given <b>solver literals</b>.
         virtual void addMinimize(Weight_t prio, WeightLit lit) = 0;
-        //! Propagates consequences of the underlying problem excluding any registered propagators.
+        //! Propagates the consequences of the underlying problem excluding any registered propagators.
         /*!
          * \return false if the program becomes unsatisfiable.
          */
@@ -252,9 +252,9 @@ public:
     virtual ~AbstractPropagator();
     //! Called before solving to initialize the propagator.
     virtual void init(Init& init) = 0;
-    //! Shall propagate the newly assigned literals given in @c changes.
+    //! Shall propagate the newly assigned literals given in `changes`.
     virtual void propagate(AbstractSolver& solver, LitSpan changes) = 0;
-    //! May update internal state of the newly unassigned literals given in @c undo.
+    //! May update the internal state of the newly unassigned literals given in `undo`.
     virtual void undo(const AbstractSolver& solver, LitSpan undo) = 0;
     //! Similar to propagate but called on an assignment without a list of changes.
     virtual void check(AbstractSolver& solver) = 0;
@@ -269,7 +269,7 @@ public:
      * \param solverId The id of an active solver.
      * \param assignment The current assignment of the solver with the given id.
      * \param fallback A literal that the active solver selected as its next decision literal.
-     * \pre fallback is a valid decision literal, i.e. it is not yet assigned.
+     * \pre fallback is a valid decision literal, i.e., it is not yet assigned.
      * \return A literal to decide on next.
      *
      * \note If the function returns 0 or a literal that is already assigned, the returned lit
@@ -287,7 +287,7 @@ enum class StatisticsType {
 
 //! Base class for providing (solver) statistics.
 /*!
- * Functions in this interface taking a key as parameter
+ * Functions in this interface taking a key as a parameter
  * assume that the key is valid and throw a std::logic_error
  * if this assumption is violated.
  */
@@ -350,20 +350,20 @@ public:
      * \param mapK    The map object to search.
      * \param element The element to search for.
      * \param outKey  An optional out parameter for storing the key of the element if found.
-     * \return Whether element was found.
+     * \return Whether the element was found.
      * \post !find(mapK, element, outKey) || !outKey || *outKey == get(mapK, element).
      */
     [[nodiscard]] virtual bool find(Key_t mapK, const char* element, Key_t* outKey) const = 0;
 
     //! Creates a statistic object under the given name in the given map.
     /*!
-     * \pre @c writable(mapK).
+     * \pre `writable(mapK)`.
      * \param mapK The map object to which the statistic object should be added.
      * \param name The name under which the statistic object should be added.
      * \param type The type of the statistic object to create.
      * \return The key of the added statistic object.
      *
-     * \note If a statistic object with the given name already exists in map,
+     * \note If a statistic object with the given name already exists in the map,
      *       the function either returns its key provided that the types match,
      *       or otherwise signals failure by throwing a std::logic_error.
      */
@@ -379,7 +379,7 @@ public:
 
     //! Sets value as value for the given statistic object.
     /*!
-     * \pre @c writable(key).
+     * \pre `writable(key)`.
      */
     virtual void set(Key_t key, double value) = 0;
     //@}

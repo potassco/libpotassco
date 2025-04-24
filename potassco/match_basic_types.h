@@ -53,7 +53,7 @@ public:
     ~BufferedStream();
     BufferedStream(BufferedStream&&) = delete;
 
-    //! Returns the next character in the input stream, without extracting it.
+    //! Returns the next character in the input stream without extracting it.
     [[nodiscard]] char peek() const { return buf_[rpos_]; }
     //! Returns whether the end of the input stream was reached.
     [[nodiscard]] bool end() const { return peek() == 0; }
@@ -71,12 +71,12 @@ public:
     bool match(std::string_view tok);
     //! Discards leading whitespace from the input stream.
     void skipWs();
-    //! Extracts up to @c bufferOut.size() characters from the input stream and copies them into the given buffer.
+    //! Extracts up to `bufferOut`.size() characters from the input stream and copies them into the given buffer.
     /*!
      * \return The number of characters copied to the given buffer.
      */
     std::size_t read(std::span<char> bufferOut);
-    //! Returns the current line number in the input stream, i.e. the number of '\n' characters extracted so far.
+    //! Returns the current line number in the input stream, i.e., the number of '\n' characters extracted so far.
     [[nodiscard]] unsigned line() const;
 
 private:
@@ -97,7 +97,7 @@ class ProgramReader {
 public:
     //! Enumeration type for supported read modes.
     enum ReadMode { read_incremental, read_complete };
-    //! Creates a reader that is not yet associated with any input stream.
+    //! Creates a reader not yet associated with any input stream.
     ProgramReader() = default;
     virtual ~ProgramReader();
     ProgramReader(ProgramReader&&) = delete;
@@ -121,7 +121,7 @@ public:
     //! Sets the largest possible variable number.
     /*!
      * The given value is used when matching atoms or literals.
-     * If a larger value is found in the input stream, a std::exception is raised.
+     * If a larger value is found in the input stream, an exception is raised.
      */
     void setMaxVar(Atom_t v) { varMax_ = v; }
 
@@ -137,7 +137,7 @@ protected:
     void skipLine();
     //! Extracts and discards any leading whitespace and then returns peek().
     char skipWs();
-    //! Returns the next character in the input stream, without extracting it.
+    //! Returns the next character in the input stream without extracting it.
     [[nodiscard]] char peek() const;
     //! Returns the next character in the input stream.
     char get();
@@ -147,7 +147,7 @@ protected:
     bool match(std::string_view word) { return stream()->match(word); }
     //! Extracts the given character or fails with a std::exception.
     void matchChar(char c);
-    //! Extracts an atom (i.e. a positive integer > 0) or fails with a std::exception.
+    //! Extracts an atom (i.e., a positive integer > 0) or fails with a std::exception.
     Atom_t matchAtom(const char* error = "atom expected") {
         return static_cast<Atom_t>(matchUint(atom_min, varMax_, error));
     }
@@ -157,7 +157,7 @@ protected:
     }
     //! Extracts an id or fails with a std::exception.
     Id_t matchId(const char* error = "id expected") { return static_cast<Id_t>(matchUint(0u, id_max, error)); }
-    //! Extracts a literal (i.e. positive or negative atom) or fails with a std::exception.
+    //! Extracts a literal (i.e., positive or negative atom) or fails with a std::exception.
     Lit_t matchLit(const char* error = "literal expected") {
         auto res = matchInt(-static_cast<Lit_t>(varMax_), static_cast<Lit_t>(varMax_), error);
         require(res != 0, error);
@@ -199,7 +199,7 @@ protected:
     }
 
 private:
-    //! Shall return true if the format of the input stream is supported by this object.
+    //! Shall return true if this object supports the format of the input stream.
     /*!
      * \param[out] inc Whether the input stream represents an incremental program.
      */
@@ -216,7 +216,7 @@ private:
 
 bool matchTerm(std::string_view& input, std::string_view& termOut);
 
-//! Attaches the given stream to @c r and calls ProgramReader::parse() with the read mode set to
+//! Attaches the given stream to `r` and calls ProgramReader::parse() with the read mode set to
 //! ProgramReader::Complete.
 int readProgram(std::istream& str, ProgramReader& r);
 
@@ -226,8 +226,8 @@ using StringMap = std::unordered_map<ConstString, ValueType, std::hash<ConstStri
 template <typename ValueType, typename... Args>
 auto try_emplace(StringMap<ValueType>& map, std::string_view key,
                  Args&&... args) -> std::pair<typename StringMap<ValueType>::iterator, bool> {
-    // Create cheap "borrowed" key for lookup. If key is not in map, `try_emplace()` will copy-construct a key from `k`,
-    // thereby materializing a full string. Otoh, if map already contains an element with the given key, we avoid any
+    // Create a "borrowed" key for lookup. If `key` is not in map, `try_emplace()` will copy-construct a key from `k`,
+    // thereby materializing a full string. Otoh, if `map` already contains an element with the given key, we avoid an
     // unnecessary allocation.
     // NOTE: Once we have C++26 with and its heterogeneous version of `try_emplace()`, this workaround can be removed.
     ConstString k{ConstString::Borrow_t{}, key};

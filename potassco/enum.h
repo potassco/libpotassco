@@ -72,16 +72,6 @@ struct EnumMeta<EnumT, std::void_t<decltype(enable_meta(c_type<EnumT>))>> : std:
     using underlying_type              = std::underlying_type_t<EnumT>;
     static constexpr auto c_meta       = enable_meta(c_type<EnumT>);
     static constexpr auto meta_entries = requires { c_meta.entries(); };
-    static constexpr auto c_verify     = []() -> bool {
-        if constexpr (meta_entries) {
-            static_assert(std::adjacent_find(c_meta.entries().begin(), c_meta.entries().end(),
-                                                 [](const auto& lhs, const auto& rhs) {
-                                                 return to_underlying(lhs.first) == to_underlying(rhs.first);
-                                             }) == c_meta.entries().end(),
-                          "enumerators must have unique values!");
-        }
-        return true;
-    }();
 
     static constexpr underlying_type  min() { return c_meta.min(); }
     static constexpr underlying_type  max() { return c_meta.max(); }
@@ -156,7 +146,7 @@ template <typename Op, typename E, typename... Args>
  */
 ///@{
 
-//! Meta type for simple (consecutive) enums with @c Count elements starting at @c First.
+//! Meta type for simple (consecutive) enums with `Count` elements starting at `First`.
 /*!
  * To associate default metadata for some enum Foo defined in namespace X, either define a consteval function
  * <tt>auto enable_meta(std::type_identity<Foo>) { return Potassco::DefaultEnum{...}; }</tt> or call one of the
@@ -182,7 +172,7 @@ struct DefaultEnum {
 /*!
  * \param E     The enum type for which metadata is specified.
  * \param COUNT Number of enumerators in enum E.
- * \param ...   Value of first (minimal) enumerator or 0 if not given.
+ * \param ...   Value of the first (minimal) enumerator or 0 if not given.
  */
 #define POTASSCO_SET_DEFAULT_ENUM_COUNT(E, COUNT, ...)                                                                 \
     [[maybe_unused]] consteval auto enable_meta(std::type_identity<E>) {                                               \
@@ -200,7 +190,7 @@ struct DefaultEnum {
                                     (1u + (Potassco::to_underlying(MAX_E) - Potassco::to_underlying(MIN_E))),          \
                                     Potassco::to_underlying(MIN_E))
 
-//! Meta type for enums with @c N explicit elements, where each element is an enumerator and its (stringified) name.
+//! Meta-type for enums with `N` explicit elements, where each element is an enumerator and its (stringified) name.
 /*!
  * \note Enumerators shall have unique numeric values.
  */
@@ -241,10 +231,10 @@ struct EnumEntries {
 template <typename EnumT, typename... Args>
 consteval auto makeEntries(EnumT e1, std::string_view n1,
                            Args... args) -> EnumEntries<EnumT, (sizeof...(Args) + 2) / 2> {
-    constexpr auto                     N = (sizeof...(Args) + 2) / 2;
-    std::pair<EnumT, std::string_view> r[N];
+    constexpr auto                     n = (sizeof...(Args) + 2) / 2;
+    std::pair<EnumT, std::string_view> r[n];
     Detail::addEntries(r, e1, n1, args...);
-    return EnumEntries<EnumT, N>(r);
+    return EnumEntries<EnumT, n>(r);
 }
 
 //! Convenience macro for specifying metadata for enums with explicitly named entries.
@@ -339,11 +329,11 @@ constexpr auto enum_max() -> std::underlying_type_t<EnumT> {
     return Detail::EnumMeta<EnumT>::max();
 }
 
-//! Returns the name of the given enumerator @c e.
+//! Returns the name of the given enumerator `e`.
 /*!
  * \tparam EnumT An enum type with full metadata.
  * \param e Enumerator for which the name should be returned.
- * \return The stringified name of @c e or an empty string_view if @c e is not a named enumerator of EnumT.
+ * \return The stringified name of `e` or an empty string_view if `e` is not a named enumerator of EnumT.
  */
 template <HasEnumEntries EnumT>
 constexpr auto enum_name(EnumT e) -> std::string_view {
@@ -353,14 +343,14 @@ constexpr auto enum_name(EnumT e) -> std::string_view {
 //! Tries to convert the given integral value into an enumerator of EnumT.
 /*!
  * \tparam EnumT An enum type with metadata.
- * \return An enumerator of EnumT with integral value @n or an empty optional if no such enumerator exists in EnumT.
+ * \return An enumerator of EnumT with integral value `n` or an empty optional if no such enumerator exists in EnumT.
  */
 template <HasEnumMeta EnumT>
 constexpr auto enum_cast(std::underlying_type_t<EnumT> n) -> std::optional<EnumT> {
     return Detail::EnumMeta<EnumT>::valid(n) ? std::optional{static_cast<EnumT>(n)} : std::optional<EnumT>{};
 }
 
-//! Returns whether @c x is a superset of @c y.
+//! Returns whether `x` is a superset of `y`.
 template <typename T>
 requires(std::is_enum_v<T>)
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr bool test(T x, T y) noexcept {

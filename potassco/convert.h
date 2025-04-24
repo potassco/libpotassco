@@ -35,48 +35,52 @@ namespace Potassco {
  */
 class SmodelsConvert final : public AbstractProgram {
 public:
-    //! Creates a new object that passes converted programs to @c out.
+    //! Creates a new object that passes converted programs to `out`.
     /*!
      * The parameter enableClaspExt determines how heuristic, edge, and external directives are handled.
-     * If true, heuristic and edge directives are converted to @a _heuristic and @a _edge predicates, while external
-     * directives are passed to @c out.
-     * Otherwise, heuristic and edge directives are not converted but directly passed to @c out, while external
+     * If true, heuristic and edge directives are converted to `_heuristic` and `_edge` predicates, while external
+     * directives are passed to `out`.
+     * Otherwise, heuristic and edge directives are not converted but directly passed to `out,` while external
      * directives are mapped to choice rules or integrity constraints.
      */
     SmodelsConvert(AbstractProgram& out, bool enableClaspExt);
     ~SmodelsConvert() override;
     SmodelsConvert(SmodelsConvert&&) = delete;
 
-    //! Calls @c initProgram() on the associated output program.
+    //! Calls `initProgram()` on the associated output program.
     void initProgram(bool incremental) override;
-    //! Calls @c beginStep() on the associated output program.
+    //! Calls `beginStep()` on the associated output program.
     void beginStep() override;
     //! Converts the given rule into one or more smodels rules.
     void rule(HeadType t, AtomSpan head, LitSpan body) override;
-    //! Converts the given rule into one or more smodels rules or throws an exception if body contains negative weights.
+    //! Converts the given rule into smodels rules or throws an exception if `body` contains negative weights.
     void rule(HeadType t, AtomSpan head, Weight_t bound, WeightLitSpan body) override;
     //! Converts literals associated with a priority to a set of corresponding smodels minimize rules.
     void minimize(Weight_t prio, WeightLitSpan lits) override;
-    //! Adds an atom with the given name that is equivalent to the condition to the symbol table.
-    void output(std::string_view name, LitSpan cond) override;
-    //! Marks the atom that is equivalent to @c 'a' as external.
+    //! Adds an atom with the given name to the symbol table.
+    void outputAtom(Atom_t atom, std::string_view name) override;
+    //! Adds a `_show_term` predicate representing the term to the symbol table.
+    void outputTerm(Id_t termId, std::string_view name) override;
+    //! Extends the definition of a previously added `_show_term` predicate.
+    void output(Id_t termId, LitSpan cond) override;
+    //! Marks the atom that is equivalent to `'a'` as external.
     void external(Atom_t a, TruthValue v) override;
-    //! Adds an @a _heuristic predicate over the given atom to the symbol table that is equivalent to @c condition.
+    //! Adds a `_heuristic` predicate over the given atom to the symbol table that is equivalent to `condition`.
     void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan condition) override;
-    //! Adds an @a _edge(s,t) predicate to the symbol table that is equivalent to @c condition.
+    //! Adds an `_edge(s, t)` predicate to the symbol table that is equivalent to `condition`.
     void acycEdge(int s, int t, LitSpan condition) override;
 
-    //! Finalizes conversion and calls @c endStep() on the associated output program.
+    //! Finalizes conversion and calls `endStep()` on the associated output program.
     void endStep() override;
 
-    //! Returns the output literal associated to @c in.
+    //! Returns the output literal associated with `in`.
     [[nodiscard]] Lit_t get(Lit_t in) const;
     //! Returns the max used smodels atom (valid atoms are [1..n]).
     [[nodiscard]] unsigned maxAtom() const;
 
 private:
     //! Creates a (named) atom that is equivalent to the given condition.
-    Atom_t makeAtom(LitSpan lits, bool named);
+    Atom_t makeAtom(LitSpan lits, Lit_t last, bool named);
     //! Processes all outstanding conversions.
     void flush();
     //! Converts external atoms.

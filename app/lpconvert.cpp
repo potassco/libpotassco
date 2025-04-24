@@ -29,6 +29,7 @@
 #include <potassco/error.h>
 #include <potassco/smodels.h>
 
+#include <potassco/program_opts/errors.h>
 #include <potassco/program_opts/typed_value.h>
 
 #include <cctype>
@@ -40,14 +41,18 @@ using namespace Potassco::ProgramOptions;
 class LpConvert : public Potassco::Application {
 public:
     [[nodiscard]] const char* getName() const override { return "lpconvert"; }
-    [[nodiscard]] const char* getVersion() const override { return "2.0.0-banane"; }
+    [[nodiscard]] const char* getVersion() const override { return "2.0.0"; }
     [[nodiscard]] const char* getPositional(const std::string&) const override { return "input"; }
     [[nodiscard]] const char* getUsage() const override {
         return "[options] [<file>]\n"
                "Convert program in <file> or standard input";
     }
     void initOptions(OptionContext& root) override;
-    void validateOptions(const OptionContext&, const ParsedOptions&, const ParsedValues&) override {}
+    void validateOptions(const OptionContext& ctx, const ParsedOptions& parsed, const ParsedValues&) override {
+        if (parsed.contains("text") && parsed.contains("format")) {
+            throw Potassco::ProgramOptions::Error("options 'text' and 'format' are mutually exclusive");
+        }
+    }
     void setup() override {}
     void run() override;
     void onHelp(const std::string& info, Potassco::ProgramOptions::DescriptionLevel) override {
@@ -66,27 +71,45 @@ public:
         std::cout.flush();
         std::cerr.flush();
     }
+    void handleException(std::string_view error) {
+        auto sp   = error.find('\n');
+        auto info = sp != std::string_view::npos ? error.substr(sp + 1) : std::string_view{};
+        error     = error.substr(0, sp);
+        if (auto unsupported = error.find("not supported") != std::string_view::npos;
+            unsupported && format_ == Format::smodels) {
+            error = error.substr(0, error.rfind(':'));
+            info  = "Try different format or enable potassco extensions";
+        }
+        fail(EXIT_FAILURE, error, info);
+    }
+
+    enum class Format : unsigned { auto_, text, smodels, aspif_v1, aspif };
 
 private:
     std::string input_;
     std::string output_;
+    std::string pred_;
+    Format      format_{Format::auto_};
     bool        potassco_ = false;
     bool        filter_   = false;
-    bool        text_     = false;
 };
+POTASSCO_SET_ENUM_ENTRIES(LpConvert::Format, {auto_, "auto"sv}, {text, "text"sv}, {smodels, "smodels"sv},
+                          {aspif_v1, "aspif-v1"sv}, {aspif, "aspif"sv});
 
 void LpConvert::initOptions(OptionContext& root) {
     OptionGroup convert("Conversion Options");
-    convert.addOptions()                                                                                         //
-        ("input,i,@2", storeTo(input_, std::string()), "Input file")                                             //
-        ("potassco,p", flag(potassco_, false), "Enable potassco extensions")                                     //
-        ("filter,f", flag(filter_, false), "Hide converted potassco predicates")                                 //
-        ("output,o", storeTo(output_, std::string())->arg("<file>"), "Write output to <file> (default: stdout)") //
-        ("text,t", flag(text_, false), "Convert to ground text format")                                          //
+    convert.addOptions()                                                                                            //
+        ("input,i,@2", storeTo(input_, std::string()), "Input file")                                                //
+        ("potassco,p", flag(potassco_, false), "Enable potassco extensions")                                        //
+        ("filter,f", flag(filter_, false), "Hide converted potassco predicates")                                    //
+        ("output,o", storeTo(output_, std::string())->arg("<file>"), "Write output to <file> (default: stdout)")    //
+        ("format", storeTo(format_, Format::auto_), "Output format (text|smodels|aspif|aspif-v1)")                  //
+        ("text,t", action<bool>([this](bool) { format_ = Format::text; })->flag(), "Convert to ground text format") //
+        ("aux-pred", storeTo(pred_, std::string()), "Prefix/Predicate for atom numbers in text output")             //
         ;
     root.add(convert);
 }
-void LpConvert::run() {
+void LpConvert::run() try {
     std::ifstream iFile;
     std::ofstream oFile;
     if (not input_.empty() && input_ != "-") {
@@ -98,27 +121,50 @@ void LpConvert::run() {
         oFile.open(output_.c_str());
         POTASSCO_CHECK(oFile.is_open(), std::errc::no_such_file_or_directory, "Could not open output file");
     }
-    std::istream&             in = iFile.is_open() ? iFile : std::cin;
-    std::ostream&             os = oFile.is_open() ? oFile : std::cout;
-    Potassco::AspifTextOutput text(os);
+    std::istream& in = iFile.is_open() ? iFile : std::cin;
+    std::ostream& os = oFile.is_open() ? oFile : std::cout;
     POTASSCO_CHECK(in.peek() == 'a' || std::isdigit(in.peek()), std::errc::not_supported,
                    "Unrecognized input format '%c' - expected 'aspif' or <digit>", in.peek());
-    if (in.peek() == 'a') {
-        Potassco::SmodelsOutput  writer(os, potassco_, 0);
-        Potassco::SmodelsConvert smodels(writer, potassco_);
-        Potassco::readAspif(in, not text_ ? static_cast<Potassco::AbstractProgram&>(smodels) : text);
-    }
-    else {
-        Potassco::AspifOutput           aspif(os);
-        Potassco::SmodelsInput::Options opts;
-        if (potassco_) {
-            opts.enableClaspExt().convertEdges().convertHeuristic();
-            if (filter_) {
-                opts.dropConverted();
-            }
+    Potassco::SmodelsInput::Options opts;
+    if (potassco_) {
+        opts.enableClaspExt().convertEdges().convertHeuristic();
+        if (filter_) {
+            opts.dropConverted();
         }
-        Potassco::readSmodels(in, not text_ ? static_cast<Potassco::AbstractProgram&>(aspif) : text, opts);
     }
+    if (format_ == Format::auto_ && in.peek() == 'a') {
+        format_ = Format::smodels;
+    }
+    std::unique_ptr<Potassco::AbstractProgram> out1;
+    std::unique_ptr<Potassco::AbstractProgram> out2;
+
+    switch (format_) {
+        case Format::text: {
+            auto text = std::make_unique<Potassco::AspifTextOutput>(os);
+            if (not pred_.empty()) {
+                try {
+                    text->setAtomPred(pred_);
+                }
+                catch (const std::invalid_argument&) {
+                    fail(EXIT_FAILURE, "invalid aux predicate: '" + pred_ + "'",
+                         "atom prefix (e.g. 'x_') or unary predicate (e.g. '_id/1') expected");
+                }
+            }
+            out1 = std::move(text);
+            break;
+        }
+        case Format::smodels:
+            out2 = std::make_unique<Potassco::SmodelsOutput>(os, potassco_, 0);
+            out1 = std::make_unique<Potassco::SmodelsConvert>(*out2, potassco_);
+            break;
+        case Format::aspif_v1: out1 = std::make_unique<Potassco::AspifOutput>(os, 1); break;
+        case Format::auto_   : [[fallthrough]];
+        case Format::aspif   : out1 = std::make_unique<Potassco::AspifOutput>(os, 2); break;
+    }
+    in.peek() == 'a' ? Potassco::readAspif(in, *out1) : Potassco::readSmodels(in, *out1, opts);
+}
+catch (const std::exception& e) {
+    handleException(e.what());
 }
 
 int main(int argc, char** argv) {

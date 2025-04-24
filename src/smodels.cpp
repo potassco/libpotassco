@@ -441,16 +441,15 @@ void SmodelsOutput::rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSp
 void SmodelsOutput::minimize(Weight_t, WeightLitSpan lits) {
     startRule(SmodelsType::optimize).add(0, lits, false).endRule();
 }
-void SmodelsOutput::output(std::string_view str, LitSpan cond) {
+void SmodelsOutput::outputAtom(Atom_t atom, std::string_view name) {
     POTASSCO_CHECK_PRE(sec_ <= 1, "adding symbols after compute not supported");
-    POTASSCO_CHECK_PRE(cond.size() == 1 && lit(cond.front()) > 0,
-                       "general output directive not supported in smodels format");
+    POTASSCO_CHECK_PRE(atom, "atom expected");
     if (sec_ == 0) {
         startRule(SmodelsType::end).endRule();
         sec_ = 1;
     }
-    os_ << static_cast<unsigned>(cond[0]) << " ";
-    os_.write(std::data(str), std::ssize(str));
+    os_ << atom << " ";
+    os_.write(std::data(name), std::ssize(name));
     os_ << '\n';
 }
 void SmodelsOutput::external(Atom_t a, TruthValue t) {

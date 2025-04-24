@@ -127,22 +127,6 @@ POTASSCO_SET_ENUM_ENTRIES(DomModifier, {level, "level"sv}, {sign, "sign"sv}, {fa
                           {true_, "true"sv}, {false_, "false"sv});
 POTASSCO_ENABLE_CMP_OPS(DomModifier);
 
-//! Supported aspif statements.
-enum class AspifType : unsigned {
-    end       = 0,
-    rule      = 1,
-    minimize  = 2,
-    project   = 3,
-    output    = 4,
-    external  = 5,
-    assume    = 6,
-    heuristic = 7,
-    edge      = 8,
-    theory    = 9,
-    comment   = 10
-};
-POTASSCO_SET_DEFAULT_ENUM_MAX(AspifType::comment);
-
 class ConstString;
 
 //! Basic callback interface for constructing a logic program.
@@ -161,6 +145,9 @@ public:
     //! Add the given minimize statement to the program.
     virtual void minimize(Weight_t prio, WeightLitSpan lits) = 0;
 
+    //! Output `name` whenever the given atom is true in a stable model.
+    virtual void outputAtom(Atom_t atom, std::string_view name) = 0;
+
     /*!
      * \name Advanced
      * Functions for adding advanced constructs.
@@ -168,30 +155,32 @@ public:
      * to signal that advanced constructs are not supported.
      */
     //@{
+    //! Add new output term.
+    virtual void outputTerm(Id_t termId, std::string_view name);
+    //! Output a previously added output term whenever `condition` is true in a stable model.
+    /*!
+     * \pre outputTerm() was previously called with the given termId.
+     * \note The function may be called multiple times for a given term. The term shall be shown whenever at least
+     *       one of the provided conditions is true in a stable model.
+     */
+    virtual void output(Id_t termId, LitSpan condition);
     //! Mark the given list of atoms as projection atoms.
     virtual void project(AtomSpan atoms);
-    //! Output @c str whenever condition is true in a stable model.
-    virtual void output(std::string_view str, LitSpan condition);
-    //! Output @c name whenever condition is true in a stable model.
-    /*!
-     * \note By default, this function simply delegates to output().
-     */
-    virtual void outputAtom(Atom_t a, std::string_view name);
     //! If `v` is not equal to `TruthValue::release`, mark `a` as external and assume value `v`. Otherwise, treat `a` as
-    //! regular atom.
+    //! a regular atom.
     virtual void external(Atom_t a, TruthValue v);
     //! Assume the given literals to true during solving.
     virtual void assume(LitSpan lits);
-    //! Apply the given heuristic modification to atom @c a whenever condition is true.
+    //! Apply the given heuristic modification to atom `a` whenever `condition` is true.
     virtual void heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan condition);
-    //! Assume an edge between @c s and @c t whenever condition is true.
+    //! Assume an edge between `s` and `t` whenever `condition` is true.
     virtual void acycEdge(int s, int t, LitSpan condition);
     //@}
 
     /*!
      * \name Theory data
      * Functions for adding theory statements.
-     * By default, all theory function throw a std::logic_error().
+     * By default, all theory functions throw a std::logic_error().
      * Note, ids shall be unique within one step.
      */
     //@{
@@ -205,7 +194,7 @@ public:
     virtual void theoryElement(Id_t elementId, IdSpan terms, LitSpan cond);
     //! Add a new theory atom consisting of the given elements, which have to be added eventually.
     virtual void theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements);
-    //! Add a new theory atom with guard and right hand side.
+    //! Add a new theory atom with guard and right-hand side.
     virtual void theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements, Id_t op, Id_t rhs);
     //@}
 
@@ -219,7 +208,7 @@ public:
  * \ingroup BasicTypes
  */
 ///@{
-//! Returns whether @c n is a valid atom number (i.e. in the range [atomMin;atomMax])
+//! Returns whether `n` is a valid atom number (i.e. in the range [atomMin;atomMax])
 template <std::integral T>
 constexpr bool validAtom(T n) {
     return std::cmp_greater_equal(n, atom_min) && std::cmp_less_equal(n, atom_max);
@@ -249,16 +238,16 @@ constexpr Weight_t weight(const WeightLit& w) { return w.weight; }
 
 ///@}
 
-//! A (dynamically-sized) buffer of raw memory.
+//! A (dynamically sized) buffer of raw memory.
 /*!
- * The class manages a (dynamically-sized) buffer of memory obtained by malloc/realloc.
+ * The class manages a (dynamically sized) buffer of memory obtained by malloc/realloc.
  * It uses a simple geometric scheme when the buffer needs to grow.
  */
 class DynamicBuffer {
 public:
     using trivially_relocatable = std::true_type; // NOLINT
 
-    //! Creates a buffer with given initial capacity.
+    //! Creates a buffer with the given initial capacity.
     explicit DynamicBuffer(std::size_t initialCap = 0);
     ~DynamicBuffer();
     DynamicBuffer(const DynamicBuffer&);
@@ -277,12 +266,12 @@ public:
         return {data() + pos, std::min(n, size() - pos)};
     }
 
-    //! Increases the capacity of the buffer to a value that is greater or equal to @c n.
+    //! Increases the capacity of the buffer to a value that is greater or equal to `n`.
     void reserve(std::size_t n);
 
-    //! Resizes the buffer to accommodate an additional @c n bytes at the end.
+    //! Resizes the buffer to accommodate an additional `n` bytes at the end.
     /*!
-     * If the current capacity is not sufficient, this function grows the region by reallocating a new block of memory
+     * If the current capacity is insufficient, this function grows the region by reallocating a new block of memory,
      * thereby invalidating all existing references into the region.
      *
      * \post <tt>size() >= n</tt>
@@ -293,7 +282,7 @@ public:
     void  push(char c) { append(&c, 1); }
     char& back() { return data()[size() - 1]; }
 
-    //! Reduces the number of used bytes in this region by @c n.
+    //! Reduces the number of used bytes in this region by `n`.
     void pop(std::size_t n) { size_ -= n <= size_ ? static_cast<uint32_t>(n) : size_; }
     //! Reduces the number of used bytes in this region to 0.
     void clear() { size_ = 0; }
@@ -321,12 +310,12 @@ requires requires(ElemType e) {
 class Bitset {
 public:
     using StorageType = T;
-    //! Maximal number of elements in the set (i.e. maximal number of bits)
+    //! Maximal number of elements in the set (i.e., maximal number of bits)
     static constexpr auto max_count = sizeof(T) * CHAR_BIT;
 
-    //! Creates an empty set, i.e. all bits are zero.
+    //! Creates an empty set, i.e., all bits are zero.
     constexpr Bitset() noexcept = default;
-    //! Creates a set with the given elements, i.e. bits at the given positions are set.
+    //! Creates a set with the given elements, i.e., bits at the given positions are set.
     constexpr Bitset(std::initializer_list<ElemType> elems) {
         for (StorageType zero{}; auto e : elems) { set_ |= Potassco::set_bit(zero, +e); }
     }
@@ -334,7 +323,7 @@ public:
     static constexpr Bitset fromRep(StorageType r) noexcept { return Bitset(r); }
     //! Returns whether the set contains the given element.
     [[nodiscard]] constexpr bool contains(ElemType e) const { return Potassco::test_bit(set_, +e); }
-    //! Returns the number of elements in the set, i.e. the number of bits set.
+    //! Returns the number of elements in the set, i.e., the number of bits set.
     [[nodiscard]] constexpr unsigned count() const noexcept { return Potassco::bit_count(set_); }
     //! Adds the given element to the set and returns true if it was not already in the set.
     constexpr bool add(ElemType e) { return not contains(e) && Potassco::store_set_bit(set_, +e); }
@@ -374,7 +363,7 @@ public:
         auto s      = span();
         return w < s.size() && s[w].contains(p);
     }
-    //! Returns the number of elements in the set, i.e. the number of bits set.
+    //! Returns the number of elements in the set, i.e., the number of bits set.
     [[nodiscard]] unsigned count() const noexcept;
     //! Returns whether the set is empty.
     [[nodiscard]] bool empty() const noexcept;
@@ -407,7 +396,7 @@ class RuleBuilder;
 
 //! A trivially relocatable immutable string type with small buffer optimization.
 /*!
- * Not all std::string implementations are trivially relocatable. E.g. the SSO implemented in gcc (libstdc++) relies on
+ * Not all std::string implementations are trivially relocatable. E.g., the SSO implemented in gcc (libstdc++) relies on
  * a pointer referencing a buffer internal to the string, making relocation non-trivial.
  * In contrast, this class uses an SSO implementation that is more similar to the one from libc++.
  */
@@ -422,16 +411,16 @@ public:
             std::fill(std::begin(storage_) + 1, std::end(storage_) - 1, static_cast<char>(0));
         }
     }
-    //! Creates a string by copying @c n.
+    //! Creates a string by copying `n`.
     explicit ConstString(std::string_view n);
-    //! Creates a string by borrowing @c n.
+    //! Creates a string by borrowing `n`.
     /*!
-     * \note It is the caller's responsibility to ensure that the new object is only used as long as @c n is valid.
+     * \note It is the caller's responsibility to ensure that the new object is only used as long as `n` is valid.
      */
     ConstString(Borrow_t, std::string_view n);
-    //! Creates a (deep) copy of @c o
+    //! Creates a (deep) copy of `o`.
     ConstString(const ConstString& o);
-    //! "Steals" the content of @c o.
+    //! "Steals" the content of `o`.
     constexpr ConstString(ConstString&& o) noexcept {
         if (o.small()) {
             if (std::is_constant_evaluated()) {
@@ -464,7 +453,7 @@ public:
     [[nodiscard]] constexpr std::string_view view() const { return static_cast<std::string_view>(*this); }
     //! Returns the length of this string.
     [[nodiscard]] constexpr std::size_t size() const { return small() ? c_max_small - tag() : large()->size; }
-    //! Returns the character at the given position, which shall be \< @c size().
+    //! Returns the character at the given position, which shall be \< `size()`.
     [[nodiscard]] constexpr char operator[](std::size_t pos) const { return c_str()[pos]; }
 
     [[nodiscard]] constexpr bool small() const { return tag() < c_large_tag; }

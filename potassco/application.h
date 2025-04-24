@@ -33,7 +33,7 @@ namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
 class Application {
 public:
-    //! Description of and max value for help option.
+    //! Description of and max value for the help option.
     using HelpOpt = std::pair<const char*, unsigned>;
 
     Application(Application&&) = delete;
@@ -68,14 +68,14 @@ public:
     [[nodiscard]] int getExitCode() const;
     //! Returns the application's current verbosity level.
     [[nodiscard]] unsigned getVerbose() const;
-    //! Stops running application with given exit code and error message.
+    //! Stops running application with the given exit code and error message.
     /*!
      * The function sets the given code as exit code and then stops the running application by calling
      * Application::onUnhandledException() passing a formatted error message.
      * \note If the application is currently not running, this function is a noop.
      */
     void fail(int code, std::string_view message, std::string_view info = {});
-    //! Stops running application with given exit code.
+    //! Stops running application with the given exit code.
     /*!
      * The function sets the given code as exit code and then stops the running application.
      * \note If the application is currently not running, this function is a noop.
@@ -85,7 +85,7 @@ public:
     static Application* getInstance();
 
     enum MessageType { message_error, message_warning, message_info };
-    //! Writes a (null-terminated) message of given type to the provided buffer.
+    //! Writes a (null-terminated) message of the given type to the provided buffer.
     /*!
      * The message format is: '***' <type-prefix> (<app-name>): <formatted-message>
      *
@@ -94,21 +94,21 @@ public:
      * \param fmt  A printf-style format string.
      * \param ...  Arguments matching the format string.
      * \return The number of bytes written not counting the null-terminator. If the message exceeds the given buffer,
-     *         output is truncated but still null-terminated. If buffer.size() is 0, the function has no effect and
+     *         the output is truncated but still null-terminated. If buffer.size() is 0, the function has no effect and
      *         returns 0.
      */
     std::size_t formatMessage(std::span<char> buffer, MessageType type, const char* fmt, ...) const
         POTASSCO_ATTRIBUTE_FORMAT(4, 5); // NOLINT
 
-    //! Returns an io-manipulator that writes the given messages formatted as @c message_error to a stream.
+    //! Returns an io-manipulator that writes the given messages formatted as `message_error` to a stream.
     [[nodiscard]] auto error(const char* msg = "") const {
         return Prefix{.app = this, .msg = msg, .type = message_error};
     }
-    //! Returns an io-manipulator that writes the given messages formatted as @c message_warning to a stream.
+    //! Returns an io-manipulator that writes the given messages formatted as `message_warning` to a stream.
     [[nodiscard]] auto warn(const char* msg = "") const {
         return Prefix{.app = this, .msg = msg, .type = message_warning};
     }
-    //! Returns an io-manipulator that writes the given messages formatted as @c message_info to a stream.
+    //! Returns an io-manipulator that writes the given messages formatted as `message_info` to a stream.
     [[nodiscard]] auto info(const char* msg = "") const {
         return Prefix{.app = this, .msg = msg, .type = message_info};
     }
@@ -134,7 +134,7 @@ protected:
     virtual void run() = 0;
     //! Called after run returned. Should not throw. The default is a noop.
     virtual void shutdown();
-    //! Called on an active (i.e. unhandled) exception.
+    //! Called on an active (i.e., unhandled) exception.
     /*!
      * The return value defines whether the application should exit immediately without calling destructors (true) or
      * just return from main() (false).

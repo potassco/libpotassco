@@ -30,6 +30,7 @@
 namespace Potassco {
 //! Class for parsing logic programs in ground text format.
 /*!
+ * \note This class is only meant for testing and debugging purposes.
  * \ingroup ParseType
  */
 class AspifTextInput final : public ProgramReader {
@@ -48,7 +49,7 @@ private:
      * output object before/after parsing the current step.
      */
     bool doParse() override;
-    //! Parses statements until next step directive or input is exhausted.
+    //! Parses statements until the next step directive or input is exhausted.
     void parseStatements();
 
     bool   matchDirective();
@@ -84,12 +85,16 @@ public:
     ~AspifTextOutput() override;
     AspifTextOutput(AspifTextOutput&&) = delete;
 
+    void setAtomPred(std::string_view pred);
+
     void initProgram(bool incremental) override;
     void beginStep() override;
     void rule(HeadType ht, AtomSpan head, LitSpan body) override;
     void rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan lits) override;
     void minimize(Weight_t prio, WeightLitSpan lits) override;
-    void output(std::string_view str, LitSpan cond) override;
+    void outputAtom(Atom_t atom, std::string_view name) override;
+    void outputTerm(Id_t termId, std::string_view name) override;
+    void output(Id_t id, LitSpan cond) override;
     void external(Atom_t a, TruthValue v) override;
     void assume(LitSpan lits) override;
     void project(AtomSpan atoms) override;

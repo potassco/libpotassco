@@ -25,7 +25,6 @@
 
 #include <potassco/match_basic_types.h>
 
-#include <functional>
 #include <memory>
 
 namespace Potassco {
@@ -36,13 +35,13 @@ namespace Potassco {
 //! Smodels rule types.
 enum class SmodelsType : unsigned {
     end               = 0,  //!< Not a rule, marks the end of all rules.
-    basic             = 1,  //!< Normal rule, i.e. h :- l1, ..., ln.
-    cardinality       = 2,  //!< Cardinality constraint, i.e. h :- lb {l1, ..., ln}.
-    choice            = 3,  //!< Choice rule, i.e. {h1, ... hn} :- l1, ..., ln.
+    basic             = 1,  //!< Normal rule, i.e. `h :- l1, ..., ln`.
+    cardinality       = 2,  //!< Cardinality constraint, i.e. `h :- lb {l1, ..., ln}`.
+    choice            = 3,  //!< Choice rule, i.e. `{h1, ... hn} :- l1, ..., ln`.
     generate          = 4,  //!< Generate rule - not supported.
-    weight            = 5,  //!< Weight constraint, i.e. h :- lb {l1=w1, ..., ln=wn}.
-    optimize          = 6,  //!< Optimize rule, i.e. minimize {l1=w1, ..., ln=wn}.
-    disjunctive       = 8,  //!< Normal rule, i.e. h1 | ... | hn :- l1, ..., ln.
+    weight            = 5,  //!< Weight constraint, i.e. `h :- lb {l1=w1, ..., ln=wn}`.
+    optimize          = 6,  //!< Optimize rule, i.e. `#minimize {l1=w1, ..., ln=wn}`.
+    disjunctive       = 8,  //!< Normal rule, i.e. `h1 | ... | hn :- l1, ..., ln`.
     clasp_increment   = 90, //!< clasp extension for defining incremental programs.
     clasp_assign_ext  = 91, //!< clasp extension for assigning/declaring external atoms.
     clasp_release_ext = 92  //!< clasp extension for releasing external atoms.
@@ -68,7 +67,7 @@ public:
             cHeuristic = true;
             return *this;
         }
-        //! Remove converted atoms from output.
+        //! Remove converted atoms from the output.
         Options& dropConverted() {
             filter = true;
             return *this;
@@ -78,15 +77,15 @@ public:
         bool cHeuristic{false};
         bool filter{false};
     };
-    //! Creates a new parser object that calls @c out on each parsed element.
+    //! Creates a new parser object that calls `out` on each parsed element.
     SmodelsInput(AbstractProgram& out, const Options& opts);
     ~SmodelsInput() override;
 
 private:
     struct Extra;
-    //! Checks whether stream starts with a valid smodels token.
+    //! Checks whether the input stream starts with a valid smodels token.
     bool doAttach(bool& inc) override;
-    //! Parses the current step and throws exception on error.
+    //! Parses the current step and throws an exception on error.
     /*!
      * The function calls beginStep()/endStep() on the associated
      * output object before/after parsing the current step.
@@ -126,7 +125,7 @@ int readSmodels(std::istream& prg, AbstractProgram& out, const SmodelsInput::Opt
  * \addtogroup WriteType
  */
 ///@{
-//! Writes a program in smodels numeric format to the given output stream.
+//! Writes a program in the smodels numeric format to the given output stream.
 /*!
  * \note The class only supports program constructs that can be directly
  * expressed in smodels numeric format.
@@ -152,20 +151,20 @@ public:
     void initProgram(bool inc) override;
     //! Starts a new step.
     void beginStep() override;
-    //! Writes a basic, choice, or disjunctive rule or throws an exception if rule is not representable.
+    //! Writes a basic, choice, or disjunctive rule or throws an exception if the rule is not representable.
     void rule(HeadType ht, AtomSpan head, LitSpan body) override;
-    //! Writes a cardinality or weight rule or throws an exception if rule is not representable.
+    //! Writes a cardinality or weight rule or throws an exception if the rule is not representable.
     void rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan body) override;
-    //! Writes the given minimize rule while ignoring its priority.
+    //! Writes the given minimize rule ignoring its priority.
     void minimize(Weight_t prio, WeightLitSpan lits) override;
-    //! Writes the entry (atom, str) to the symbol table provided that condition equals atom.
+    //! Writes the entry (atom, name) to the symbol table.
     /*!
      * \note Symbols shall only be added once after all rules were added.
      */
-    void output(std::string_view str, LitSpan cond) override;
-    //! Writes @c lits as a compute statement.
+    void outputAtom(Atom_t atom, std::string_view name) override;
+    //! Writes `lits` as a compute statement.
     /*!
-     * \note The function shall be called at most once per step and only after all rules and symbols were added.
+     * \note The function shall be called at most once per step, and only after all rules and symbols were added.
      */
     void assume(LitSpan lits) override;
     //! Requires enableClaspExt or throws exception.
@@ -174,15 +173,15 @@ public:
     void endStep() override;
 
 private:
-    //! Starts writing a rule of type @c rt.
+    //! Starts writing a rule of type `rt`.
     SmodelsOutput& startRule(SmodelsType rt);
     //! Writes the given head.
     SmodelsOutput& add(HeadType ht, AtomSpan head);
-    //! Writes the given normal body in smodels format, i.e. @c size(lits) @c size(B-) atoms in B- atoms in B+
+    //! Writes the given normal body in smodels format, i.e. `size(lits)` `size(B-)` `atoms in B-` `atoms in B+`
     SmodelsOutput& add(LitSpan lits);
     //! Writes the given extended body in smodels format.
     SmodelsOutput& add(Weight_t bound, WeightLitSpan lits, bool card);
-    //! Writes @c i.
+    //! Writes `i`.
     SmodelsOutput& add(unsigned i);
     //! Terminates the active rule by writing a newline.
     SmodelsOutput& endRule();

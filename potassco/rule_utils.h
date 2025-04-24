@@ -40,7 +40,7 @@ struct Sum {
 struct Rule {
     constexpr Rule() {}
     HeadType ht{HeadType::disjunctive}; //!< Head type of the rule.
-    AtomSpan head{};                    //!< Head atoms of the rule.
+    AtomSpan head;                      //!< Head atoms of the rule.
     BodyType bt{BodyType::normal};      //!< Type of rule body.
     union {
         LitSpan cond{};
@@ -52,7 +52,7 @@ struct Rule {
     static Rule sum(HeadType ht, AtomSpan head, const Sum& sum);
     //! Named constructor for creating a sum rule.
     static Rule sum(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan lits);
-    //! Returns whether the rule has a normal body, i.e. whether the body is a conjunction of literals.
+    //! Returns whether the rule has a normal body (i.e., conjunction of literals).
     [[nodiscard]] bool normal() const { return bt == BodyType::normal; }
     //! Returns whether the body of the rule is a sum aggregate.
     [[nodiscard]] bool sum() const { return bt != BodyType::normal; }
@@ -73,14 +73,14 @@ public:
     /*!
      * \name Start functions.
      * Functions for starting the definition of a rule's head or body.
-     * If the active rule is frozen (i.e. end() was called), the active rule is discarded.
-     * \note The body of a rule can be defined before or after its head is defined but definitions
+     * If the active rule is frozen (i.e., end() was called), the active rule is discarded.
+     * \note The body of a rule can be defined before or after its head is defined, but definitions
      * of head and body must not be mixed.
      */
     //@{
     //! Start definition of the rule's head, which can be either disjunctive or a choice.
     RuleBuilder& start(HeadType ht = HeadType::disjunctive);
-    //! Start definition of a minimize rule. No head allowed.
+    //! Start definition of a `minimize` rule. No head allowed.
     RuleBuilder& startMinimize(Weight_t prio);
     //! Start definition of a conjunction to be used as the rule's body.
     RuleBuilder& startBody();
@@ -97,7 +97,7 @@ public:
      * \note Calling an update function implicitly starts the definition of the corresponding rule part.
      */
     //@{
-    //! Add given atom to the rule's head.
+    //! Add the given atom to the rule's head.
     RuleBuilder& addHead(Atom_t a);
     //! Add lit to the rule's body.
     RuleBuilder& addGoal(Lit_t lit);
@@ -107,16 +107,16 @@ public:
 
     //! Stop definition of rule and add rule to out if given.
     /*!
-     * Once @c end() was called, the active rule is considered frozen.
+     * Once `end()` was called, the active rule is considered frozen.
      */
     RuleBuilder& end(AbstractProgram* out = nullptr);
     //! Discard active rule and unfreeze builder.
     RuleBuilder& clear();
-    //! Discard body of active rule but keep head if any.
+    //! Discard the body of the active rule but keep the head if any.
     RuleBuilder& clearBody();
-    //! Discard head of active rule but keep body if any.
+    //! Discard the head of the active rule but keep the body if any.
     RuleBuilder& clearHead();
-    //! Weaken active sum aggregate body to a normal body or count aggregate.
+    //! Weaken the active sum aggregate to a normal body or count aggregate.
     RuleBuilder& weaken(BodyType to, bool resetWeights = true);
 
     /*!
@@ -136,6 +136,7 @@ public:
     [[nodiscard]] auto sum() const -> Sum;
     [[nodiscard]] auto rule() const -> Rule;
     [[nodiscard]] auto frozen() const -> bool;
+    [[nodiscard]] auto isFact() const -> bool;
     //@}
 private:
     struct Range {
@@ -148,6 +149,7 @@ private:
         [[nodiscard]] bool     started() const { return test_bit(end_flag, start_bit); }
         [[nodiscard]] bool     finished() const { return test_bit(end_flag, end_bit); }
         [[nodiscard]] bool     open() const { return not test_any(end_flag, mask); }
+        [[nodiscard]] uint32_t size() const { return end() - start(); }
 
         uint32_t start_type = 0; // 4-byte aligned, align-bits = type
         uint32_t end_flag   = 0; // 4-byte aligned, align-bits = flags

@@ -133,7 +133,7 @@ public:
     using iterator = const Id_t*; // NOLINT
     //! Returns the associated program atom or 0 if this originated from a directive.
     [[nodiscard]] Id_t atom() const { return static_cast<Id_t>(atom_); }
-    //! Returns the term that is associated with this atom.
+    //! Returns the term associated with this atom.
     [[nodiscard]] Id_t term() const { return termId_; }
     //! Returns the number of elements in this atom.
     [[nodiscard]] uint32_t size() const { return nTerms_; }
@@ -143,9 +143,9 @@ public:
     [[nodiscard]] iterator end() const { return begin() + size(); }
     //! Returns the range [begin(), end()).
     [[nodiscard]] IdSpan elements() const { return {begin(), size()}; }
-    //! Returns a pointer to the id of the theory operator associated with this atom or 0 if atom has no guard.
+    //! Returns a pointer to the id of the theory operator associated with this atom or 0 if the atom has no guard.
     [[nodiscard]] const Id_t* guard() const;
-    //! Returns a pointer to the term id of the right hand side of the theory operator or 0 if atom has no guard.
+    //! Returns a pointer to the term id of the right-hand side of the theory operator or 0 if the atom has no guard.
     [[nodiscard]] const Id_t* rhs() const;
 
 private:
@@ -184,19 +184,19 @@ public:
      * eventually added via addElement().
      */
     void addAtom(Id_t atomOrZero, Id_t termId, IdSpan elements);
-    //! Adds a new theory atom with guard and right hand side.
+    //! Adds a new theory atom with guard and right-hand side.
     void addAtom(Id_t atomOrZero, Id_t termId, IdSpan elements, Id_t op, Id_t rhs);
 
     //! Adds a new theory atom element with the given id.
     /*!
      * Each element in terms shall be an id of a theory term
      * eventually added via one of the addTerm() overloads.
-     * \note If cond is @c cond_deferred, the condition may later be changed via a call to @c setCondition().
+     * \note If `cond` is `cond_deferred,` the condition may later be changed via a call to `setCondition()`.
      */
     void addElement(Id_t elementId, IdSpan terms, Id_t cond = cond_deferred);
     //! Changes the condition of the element with the given id.
     /*!
-     * \pre The element was previously added with condition @c cond_deferred.
+     * \pre The element was previously added with a condition equaling `cond_deferred`.
      */
     void setCondition(Id_t elementId, Id_t newCond);
 
@@ -219,11 +219,11 @@ public:
     /*!
      * \note It is the caller's responsibility to ensure that the removed term is not referenced
      * by any theory element.
-     * \note The term id of a removed term may be reused in a subsequent call to @c addTerm().
+     * \note The term id of a removed term may be reused in a later call to `addTerm()`.
      */
     void removeTerm(Id_t termId);
 
-    //! Returns whether this object is emtpy, i.e. does not store any terms, elements, or atoms.
+    //! Returns whether this object is empty, i.e., does not store any terms, elements, or atoms.
     [[nodiscard]] bool empty() const;
     //! Returns the number of stored theory terms.
     [[nodiscard]] uint32_t numTerms() const;
@@ -233,22 +233,22 @@ public:
     [[nodiscard]] uint32_t numAtoms() const;
     //! Returns a view over all theory atoms.
     [[nodiscard]] auto atoms() const -> AtomView;
-    //! Returns a view over all theory atoms added after last call to update.
+    //! Returns a view over all theory atoms added after the last call to update.
     [[nodiscard]] auto currAtoms() const -> AtomView;
     //! Returns whether this object stores a term with the given id.
     [[nodiscard]] bool hasTerm(Id_t id) const;
-    //! Returns whether the given term was added after last call to update.
+    //! Returns whether the given term was added after the last call to update.
     [[nodiscard]] bool isNewTerm(Id_t id) const;
     //! Returns whether this object stores an atom element with the given id.
     [[nodiscard]] bool hasElement(Id_t id) const;
-    //! Returns whether the given element was added after last call to update.
+    //! Returns whether the given element was added after the last call to update.
     [[nodiscard]] bool isNewElement(Id_t id) const;
     //! Returns the term with the given id or throws if no such term exists.
     [[nodiscard]] Term getTerm(Id_t id) const;
     //! Returns the element with the given id or throws if no such element exists.
     [[nodiscard]] const Element& getElement(Id_t id) const;
 
-    //! Removes all theory atoms @c a for which @c f(a) returns true.
+    //! Removes all theory atoms `a` for which `f(a)` returns true.
     template <class F>
     void filter(const F& f) {
         auto   pop   = 0u;
@@ -278,8 +278,8 @@ public:
     };
     //! Possible visitation modes.
     /*!
-     * Mode @c visit_current ignores atoms, elements, or terms
-     * that were added in previous steps, i.e. before the last call to update().
+     * Mode `visit_current` ignores atoms, elements, or terms
+     * added in previous steps, i.e., before the last call to update().
      */
     enum VisitMode { visit_all, visit_current };
     //! Calls <tt>out.visit(*this, a)</tt> for all theory atoms.
@@ -288,7 +288,7 @@ public:
     void accept(const TheoryAtom& a, Visitor& out, VisitMode m = visit_all) const;
     //! Visits terms of the given element.
     void accept(const TheoryElement& e, Visitor& out, VisitMode m = visit_all) const;
-    //! If given term is a compound term, visits its sub terms.
+    //! If the given term is a compound term, visits its sub terms.
     void accept(const TheoryTerm& t, Visitor& out, VisitMode m = visit_all) const;
 
 private:

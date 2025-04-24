@@ -58,7 +58,7 @@ static T storage_cast(const DynamicBuffer& mem, uint32_t pos) {
 }
 template <typename T, typename R>
 static std::span<T> makeSpan(const DynamicBuffer& mem, const R& range) {
-    return {storage_cast<T*>(mem, range.start()), (range.end() - range.start()) / sizeof(T)};
+    return {storage_cast<T*>(mem, range.start()), range.size() / sizeof(T)};
 }
 RuleBuilder::RuleBuilder(RuleBuilder&& other) noexcept
     : mem_(std::move(other.mem_))
@@ -84,6 +84,10 @@ RuleBuilder& RuleBuilder::clear() {
 }
 bool RuleBuilder::frozen() const {
     return test_mask(head_.end_flag, Range::mask) && test_mask(body_.end_flag, Range::mask);
+}
+bool RuleBuilder::isFact() const {
+    return headType() == HeadType::disjunctive && bodyType() == BodyType::normal && body_.size() == 0 &&
+           head_.size() == sizeof(Atom_t);
 }
 void RuleBuilder::start(Range& r, uint32_t type, const Weight_t* bound) {
     if (not frozen()) {
@@ -134,7 +138,7 @@ RuleBuilder& RuleBuilder::clearHead() {
 }
 HeadType RuleBuilder::headType() const { return static_cast<HeadType>(head_.type()); }
 AtomSpan RuleBuilder::head() const { return makeSpan<Atom_t>(mem_, head_); }
-bool     RuleBuilder::isMinimize() const { return headType() == static_cast<HeadType>(AspifType::minimize); }
+bool     RuleBuilder::isMinimize() const { return head_.type() == enum_max<HeadType>() + 1u; }
 /////////////////////////////////////////////////////////////////////////////////////////
 // RuleBuilder - Body management
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -150,7 +154,7 @@ RuleBuilder& RuleBuilder::startSum(Weight_t bound) {
     return *this;
 }
 RuleBuilder& RuleBuilder::startMinimize(Weight_t prio) {
-    start(head_, to_underlying(AspifType::minimize));
+    start(head_, enum_max<HeadType>() + 1u);
     start(body_, to_underlying(BodyType::sum), &prio);
     return *this;
 }

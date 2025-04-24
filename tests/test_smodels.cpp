@@ -54,7 +54,6 @@ static void finalize(std::stringstream& str, const AtomTab& atoms = AtomTab(), c
     }
     str << "0\n1\n";
 }
-
 using Rule_t = SmodelsType;
 
 class ReadObserver : public Test::ReadObserver {
@@ -104,11 +103,6 @@ public:
         rules[Rule_t::optimize].push_back(std::move(r));
     }
     void project(AtomSpan) override {}
-    void output(std::string_view str, LitSpan cond) override {
-        REQUIRE(size(cond) == 1);
-        atoms[*begin(cond)].assign(begin(str), end(str));
-    }
-    void outputAtom(Atom_t a, std::string_view str) override { atoms[lit(a)].assign(str); }
 
     void external(Atom_t a, TruthValue v) override {
         if (v != TruthValue::release) {
@@ -121,10 +115,8 @@ public:
     void assume(LitSpan) override {}
 
     using RuleMap = std::map<Rule_t, std::vector<std::vector<int>>>;
-    using AtomMap = std::unordered_map<int, std::string>;
     RuleMap rules;
     LitVec  compute;
-    AtomMap atoms;
 };
 TEST_CASE("Smodels reader ", "[smodels]") {
     std::stringstream input;
@@ -252,6 +244,7 @@ TEST_CASE("Write smodels", "[smodels]") {
     SmodelsOutput     writer(str, false, 0);
     ReadObserver      observer;
     writer.initProgram(false);
+    Atom_t a = 1;
     SECTION("empty program is valid") {
         writer.endStep();
         exp << "0\n0\nB+\n0\nB-\n0\n1\n";
@@ -266,91 +259,90 @@ TEST_CASE("Write smodels", "[smodels]") {
         str.clear();
         str.str("");
         SmodelsOutput withFalse(str, false, 1);
-        Vec<Lit_t>    body = {2, -3, -4, 5};
+        auto          body = Vec<Lit_t>{2, -3, -4, 5};
         REQUIRE_NOTHROW(withFalse.rule(HeadType::disjunctive, {}, body));
-        Vec<WeightLit> wbody = {{2, 2}, {-3, 1}, {-4, 3}, {5, 4}};
+        auto wbody = Vec<WeightLit>{{2, 2}, {-3, 1}, {-4, 3}, {5, 4}};
         REQUIRE_NOTHROW(withFalse.rule(HeadType::disjunctive, {}, 2, wbody));
         REQUIRE(str.str().find("1 1 4 2 3 4 2 5") != std::string::npos);
         REQUIRE(str.str().find("5 1 2 4 2 3 4 2 5 1 3 2 4") != std::string::npos);
     }
     SECTION("body literals are correctly reordered") {
-        Atom_t     a    = 1;
-        Vec<Lit_t> body = {2, -3, -4, 5};
+        auto body = Vec<Lit_t>{2, -3, -4, 5};
         writer.rule(HeadType::disjunctive, toSpan(a), body);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::basic].size() == 1);
-        RawRule r = {1, -3, -4, 2, 5};
+        auto r = RawRule{1, -3, -4, 2, 5};
         REQUIRE(observer.rules[Rule_t::basic][0] == r);
     }
     SECTION("body literals with weights are correctly reordered") {
-        Atom_t         a    = 1;
-        Vec<WeightLit> body = {{2, 2}, {-3, 1}, {-4, 3}, {5, 4}};
+        auto body = Vec<WeightLit>{{2, 2}, {-3, 1}, {-4, 3}, {5, 4}};
         writer.rule(HeadType::disjunctive, toSpan(a), 4, body);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::weight].size() == 1);
-        RawRule r = {1, 4, -3, 1, -4, 3, 2, 2, 5, 4};
+        auto r = RawRule{1, 4, -3, 1, -4, 3, 2, 2, 5, 4};
         REQUIRE(observer.rules[Rule_t::weight][0] == r);
     }
     SECTION("weights are removed from count bodies") {
-        Atom_t         a    = 1;
-        Vec<WeightLit> body = {{2, 1}, {-3, 1}, {-4, 1}, {5, 1}};
+        auto body = Vec<WeightLit>{{2, 1}, {-3, 1}, {-4, 1}, {5, 1}};
         writer.rule(HeadType::disjunctive, toSpan(a), 3, body);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::cardinality].size() == 1);
-        RawRule r = {1, 3, -3, -4, 2, 5};
+        auto r = RawRule{1, 3, -3, -4, 2, 5};
         REQUIRE(observer.rules[Rule_t::cardinality][0] == r);
     }
     SECTION("all head atoms are written") {
-        Vec<Atom_t> atoms = {1, 2, 3, 4};
+        auto atoms = Vec<Atom_t>{1, 2, 3, 4};
         writer.rule(HeadType::disjunctive, atoms, {});
         writer.rule(HeadType::choice, atoms, {});
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::disjunctive].size() == 1);
         REQUIRE(observer.rules[Rule_t::choice].size() == 1);
-        RawRule r = {4, 1, 2, 3, 4};
+        auto r = RawRule{4, 1, 2, 3, 4};
         REQUIRE(observer.rules[Rule_t::disjunctive][0] == r);
         REQUIRE(observer.rules[Rule_t::choice][0] == r);
     }
     SECTION("minimize rules are written without priority") {
-        Vec<WeightLit> body = {{2, 2}, {-3, 1}, {-4, 3}, {5, 4}};
+        auto body = Vec<WeightLit>{{2, 2}, {-3, 1}, {-4, 3}, {5, 4}};
         writer.minimize(10, body);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::optimize].size() == 1);
-        RawRule r = {0, -3, 1, -4, 3, 2, 2, 5, 4};
+        auto r = RawRule{0, -3, 1, -4, 3, 2, 2, 5, 4};
         REQUIRE(observer.rules[Rule_t::optimize][0] == r);
     }
     SECTION("minimize lits with negative weights are inverted") {
-        Vec<WeightLit> body = {{2, -2}, {3, 1}, {4, -1}};
+        auto body = Vec<WeightLit>{{2, -2}, {3, 1}, {4, -1}};
         writer.minimize(10, body);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
         REQUIRE(observer.rules[Rule_t::optimize].size() == 1);
-        RawRule r = {0, -2, 2, -4, 1, 3, 1};
+        auto r = RawRule{0, -2, 2, -4, 1, 3, 1};
         REQUIRE(observer.rules[Rule_t::optimize][0] == r);
     }
+    SECTION("output term is not supported") {
+        REQUIRE_THROWS_AS(writer.outputTerm(0, "Foo"), std::logic_error);
+        REQUIRE_THROWS_AS(writer.output(0, {}), std::logic_error);
+    }
+    SECTION("output zero atom is not supported") { REQUIRE_THROWS_AS(writer.outputAtom(0, {}), std::logic_error); }
     SECTION("output is written to symbol table") {
-        Lit_t       a  = 1;
         std::string an = "Hallo";
-        writer.output(an, toSpan(a));
+        writer.outputAtom(a, an);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
-        REQUIRE(observer.atoms[a] == an);
+        REQUIRE(observer.atoms[lit(a)] == an);
     }
     SECTION("output must be added after rules") {
-        Lit_t       a  = 1;
         std::string an = "Hallo";
-        writer.output(an, toSpan(a));
+        writer.outputAtom(a, an);
         Atom_t b = 2;
         REQUIRE_THROWS(writer.rule(HeadType::disjunctive, toSpan(b), {}));
     }
     SECTION("compute statement is written via assume") {
-        Atom_t     a    = 1;
-        Vec<Lit_t> body = {2, -3, -4, 5};
+        auto body = Vec<Lit_t>{2, -3, -4, 5};
         writer.rule(HeadType::disjunctive, toSpan(a), body);
         Lit_t na = -1;
         writer.assume(toSpan(na));
@@ -363,7 +355,7 @@ TEST_CASE("Write smodels", "[smodels]") {
         REQUIRE(observer.compute[0] == na);
     }
     SECTION("compute statement can contain multiple literals") {
-        Vec<Lit_t> compute = {-1, 2, -3, -4, 5, 6};
+        auto compute = Vec<Lit_t>{-1, 2, -3, -4, 5, 6};
         writer.assume(compute);
         writer.endStep();
         REQUIRE(readSmodels(str, observer) == 0);
@@ -490,9 +482,9 @@ TEST_CASE("SmodelsOutput supports extended programs", "[smodels_ext]") {
     writer.initProgram(true);
     writer.beginStep();
     exp << "90 0\n";
-    Vec<Atom_t>    head = {1, 2};
-    Vec<Lit_t>     body = {3, -4};
-    Vec<WeightLit> min  = {{-1, 2}, {2, 1}};
+    auto head = Vec<Atom_t>{1, 2};
+    auto body = Vec<Lit_t>{3, -4};
+    auto min  = Vec<WeightLit>{{-1, 2}, {2, 1}};
     writer.rule(HeadType::choice, head, body);
     exp << static_cast<int>(Rule_t::choice) << " 2 2 3 2 1 5 4\n";
     writer.external(3, TruthValue::false_);
@@ -517,59 +509,58 @@ TEST_CASE("SmodelsOutput supports extended programs", "[smodels_ext]") {
 }
 
 TEST_CASE("Convert to smodels", "[convert]") {
+    using HeadLits = std::initializer_list<Atom_t>;
     using BodyLits = std::initializer_list<Lit_t>;
     using AggLits  = std::initializer_list<WeightLit>;
     ReadObserver   observer;
     SmodelsConvert convert(observer, true);
     convert.initProgram(false);
     convert.beginStep();
+    Atom_t a = 1;
     SECTION("convert rule") {
-        Atom_t   a    = 1;
-        BodyLits lits = {4, -3, -2, 5};
+        auto lits = BodyLits{4, -3, -2, 5};
         convert.rule(HeadType::disjunctive, toSpan(a), lits);
         REQUIRE(observer.rules[Rule_t::basic].size() == 1);
-        RawRule r = {convert.get(lit(a)), convert.get(4), convert.get(-3), convert.get(-2), convert.get(5)};
+        auto r = RawRule{convert.get(lit(a)), convert.get(4), convert.get(-3), convert.get(-2), convert.get(5)};
         REQUIRE(observer.rules[Rule_t::basic][0] == r);
     }
     SECTION("convert sum rule") {
-        Atom_t  a    = 1;
-        AggLits lits = {{4, 2}, {-3, 3}, {-2, 1}, {5, 4}};
+        auto lits = AggLits{{4, 2}, {-3, 3}, {-2, 1}, {5, 4}};
         convert.rule(HeadType::disjunctive, toSpan(a), 3, lits);
         REQUIRE(observer.rules[Rule_t::weight].size() == 1);
-        RawRule sr = {convert.get(lit(a)), 3, convert.get(4), 2, convert.get(-3), 3,
-                      convert.get(-2),     1, convert.get(5), 4};
+        auto sr = RawRule{convert.get(lit(a)), 3, convert.get(4), 2, convert.get(-3), 3,
+                          convert.get(-2),     1, convert.get(5), 4};
         REQUIRE(observer.rules[Rule_t::weight][0] == sr);
     }
     SECTION("convert mixed rule") {
-        std::initializer_list<Atom_t> h    = {1, 2, 3};
-        AggLits                       lits = {{4, 2}, {-3, 3}, {-2, 1}, {5, 4}};
+        auto h    = HeadLits{1, 2, 3};
+        auto lits = AggLits{{4, 2}, {-3, 3}, {-2, 1}, {5, 4}};
         convert.rule(HeadType::choice, h, 3, lits);
         REQUIRE(observer.rules[Rule_t::choice].size() == 1);
         REQUIRE(observer.rules[Rule_t::weight].size() == 1);
-        int     aux = static_cast<int>(convert.maxAtom());
-        RawRule cr  = {3, convert.get(1), convert.get(2), convert.get(3), aux};
-        RawRule sr  = {aux, 3, convert.get(4), 2, convert.get(-3), 3, convert.get(-2), 1, convert.get(5), 4};
+        auto aux = static_cast<int>(convert.maxAtom());
+        auto cr  = RawRule{3, convert.get(1), convert.get(2), convert.get(3), aux};
+        auto sr  = RawRule{aux, 3, convert.get(4), 2, convert.get(-3), 3, convert.get(-2), 1, convert.get(5), 4};
         REQUIRE(cr == observer.rules[Rule_t::choice][0]);
         REQUIRE(sr == observer.rules[Rule_t::weight][0]);
     }
     SECTION("convert satisfied sum rule") {
-        Atom_t  a    = 1;
-        AggLits lits = {{4, 2}, {-3, 3}, {-2, 1}, {5, 4}};
+        auto lits = AggLits{{4, 2}, {-3, 3}, {-2, 1}, {5, 4}};
         convert.rule(HeadType::disjunctive, toSpan(a), -3, lits);
         REQUIRE(observer.rules[Rule_t::weight].empty());
         REQUIRE(observer.rules[Rule_t::basic].size() == 1);
-        RawRule sr = {convert.get(lit(a))};
+        auto sr = RawRule{convert.get(lit(a))};
         REQUIRE(observer.rules[Rule_t::basic][0] == sr);
     }
     SECTION("convert invalid rule") {
-        std::initializer_list<Atom_t> h       = {1, 2, 3};
-        AggLits                       invalid = {{4, 2}, {-3, -3}};
+        auto h       = HeadLits{1, 2, 3};
+        auto invalid = AggLits{{4, 2}, {-3, -3}};
         REQUIRE_THROWS_AS(convert.rule(HeadType::choice, h, 2, invalid), std::logic_error);
     }
 
     SECTION("convert minimize") {
-        AggLits m1 = {{4, 1}, {-3, -2}, {-2, 1}, {5, -1}};
-        AggLits m2 = {{8, 1}, {-7, 2}, {-6, 1}, {9, 1}};
+        auto m1 = AggLits{{4, 1}, {-3, -2}, {-2, 1}, {5, -1}};
+        auto m2 = AggLits{{8, 1}, {-7, 2}, {-6, 1}, {9, 1}};
         convert.minimize(3, {begin(m2), 2});
         convert.minimize(10, {begin(m1), m1.size()});
         convert.minimize(3, {begin(m2) + 2, 2});
@@ -577,19 +568,52 @@ TEST_CASE("Convert to smodels", "[convert]") {
         convert.endStep();
         REQUIRE(observer.rules[Rule_t::optimize].size() == 2);
 
-        RawRule m3  = {3, convert.get(8), 1, convert.get(-7), 2, convert.get(-6), 1, convert.get(9), 1};
-        RawRule m10 = {10, convert.get(4), 1, convert.get(3), 2, convert.get(-2), 1, convert.get(-5), 1};
+        auto m3  = RawRule{3, convert.get(8), 1, convert.get(-7), 2, convert.get(-6), 1, convert.get(9), 1};
+        auto m10 = RawRule{10, convert.get(4), 1, convert.get(3), 2, convert.get(-2), 1, convert.get(-5), 1};
         REQUIRE(observer.rules[Rule_t::optimize][0] == m3);
         REQUIRE(observer.rules[Rule_t::optimize][1] == m10);
     }
     SECTION("convert output") {
-        LitVec c = {1, -2, 3};
-        convert.output({"Foo", 3}, c);
-        convert.endStep();
-        REQUIRE(observer.rules[Rule_t::basic].size() == 1);
-        REQUIRE(convert.maxAtom() == 5);
-        auto aux = observer.rules[Rule_t::basic][0][0];
-        REQUIRE(observer.atoms.at(aux) == "Foo");
+        SmodelsConvert convertInc(observer, true);
+        auto           m  = [&](Lit_t x) { return convertInc.get(x); };
+        auto           c1 = BodyLits{1, -2, 3};
+        auto           c2 = BodyLits{-1, -3};
+        convertInc.outputTerm(0u, "Foo");
+        convertInc.output(0u, c1); // aux(c1) :- {c1}. aux("Foo") :- aux(c1)
+        convertInc.output(0u, c2); // aux(c2) :- {c2}. aux("Foo") :- aux(c2)
+        convertInc.endStep();
+        REQUIRE(observer.rules[Rule_t::basic].size() == 4);
+        REQUIRE(convertInc.maxAtom() == 7);
+
+        auto auxC1  = observer.rules[Rule_t::basic][0][0];
+        auto auxFoo = observer.rules[Rule_t::basic][1][0];
+        auto auxC2  = observer.rules[Rule_t::basic][2][0];
+        REQUIRE(observer.rules[Rule_t::basic][0] == RawRule{auxC1, m(1), m(-2), m(3)});
+        REQUIRE(observer.rules[Rule_t::basic][1] == RawRule{auxFoo, auxC1});
+        REQUIRE(observer.rules[Rule_t::basic][2] == RawRule{auxC2, m(-1), m(-3)});
+        REQUIRE(observer.rules[Rule_t::basic][3] == RawRule{auxFoo, auxC2});
+        REQUIRE(observer.atoms.size() == 1);
+        REQUIRE(observer.atoms.at(auxFoo) == "_show_term(Foo)");
+
+        observer.rules.clear();
+        convertInc.beginStep();
+        auto c3 = BodyLits{3, 4};
+        auto c4 = BodyLits{-3, -4};
+        convertInc.output(0u, c3); // aux(c3) :- {c3, not aux("Foo")}. aux("Foo") :- aux(c3)
+        convertInc.output(0u, c4); // aux(c4) :- {c4, not aux("Foo")}. aux("Foo") :- aux(c4)
+        convertInc.endStep();
+        REQUIRE(observer.rules[Rule_t::basic].size() == 4);
+        REQUIRE(convertInc.maxAtom() == 11);
+
+        auto auxC3   = observer.rules[Rule_t::basic][0][0];
+        auto auxFoo2 = observer.rules[Rule_t::basic][1][0];
+        auto auxC4   = observer.rules[Rule_t::basic][2][0];
+        REQUIRE(observer.rules[Rule_t::basic][0] == RawRule{auxC3, m(3), m(4), neg(auxFoo)});
+        REQUIRE(observer.rules[Rule_t::basic][1] == RawRule{auxFoo2, auxC3});
+        REQUIRE(observer.rules[Rule_t::basic][2] == RawRule{auxC4, m(-3), m(-4), neg(auxFoo)});
+        REQUIRE(observer.rules[Rule_t::basic][3] == RawRule{auxFoo2, auxC4});
+        REQUIRE(observer.atoms.size() == 2);
+        REQUIRE(observer.atoms.at(auxFoo2) == "_show_term(Foo)");
     }
 
     SECTION("convert external") {
@@ -605,10 +629,9 @@ TEST_CASE("Convert to smodels", "[convert]") {
         REQUIRE(observer.rules[Rule_t::clasp_assign_ext][2][1] == int(TruthValue::false_));
     }
     SECTION("edges are converted to atoms") {
-        Lit_t a = 1;
-        convert.output("a", toSpan(a));
-        convert.acycEdge(0, 1, toSpan(a));
-        LitVec c = {1, 2, 3};
+        convert.outputAtom(a, "a");
+        convert.acycEdge(0, 1, toCond(a));
+        auto c = BodyLits{1, 2, 3};
         convert.acycEdge(1, 0, c);
         convert.endStep();
         REQUIRE(observer.rules[Rule_t::basic].size() == 2);
@@ -618,35 +641,32 @@ TEST_CASE("Convert to smodels", "[convert]") {
 
     SECTION("heuristics are converted to atoms") {
         SECTION("empty condition") {
-            Lit_t a = 1;
-            convert.heuristic(static_cast<Atom_t>(a), DomModifier::factor, 10, 2, {});
-            convert.output("a", toSpan(a));
+            convert.heuristic(a, DomModifier::factor, 10, 2, {});
+            convert.outputAtom(a, "a");
             convert.endStep();
             REQUIRE(observer.rules[Rule_t::basic].size() == 1);
             REQUIRE(convert.maxAtom() == 3);
             REQUIRE(observer.atoms[observer.rules[Rule_t::basic][0][0]] == "_heuristic(a,factor,10,2)");
         }
         SECTION("named condition requires aux atom while unnamed does not") {
-            Lit_t a = 1, b = 2, c = 3;
-            convert.output("a", toSpan(a));
-            convert.output("b", toSpan(b));
-            convert.heuristic(static_cast<Atom_t>(a), DomModifier::level, 10, 2, toSpan(b));
-            convert.heuristic(static_cast<Atom_t>(a), DomModifier::init, 10, 2, toSpan(c));
+            Atom_t b = 2, c = 3;
+            convert.outputAtom(a, "a");
+            convert.outputAtom(b, "b");
+            convert.heuristic(a, DomModifier::level, 10, 2, toCond(b));
+            convert.heuristic(a, DomModifier::init, 10, 2, toCond(c));
             convert.endStep();
             REQUIRE(observer.rules[Rule_t::basic].size() == 1);
             REQUIRE(observer.atoms[observer.rules[Rule_t::basic][0][0]] == "_heuristic(a,level,10,2)");
-            REQUIRE(observer.atoms[convert.get(c)] == "_heuristic(a,init,10,2)");
+            REQUIRE(observer.atoms[convert.get(lit(c))] == "_heuristic(a,init,10,2)");
         }
         SECTION("unused atom is ignored") {
-            Lit_t a = 1;
-            convert.heuristic(static_cast<Atom_t>(a), DomModifier::sign, -1, 2, {});
+            convert.heuristic(a, DomModifier::sign, -1, 2, {});
             convert.endStep();
             REQUIRE(observer.rules[Rule_t::basic].size() == 1);
             REQUIRE(convert.maxAtom() == 2);
             REQUIRE(observer.atoms.empty());
         }
         SECTION("unnamed atom requires aux name") {
-            Atom_t a = 1;
             convert.rule(HeadType::choice, toSpan(a), {});
             convert.heuristic(a, DomModifier::sign, -1, 2, {});
             convert.endStep();
@@ -664,60 +684,60 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
     SmodelsOutput         writer(str, false, 0);
     SmodelsInput::Options opts;
     opts.enableClaspExt().convertEdges().convertHeuristic();
-    std::vector<Atom_t> atoms = {1, 2, 3, 4, 5, 6};
+    auto atoms = Vec<Atom_t>{1, 2, 3, 4, 5, 6};
     writer.initProgram(false);
     writer.beginStep();
-    writer.rule(Potassco::HeadType::choice, atoms, {});
+    writer.rule(HeadType::choice, atoms, {});
     SECTION("_edge(X,Y) atoms are converted to edges directives") {
-        Lit_t a = 1, b = 2, c = 3;
-        writer.output("_edge(1,2)", toSpan(a));
-        writer.output(R"(_edge("1,2","2,1"))", toSpan(b));
-        writer.output(R"(_edge("2,1","1,2"))", toSpan(c));
+        Atom_t a = 1, b = 2, c = 3;
+        writer.outputAtom(a, "_edge(1,2)");
+        writer.outputAtom(b, R"(_edge("1,2","2,1"))");
+        writer.outputAtom(c, R"(_edge("2,1","1,2"))");
         writer.endStep();
         REQUIRE(readSmodels(str, observer, opts) == 0);
         REQUIRE(observer.edges.size() == 3);
-        REQUIRE(observer.edges[0].cond == Vec<Lit_t>({a}));
+        REQUIRE(observer.edges[0].cond == toCond(a));
         REQUIRE(observer.edges[0].s == 0);
         REQUIRE(observer.edges[0].t == 1);
-        REQUIRE(observer.edges[1].cond == Vec<Lit_t>({b}));
+        REQUIRE(observer.edges[1].cond == toCond(b));
         REQUIRE(observer.edges[1].s == observer.edges[2].t);
-        REQUIRE(observer.edges[2].cond == Vec<Lit_t>({c}));
+        REQUIRE(observer.edges[2].cond == toCond(c));
     }
     SECTION("Test acyc") {
-        Lit_t a = 1, b = 2;
+        Atom_t a = 1, b = 2;
         SECTION("_acyc_ atoms are converted to edge directives") {
-            writer.output("_acyc_1_1234_4321", toSpan(a));
-            writer.output("_acyc_1_4321_1234", toSpan(b));
+            writer.outputAtom(a, "_acyc_1_1234_4321");
+            writer.outputAtom(b, "_acyc_1_4321_1234");
         }
         SECTION("_acyc_ and _edge atoms can be mixed") {
-            writer.output("_acyc_1_1234_4321", toSpan(a));
-            writer.output("_edge(4321,1234)", toSpan(b));
+            writer.outputAtom(a, "_acyc_1_1234_4321");
+            writer.outputAtom(b, "_edge(4321,1234)");
         }
         writer.endStep();
         REQUIRE(readSmodels(str, observer, opts) == 0);
         REQUIRE(observer.edges.size() == 2);
-        REQUIRE(observer.edges[0].cond == Vec<Lit_t>({a}));
-        REQUIRE(observer.edges[1].cond == Vec<Lit_t>({b}));
+        REQUIRE(observer.edges[0].cond == toCond(a));
+        REQUIRE(observer.edges[1].cond == toCond(b));
         REQUIRE(observer.edges[0].s == observer.edges[1].t);
         REQUIRE(observer.edges[0].t == observer.edges[1].s);
     }
     SECTION("_heuristic atoms are converted to heuristic directive") {
-        Lit_t a = 1, b = 2, h1 = 3, h2 = 4, h3 = 5, h4 = 6;
-        writer.output("f(a,b,c,d(q(r(s))))", toSpan(a));
-        writer.output("_heuristic(f(a,b,c,d(q(r(s)))),sign,-1)", toSpan(h1));
-        writer.output("_heuristic(f(a,b,c,d(q(r(s)))),true,1)", toSpan(h2));
-        writer.output("_heuristic(f(\"a,b(c,d)\"),level,-1,10)", toSpan(h3));
-        writer.output("_heuristic(f(\"a,b(c,d)\"),factor,2,1)", toSpan(h4));
-        writer.output("f(\"a,b(c,d)\")", toSpan(b));
+        Atom_t a = 1, b = 2, h1 = 3, h2 = 4, h3 = 5, h4 = 6;
+        writer.outputAtom(a, "f(a,b,c,d(q(r(s))))");
+        writer.outputAtom(h1, "_heuristic(f(a,b,c,d(q(r(s)))),sign,-1)");
+        writer.outputAtom(h2, "_heuristic(f(a,b,c,d(q(r(s)))),true,1)");
+        writer.outputAtom(h3, "_heuristic(f(\"a,b(c,d)\"),level,-1,10)");
+        writer.outputAtom(h4, "_heuristic(f(\"a,b(c,d)\"),factor,2,1)");
+        writer.outputAtom(b, "f(\"a,b(c,d)\")");
         writer.endStep();
         REQUIRE(readSmodels(str, observer, opts) == 0);
 
         REQUIRE(observer.heuristics.size() == 4);
 
-        Heuristic exp[] = {{static_cast<Atom_t>(a), DomModifier::sign, -1, 1, {h1}},
-                           {static_cast<Atom_t>(a), DomModifier::true_, 1, 1, {h2}},
-                           {static_cast<Atom_t>(b), DomModifier::level, -1, 10, {h3}},
-                           {static_cast<Atom_t>(b), DomModifier::factor, 2, 1, {h4}}};
+        Heuristic exp[] = {{a, DomModifier::sign, -1, 1, toCond(h1)},
+                           {a, DomModifier::true_, 1, 1, toCond(h2)},
+                           {b, DomModifier::level, -1, 10, toCond(h3)},
+                           {b, DomModifier::factor, 2, 1, toCond(h4)}};
         REQUIRE(std::equal(std::begin(exp), std::end(exp), observer.heuristics.begin()) == true);
     }
 }

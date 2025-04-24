@@ -127,9 +127,9 @@ namespace Potassco {
 struct ExpressionInfo {
     std::string_view     expression;
     std::source_location location;
-    //! Returns @c loc's @c file_name() relative to source root directory.
+    //! Returns `loc's` `file_name()` relative to source root directory.
     /*!
-     * \note If the given location is not from the same source tree, @c file_name() is returned unmodified.
+     * \note If the given location is not from the same source tree, `file_name()` is returned unmodified.
      */
     static const char* relativeFileName(const std::source_location& loc);
 };
@@ -140,14 +140,14 @@ struct ExpressionInfo {
 using AbortHandler = void (*)(const char* msg);
 //! Sets handler as the new abort handler and returns the previously installed handler.
 /*!
- * \note A given handler shall either abort the program or throw an exception. If no handler is set, @c std::abort() is
+ * \note A given handler shall either abort the program or throw an exception. If no handler is set, `std::abort()` is
  *       used as the abort handler.
  */
 extern AbortHandler setAbortHandler(AbortHandler handler);
 
 //! Sets x87 floating-point unit to double precision if needed and returns the previous configuration.
 /*!
- * \note This function does nothing (and returns 0) if x87 floating-point unit is not active.
+ * \note This function does nothing (and returns 0) if the x87 floating-point unit is not active.
  * \note x87 floating-point unit is typically only used on x86_32 (x86_64 uses SSE by default).
  * \return The previous configuration or UINT32_MAX if configuration failed.
  */

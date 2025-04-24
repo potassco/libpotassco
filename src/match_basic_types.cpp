@@ -30,29 +30,26 @@
 #include <istream>
 #include <utility>
 namespace Potassco {
-#define POTASSCO_UNSUPPORTED(msg) POTASSCO_FAIL(Errc::domain_error, msg)
+#define POTASSCO_UNSUPPORTED(what) POTASSCO_FAIL(Errc::domain_error, what " not supported")
 
 AbstractProgram::~AbstractProgram() = default;
 void AbstractProgram::initProgram(bool) {}
 void AbstractProgram::beginStep() {}
-void AbstractProgram::project(AtomSpan) { POTASSCO_UNSUPPORTED("projection directive not supported"); }
-void AbstractProgram::output(std::string_view, LitSpan) { POTASSCO_UNSUPPORTED("output directive not supported"); }
-void AbstractProgram::outputAtom(Atom_t a, std::string_view name) {
-    Lit_t c = lit(a);
-    output(name, toSpan(c));
-}
-void AbstractProgram::external(Atom_t, TruthValue) { POTASSCO_UNSUPPORTED("external directive not supported"); }
-void AbstractProgram::assume(LitSpan) { POTASSCO_UNSUPPORTED("assumption directive not supported"); }
+void AbstractProgram::project(AtomSpan) { POTASSCO_UNSUPPORTED("projection"); }
+void AbstractProgram::outputTerm(Id_t, std::string_view) { POTASSCO_UNSUPPORTED("output term"); }
+void AbstractProgram::output(Id_t, LitSpan) { POTASSCO_UNSUPPORTED("output term"); }
+void AbstractProgram::external(Atom_t, TruthValue) { POTASSCO_UNSUPPORTED("externals"); }
+void AbstractProgram::assume(LitSpan) { POTASSCO_UNSUPPORTED("assumptions"); }
 void AbstractProgram::heuristic(Atom_t, DomModifier, int, unsigned, LitSpan) {
-    POTASSCO_UNSUPPORTED("heuristic directive not supported");
+    POTASSCO_UNSUPPORTED("heuristic directive");
 }
-void AbstractProgram::acycEdge(int, int, LitSpan) { POTASSCO_UNSUPPORTED("edge directive not supported"); }
-void AbstractProgram::theoryTerm(Id_t, int) { POTASSCO_UNSUPPORTED("theory data not supported"); }
-void AbstractProgram::theoryTerm(Id_t, std::string_view) { POTASSCO_UNSUPPORTED("theory data not supported"); }
-void AbstractProgram::theoryTerm(Id_t, int, IdSpan) { POTASSCO_UNSUPPORTED("theory data not supported"); }
-void AbstractProgram::theoryElement(Id_t, IdSpan, LitSpan) { POTASSCO_UNSUPPORTED("theory data not supported"); }
-void AbstractProgram::theoryAtom(Id_t, Id_t, IdSpan) { POTASSCO_UNSUPPORTED("theory data not supported"); }
-void AbstractProgram::theoryAtom(Id_t, Id_t, IdSpan, Id_t, Id_t) { POTASSCO_UNSUPPORTED("theory data not supported"); }
+void AbstractProgram::acycEdge(int, int, LitSpan) { POTASSCO_UNSUPPORTED("edge directive"); }
+void AbstractProgram::theoryTerm(Id_t, int) { POTASSCO_UNSUPPORTED("theory data"); }
+void AbstractProgram::theoryTerm(Id_t, std::string_view) { POTASSCO_UNSUPPORTED("theory data"); }
+void AbstractProgram::theoryTerm(Id_t, int, IdSpan) { POTASSCO_UNSUPPORTED("theory data"); }
+void AbstractProgram::theoryElement(Id_t, IdSpan, LitSpan) { POTASSCO_UNSUPPORTED("theory data"); }
+void AbstractProgram::theoryAtom(Id_t, Id_t, IdSpan) { POTASSCO_UNSUPPORTED("theory data"); }
+void AbstractProgram::theoryAtom(Id_t, Id_t, IdSpan, Id_t, Id_t) { POTASSCO_UNSUPPORTED("theory data"); }
 void AbstractProgram::endStep() {}
 /////////////////////////////////////////////////////////////////////////////////////////
 // BufferedStream

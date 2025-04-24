@@ -81,6 +81,18 @@ struct SmodelsConvert::SmData {
         unsigned    cond{};
     };
     using SymTab = std::unordered_map<Atom_t, ConstString>;
+    struct OutTerm {
+        OutTerm(ScratchType& scratch, std::string_view n) : name(makePred(scratch, "_show_term", n)) {}
+        void step() {
+            if (auto prev = std::exchange(atom, 0u); prev) {
+                last = prev;
+            }
+        }
+        Atom_t      atom{0u};
+        Atom_t      last{0u};
+        ConstString name;
+    };
+    using TermTab = std::unordered_map<Id_t, OutTerm>;
     struct Output {
         enum Type : uint8_t { type_name = 0, type_edge = 1 };
         struct EdgeT {
@@ -88,6 +100,7 @@ struct SmodelsConvert::SmData {
             int32_t t;
         };
         explicit Output(SymTab::iterator it) : atom(it->first), type(type_name), name(&it->second) {}
+        explicit Output(const OutTerm& term) : atom(term.atom), type(type_name), name(&term.name) {}
         Output(Atom_t a, int32_t s, int32_t t) : atom(a), type(type_edge), edge{s, t} {}
         std::string_view makePred(ScratchType& scratch) const {
             return type == type_name ? name->view() : SmData::makePred(scratch, "_edge"sv, edge.s, edge.t);
@@ -163,7 +176,12 @@ struct SmodelsConvert::SmData {
         output.emplace_back(it);
         return it;
     }
-
+    void addTerm(Id_t termId, std::string_view str) {
+        auto [it, added] = termTab.try_emplace(termId, scratch, str);
+        POTASSCO_CHECK_PRE(added || it->second.name.view() == str,
+                           "Redefinition: term '%u:%.*s' already defined as '%s'", termId, static_cast<int>(str.size()),
+                           str.data(), it->second.name.c_str());
+    }
     void addMinimize(Weight_t prio, WeightLitSpan lits) {
         if (minimize.empty() || minimize.back().prio != prio) {
             minimize.push_back({.prio = prio, .startPos = minLits.size(), .endPos = minLits.size()});
@@ -199,12 +217,14 @@ struct SmodelsConvert::SmData {
 
     AtomMap     atoms;     // maps input atoms to output atoms
     SymTab      symTab;    // maps output atoms to their names
+    TermTab     termTab;   // maps output terms to their names
     AtomVec     external;  // external atoms
     HeuVec      heuristic; // list of heuristic modifications not yet processed
     MinSet      minimize;  // set of minimize constraints
     WLitVec     minLits;   // minimize literals
     OutVec      output;    // list of output atoms not yet processed
     RuleBuilder rule;      // active (mapped) rule
+    ScratchType scratch;   // scratch buffer
     Atom_t      next{2};   // next unused output atom
 };
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -217,22 +237,31 @@ SmodelsConvert::SmodelsConvert(AbstractProgram& out, bool ext)
 SmodelsConvert::~SmodelsConvert() = default;
 Lit_t    SmodelsConvert::get(Lit_t in) const { return data_->mapLit(in); }
 unsigned SmodelsConvert::maxAtom() const { return data_->next - 1; }
-Atom_t   SmodelsConvert::makeAtom(LitSpan cond, bool named) {
+Atom_t   SmodelsConvert::makeAtom(LitSpan lits, Lit_t last, bool named) {
+    auto   sz    = lits.size() + static_cast<uint32_t>(last != 0);
+    auto   front = lits.empty() ? last : lits.front();
     Atom_t id;
-    if (cond.size() != 1 || cond[0] < 0 || (data_->mapAtom(atom(cond[0])).show && named)) {
-        // aux :- cond.
+    if (sz != 1 || front <= 0 || (data_->mapAtom(atom(front)).show && named)) {
+        // aux :- lits [, last]
         data_->rule.clear().addHead(id = data_->newAtom());
-        data_->mapBody(cond).end(&out_);
+        auto& r = data_->mapBody(lits);
+        if (last) {
+            r.addGoal(last);
+        }
+        r.end(&out_);
     }
     else {
-        SmData::Atom& ma = data_->mapAtom(atom(cond.front()));
+        SmData::Atom& ma = data_->mapAtom(atom(front));
         ma.show          = static_cast<unsigned>(named);
         id               = ma.smId;
     }
     return id;
 }
 void SmodelsConvert::initProgram(bool inc) { out_.initProgram(inc); }
-void SmodelsConvert::beginStep() { out_.beginStep(); }
+void SmodelsConvert::beginStep() {
+    out_.beginStep();
+    for (auto& t : data_->termTab) { t.second.step(); }
+}
 void SmodelsConvert::rule(HeadType ht, AtomSpan head, LitSpan body) {
     if (not head.empty() || ht == HeadType::disjunctive) {
         data_->mapHead(head, ht).startBody();
@@ -263,25 +292,36 @@ void SmodelsConvert::rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitS
 }
 
 void SmodelsConvert::minimize(Weight_t prio, WeightLitSpan lits) { data_->addMinimize(prio, lits); }
-void SmodelsConvert::output(std::string_view str, LitSpan cond) {
-    // create a unique atom for cond and set its name to str
-    data_->addOutput(makeAtom(cond, true), str);
+void SmodelsConvert::outputAtom(Atom_t atom, std::string_view name) {
+    POTASSCO_CHECK_PRE(atom, "atom expected");
+    auto cond = lit(atom);
+    data_->addOutput(makeAtom(toSpan(cond), 0, true), name);
 }
-
+void SmodelsConvert::outputTerm(Id_t termId, std::string_view name) { data_->addTerm(termId, name); }
+void SmodelsConvert::output(Id_t termId, LitSpan cond) {
+    auto it = data_->termTab.find(termId);
+    POTASSCO_CHECK_PRE(it != data_->termTab.end(), "Undefined: term %u is unknown", termId);
+    auto condAtom = makeAtom(cond, neg(it->second.last), false);
+    if (not it->second.atom) {
+        it->second.atom = data_->newAtom();
+        data_->output.emplace_back(it->second);
+    }
+    data_->rule.clear().addHead(it->second.atom).addGoal(lit(condAtom)).end(&out_);
+}
 void SmodelsConvert::external(Atom_t a, TruthValue v) { data_->addExternal(a, v); }
 void SmodelsConvert::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan cond) {
     if (not ext_) {
         out_.heuristic(a, t, bias, prio, cond);
     }
     // create unique atom representing _heuristic(...)
-    Atom_t heuPred = makeAtom(cond, true);
+    Atom_t heuPred = makeAtom(cond, 0, true);
     data_->addHeuristic(a, t, bias, prio, heuPred);
 }
 void SmodelsConvert::acycEdge(int s, int t, LitSpan condition) {
     if (not ext_) {
         out_.acycEdge(s, t, condition);
     }
-    data_->output.emplace_back(makeAtom(condition, true), s, t);
+    data_->output.emplace_back(makeAtom(condition, 0, true), s, t);
 }
 
 void SmodelsConvert::flush() {
@@ -357,16 +397,12 @@ void SmodelsConvert::flushHeuristic() {
             ma.show = 1;
             it      = data_->addOutput(ma.sm(), ma.makePred(scratch));
         }
-        auto c = static_cast<Lit_t>(heu.cond);
-        out_.output(heu.makePred(scratch, it->second.view()), toSpan(c));
+        out_.outputAtom(heu.cond, heu.makePred(scratch, it->second.view()));
     }
 }
 void SmodelsConvert::flushSymbols() {
     SmData::ScratchType scratch;
     std::ranges::sort(data_->output, std::less{}, [](const SmData::Output& o) { return o.atom; });
-    for (const auto& sym : data_->output) {
-        auto x = static_cast<Lit_t>(sym.atom);
-        out_.output(sym.makePred(scratch), toSpan(x));
-    }
+    for (const auto& sym : data_->output) { out_.outputAtom(sym.atom, sym.makePred(scratch)); }
 }
 } // namespace Potassco
