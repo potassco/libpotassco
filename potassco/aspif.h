@@ -59,8 +59,14 @@ POTASSCO_SET_DEFAULT_ENUM_MAX(TheoryType::atom_with_guard);
 //! Class for parsing logic programs in asp intermediate format.
 class AspifInput final : public ProgramReader {
 public:
+    //! Possible mapping modes for aspif v1 output directives.
+    enum class OutputMapping {
+        term      = 0, //!< Map to outputTerm().
+        atom      = 1, //!< Map to outputAtom() if the condition is a single atom or is empty and the input has a fact.
+        atom_fact = 2, //!< Like `atom`, but map an empty condition to the user-provided fact atom.
+    };
     //! Creates a new parser object that calls `out` on each parsed element.
-    explicit AspifInput(AbstractProgram& out, bool mapTerms);
+    explicit AspifInput(AbstractProgram& out, OutputMapping mapOutput = OutputMapping::atom, Atom_t fact = 0);
 
 private:
     struct Extra;
@@ -85,8 +91,8 @@ private:
     Extra*           data_;
     uint32_t         version_{0};
     Id_t             nextTerm_{0};
-    Atom_t           lastFact_{0};
-    bool             mapTerms_{true};
+    Atom_t           fact_{0};
+    OutputMapping    mapOutput_{OutputMapping::atom};
 };
 ///@}
 

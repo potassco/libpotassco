@@ -1049,6 +1049,14 @@ TEST_CASE("Test AspifInput", "[aspif]") {
             REQUIRE(s1.second.size() == 1);
         }
         SECTION("read output with empty condition") {
+            SECTION("with fixed fact atom") {
+                input << AspifType::output << " 1 a 0\n";
+                input << AspifType::output << " 3 foo 0\n";
+                finalize(input);
+                AspifInput reader(observer, AspifInput::OutputMapping::atom_fact, 15u);
+                REQUIRE(readProgram(input, reader) == 0);
+                REQUIRE(observer.atoms.at(15u) == "a;foo");
+            }
             SECTION("without fact") {
                 input << AspifType::output << " 1 a 0\n";
                 REQUIRE(finalize(input, observer) == 0);

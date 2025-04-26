@@ -48,7 +48,11 @@ struct AspifInput::Extra {
     uint32_t                 nextFact{0};
 };
 
-AspifInput::AspifInput(AbstractProgram& out, bool mapTerms) : out_(out), data_(nullptr), mapTerms_(mapTerms) {}
+AspifInput::AspifInput(AbstractProgram& out, OutputMapping mapOutput, Atom_t fact)
+    : out_(out)
+    , data_(nullptr)
+    , fact_(fact)
+    , mapOutput_(mapOutput) {}
 
 // asp <major> <minor> <revision>[tag...]
 bool AspifInput::doAttach(bool& inc) {
@@ -69,8 +73,8 @@ bool AspifInput::doParse() {
     POTASSCO_SCOPE_EXIT({ data_ = nullptr; });
     data_      = &data;
     auto& rule = data.rule;
-    if (lastFact_) {
-        data.facts.push_back(lastFact_);
+    if (fact_ && mapOutput_ == OutputMapping::atom) {
+        data.facts.push_back(fact_);
     }
     out_.beginStep();
     for (AspifType rt; (rt = matchEnum<AspifType>("rule type or 0 expected")) != AspifType::end; rule.clear()) {
@@ -84,7 +88,7 @@ bool AspifInput::doParse() {
                 matchAtoms();
                 if (auto bt = matchEnum<BodyType>("invalid body type"); bt == BodyType::normal) {
                     matchLits();
-                    if (version_ == 1 && rule.isFact()) {
+                    if (version_ == 1 && mapOutput_ == OutputMapping::atom && rule.isFact()) {
                         data_->facts.push_back(rule.head().front());
                     }
                 }
@@ -110,9 +114,12 @@ bool AspifInput::doParse() {
                     matchString();
                     matchLits();
                     if (auto cond = data_->rule.body();
-                        mapTerms_ && (cond.empty() || (cond.size() == 1 && cond.front() > 0))) {
-                        if (cond.size() == 1 || data.hasFact()) {
-                            auto a = not cond.empty() ? atom(cond.front()) : data.popFact();
+                        mapOutput_ != OutputMapping::term && (cond.empty() || (cond.size() == 1 && cond.front() > 0))) {
+                        if (not cond.empty()) {
+                            out_.outputAtom(atom(cond.front()), data_->sym.view());
+                        }
+                        else if (mapOutput_ == OutputMapping::atom_fact || data_->hasFact()) {
+                            auto a = mapOutput_ == OutputMapping::atom_fact ? fact_ : data.popFact();
                             out_.outputAtom(a, data_->sym.view());
                         }
                         else {
@@ -164,8 +171,8 @@ bool AspifInput::doParse() {
             outTerm(sym.view(), {});
         }
     }
-    if (not lastFact_ && not data.facts.empty()) {
-        lastFact_ = data.facts.front();
+    if (not fact_ && not data.facts.empty()) {
+        fact_ = data.facts.front();
     }
     out_.endStep();
     return true;
@@ -257,7 +264,7 @@ void AspifInput::matchTheory(TheoryType t) {
 }
 
 int readAspif(std::istream& prg, AbstractProgram& out) {
-    AspifInput reader(out, true);
+    AspifInput reader(out, AspifInput::OutputMapping::atom);
     return readProgram(prg, reader);
 }
 /////////////////////////////////////////////////////////////////////////////////////////
