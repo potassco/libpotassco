@@ -63,8 +63,8 @@ constexpr std::from_chars_result success(std::string_view& x, std::size_t pop) {
     return {.ptr = std::data(x), .ec = {}};
 }
 bool matchOpt(std::string_view& in, char v);
-bool eqIgnoreCase(const char* lhs, const char* rhs, std::size_t n);
-bool eqIgnoreCase(const char* lhs, const char* rhs);
+bool eqIgnoreCase(std::string_view, std::string_view);
+bool eqIgnoreCase(std::string_view, std::string_view, std::size_t n);
 } // namespace Parse
 ///////////////////////////////////////////////////////////////////////////////
 // chars -> T
@@ -75,7 +75,7 @@ std::from_chars_result fromChars(std::string_view in, bool& out);
 template <std::integral T>
 requires(not std::is_same_v<T, bool>)
 std::from_chars_result fromChars(std::string_view in, T& out) {
-    std::from_chars_result res;
+    std::from_chars_result res; // NOLINT
     if constexpr (std::is_unsigned_v<T>) {
         std::uintmax_t temp;
         if (res = Detail::parseUnsigned(in, temp, std::numeric_limits<T>::max()); Parse::ok(res)) {
@@ -175,9 +175,8 @@ std::from_chars_result fromChars(std::string_view in, EnumT& out) {
     else {
         // try extraction "by name"
         for (const auto& [key, val] : Potassco::enum_entries<EnumT>()) {
-            auto n   = val.size();
-            auto res = in.size() >= n && Parse::eqIgnoreCase(in.data(), val.data(), n);
-            if (res && (n == in.size() || in[n] == ',')) {
+            auto n = val.size();
+            if (Parse::eqIgnoreCase(in, val, n) && (n == in.size() || in[n] == ',')) {
                 out = static_cast<EnumT>(key);
                 ret = Parse::success(in, n);
                 break;
@@ -289,13 +288,13 @@ std::errc stringTo(std::string_view arg, T& x) {
 ///////////////////////////////////////////////////////////////////////////////
 template <typename T>
 requires requires(std::string& out, T& in) { toChars(out, in); }
-inline constexpr std::string toString(const T& x) {
+constexpr std::string toString(const T& x) {
     std::string out;
     toChars(out, x);
     return out;
 }
 template <typename T, typename U>
-inline std::string toString(const T& x, const U& y) {
+std::string toString(const T& x, const U& y) {
     std::string res;
     toChars(res, x).append(1, ',');
     return toChars(res, y);

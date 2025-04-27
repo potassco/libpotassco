@@ -35,7 +35,7 @@ public:
     explicit Error(const std::string& what) : std::logic_error(what) {}
 };
 
-//! Used for signaling errors on command-line and in declaring options.
+//! Used for signaling errors on the command-line and in declaring options.
 class SyntaxError : public Error {
 public:
     enum Type { missing_value, extra_value, invalid_format };

@@ -31,13 +31,13 @@ namespace Potassco::ProgramOptions::Detail {
 
 class RefCountable {
 public:
-    constexpr RefCountable() noexcept : refCount_(1) {}
+    constexpr RefCountable() noexcept = default;
     constexpr int               addRef() noexcept { return ++refCount_; }
     constexpr int               release() noexcept { return --refCount_; }
     [[nodiscard]] constexpr int refCount() const noexcept { return refCount_; }
 
 private:
-    int refCount_;
+    int refCount_{1};
 };
 
 template <typename T>

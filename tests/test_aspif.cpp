@@ -1053,9 +1053,12 @@ TEST_CASE("Test AspifInput", "[aspif]") {
                 input << AspifType::output << " 1 a 0\n";
                 input << AspifType::output << " 3 foo 0\n";
                 finalize(input);
-                AspifInput reader(observer, AspifInput::OutputMapping::atom_fact, 15u);
+                auto factAtom = GENERATE(15u, 0u);
+                CAPTURE(factAtom);
+                observer.allowZeroAtom = factAtom == 0;
+                AspifInput reader(observer, AspifInput::OutputMapping::atom_fact, factAtom);
                 REQUIRE(readProgram(input, reader) == 0);
-                REQUIRE(observer.atoms.at(15u) == "a;foo");
+                REQUIRE(observer.atoms.at(lit(factAtom)) == "a;foo");
             }
             SECTION("without fact") {
                 input << AspifType::output << " 1 a 0\n";

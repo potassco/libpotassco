@@ -146,7 +146,7 @@ std::from_chars_result parseFloatImpl(std::string_view in, T& out) {
                         return ok ? Parse::success(inView, std::min(pos, inView.size())) : Parse::error(inView);
                     }
                     // Some prefix was matched but not converted.
-                    // NOTE: libc++ for example will fail to extract a double from "123.23Foo" while both strtod and
+                    // NOTE: libc++, for example, will fail to extract a double from "123.23Foo" while both strtod and
                     //       std::from_chars will extract "123.23" while leaving "Foo" in the input.
                     cv = cv.substr(0, pos - 1);
                     clear();
@@ -182,7 +182,7 @@ char* writeUnsigned(char* first, char* last, std::uintmax_t in) {
 }
 
 char* writeFloat(char* first, char* last, double in) {
-    // Set precision = 6 to match default behavior of (s)printf.
+    // Set precision = 6 to match the default behavior of (s)printf.
     auto r = std::to_chars(first, last, in, std::chars_format::general, 6);
     POTASSCO_CHECK(r.ec == std::errc{}, r.ec, "std::to_chars could not convert double %g", in);
     return r.ptr;
@@ -190,8 +190,15 @@ char* writeFloat(char* first, char* last, double in) {
 
 } // namespace Detail
 namespace Parse {
-bool eqIgnoreCase(const char* lhs, const char* rhs, std::size_t n) { return strncasecmp(lhs, rhs, n) == 0; }
-bool eqIgnoreCase(const char* lhs, const char* rhs) { return strcasecmp(lhs, rhs) == 0; }
+bool eqIgnoreCase(std::string_view lhs, std::string_view rhs) {
+    // NOLINTNEXTLINE(bugprone-suspicious-stringview-data-usage)
+    return lhs.size() == rhs.size() && (lhs.empty() || strncasecmp(lhs.data(), rhs.data(), lhs.size()) == 0);
+}
+bool eqIgnoreCase(std::string_view lhs, std::string_view rhs, std::size_t n) {
+    // NOLINTNEXTLINE(bugprone-suspicious-stringview-data-usage)
+    return lhs.size() >= n && rhs.size() >= n && (not n || strncasecmp(lhs.data(), rhs.data(), n) == 0);
+}
+
 bool matchOpt(std::string_view& in, char v) {
     if (in.starts_with(v)) {
         in.remove_prefix(1);

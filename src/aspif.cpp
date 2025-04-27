@@ -73,10 +73,11 @@ bool AspifInput::doParse() {
     POTASSCO_SCOPE_EXIT({ data_ = nullptr; });
     data_      = &data;
     auto& rule = data.rule;
-    if (fact_ && mapOutput_ == OutputMapping::atom) {
+    if (fact_ || mapOutput_ == OutputMapping::atom_fact) {
         data.facts.push_back(fact_);
     }
     out_.beginStep();
+    auto keepFacts = version_ == 1 && mapOutput_ == OutputMapping::atom;
     for (AspifType rt; (rt = matchEnum<AspifType>("rule type or 0 expected")) != AspifType::end; rule.clear()) {
         switch (rt) {
             default:
@@ -88,7 +89,7 @@ bool AspifInput::doParse() {
                 matchAtoms();
                 if (auto bt = matchEnum<BodyType>("invalid body type"); bt == BodyType::normal) {
                     matchLits();
-                    if (version_ == 1 && mapOutput_ == OutputMapping::atom && rule.isFact()) {
+                    if (keepFacts && rule.isFact()) {
                         data_->facts.push_back(rule.head().front());
                     }
                 }
@@ -118,9 +119,8 @@ bool AspifInput::doParse() {
                         if (not cond.empty()) {
                             out_.outputAtom(atom(cond.front()), data_->sym.view());
                         }
-                        else if (mapOutput_ == OutputMapping::atom_fact || data_->hasFact()) {
-                            auto a = mapOutput_ == OutputMapping::atom_fact ? fact_ : data.popFact();
-                            out_.outputAtom(a, data_->sym.view());
+                        else if (data_->hasFact()) {
+                            out_.outputAtom(data.popFact(), data_->sym.view());
                         }
                         else {
                             data.factTerms.emplace_back(data_->sym.view());

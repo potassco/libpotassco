@@ -26,6 +26,7 @@
 #include <potassco/application.h>
 
 #include <potassco/error.h>
+#include <potassco/program_opts/errors.h>
 #include <potassco/program_opts/typed_value.h>
 
 #include <atomic>

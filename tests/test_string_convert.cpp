@@ -293,6 +293,26 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(x[1][0] == 3);
         REQUIRE(x[1][1] == 4);
     }
+
+    SECTION("eqIgnoreCase") {
+        REQUIRE(Potassco::Parse::eqIgnoreCase({}, {}));
+        REQUIRE_FALSE(Potassco::Parse::eqIgnoreCase({}, "H"));
+        REQUIRE_FALSE(Potassco::Parse::eqIgnoreCase("H", {}));
+        REQUIRE(Potassco::Parse::eqIgnoreCase("H", "H"));
+        REQUIRE(Potassco::Parse::eqIgnoreCase("h", "H"));
+        REQUIRE(Potassco::Parse::eqIgnoreCase("haLlO", "HALLO"));
+        REQUIRE_FALSE(Potassco::Parse::eqIgnoreCase("haLlO_", "HALLO"));
+    }
+    SECTION("eqIgnoreCase n") {
+        REQUIRE_FALSE(Potassco::Parse::eqIgnoreCase({}, {}, 1));
+        REQUIRE(Potassco::Parse::eqIgnoreCase({}, {}, 0));
+
+        REQUIRE_FALSE(Potassco::Parse::eqIgnoreCase({}, "H", 1));
+        REQUIRE(Potassco::Parse::eqIgnoreCase("H", "H", 1));
+        REQUIRE_FALSE(Potassco::Parse::eqIgnoreCase("H", "H", 2));
+        REQUIRE(Potassco::Parse::eqIgnoreCase("haL", "HALx", 3));
+        REQUIRE(Potassco::Parse::eqIgnoreCase("haL", "HALx", 3));
+    }
 }
 
 enum class Foo : unsigned { value1 = 0, value2 = 1, value3 = 2, value4, value5 = 7, value6 = 7 + 1 };

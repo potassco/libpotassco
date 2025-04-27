@@ -72,42 +72,27 @@ std::size_t DefaultFormat::format(std::string& buffer, const Option& o, std::siz
     }
     return buffer.size() - startSize;
 }
-std::size_t DefaultFormat::format(std::string& buffer, const char* desc, const Value& val, std::size_t) {
-    std::size_t minS = strlen(desc);
-    const char* temp = nullptr;
-    if (not desc) {
-        desc = "";
-    }
-
+std::size_t DefaultFormat::format(std::string& buffer, std::string_view desc, const Value& val,
+                                  std::string_view valSep) {
     const auto startSize = buffer.size();
-    buffer.reserve(startSize + minS + 2);
-    buffer.append(1, ':').append(1, ' ');
-    for (const char* look;; ++desc) {
-        look = desc;
-        while (*look && *look != '%') { ++look; }
-        if (look != desc) {
-            buffer.append(desc, look);
-        }
-        if (not *look++ || not *look) {
+    buffer.reserve(startSize + desc.length() + valSep.length());
+    buffer.append(valSep);
+    for (;;) {
+        auto next = desc.substr(0, desc.find('%'));
+        buffer.append(next);
+        desc.remove_prefix(std::min(next.length() + 1, desc.length()));
+        if (desc.empty()) {
             break;
         }
-        if (*look == 'D') {
-            temp = val.defaultsTo();
+        const char* replace = nullptr;
+        switch (desc.front()) {
+            case 'A': replace = val.arg(); break;
+            case 'D': replace = val.defaultsTo(); break;
+            case 'I': replace = val.implicit(); break;
+            default : buffer.push_back(desc.front()); break;
         }
-        else if (*look == 'A') {
-            temp = val.arg();
-        }
-        else if (*look == 'I') {
-            temp = val.implicit();
-        }
-        else {
-            buffer.push_back(*look);
-        }
-        if (temp) {
-            buffer.append(temp);
-        }
-        desc = look;
-        temp = nullptr;
+        desc.remove_prefix(1u);
+        buffer.append(replace ? replace : "");
     }
     buffer.push_back('\n');
     return buffer.size() - startSize;
@@ -334,7 +319,7 @@ size_t OptionContext::findGroupKey(const std::string& name) const {
 OptionContext& OptionContext::add(const OptionGroup& group) {
     size_t k = findGroupKey(group.caption());
     if (k >= groups_.size()) {
-        // add as new group
+        // add as a new group
         k = groups_.size();
         groups_.emplace_back(group.caption(), group.descLevel());
     }
@@ -459,7 +444,7 @@ std::string OptionContext::defaults(std::size_t n) const {
     std::string opt;
     opt.reserve(80);
     for (int g = 0; g < 2; ++g) {
-        // print all subgroups followed by main group
+        // print all subgroups followed by the main group
         for (std::size_t i = (g == 0), end = (g == 0) ? groups_.size() : 1; i < end; ++i) {
             if (groups_[i].descLevel() <= dl) {
                 for (const auto& optPtr : groups_[i]) {
@@ -755,7 +740,7 @@ private:
         }
         tok_.clear();
         static constexpr std::string_view special{"\"'\\"};
-        // find end of current arg
+        // find the end of the current arg
         for (char c, t = ' '; (c = *cmd_) != 0; ++cmd_) {
             if (c == t) {
                 if (t == ' ') {
@@ -817,10 +802,10 @@ private:
         std::string sectionValue;      // current section value
         bool        inSection = false; // true if multi line section value
         FindType    ft        = OptionContext::find_name_or_prefix;
-        // reads the config file.
+        // Reads the config file.
         // A config file may only contain empty lines, single line comments or
         // sections structured in a name = value fashion.
-        // value can span multiple lines, but parts in different lines than name
+        // Value can span multiple lines, but parts in different lines than name
         // must not contain a `=`-Character.
         for (std::string line; std::getline(in_, line);) {
             ++lineNr;
@@ -828,7 +813,7 @@ private:
             trimRight(line);
 
             if (line.empty() || line.starts_with('#')) {
-                // An empty line or single line comment stops a multi line section value.
+                // An empty line or single line comment stops a multi-line section value.
                 if (inSection) {
                     if (auto opt = getOption(sectionName.c_str(), ft); opt.get()) {
                         addOptionValue(opt, sectionValue);
@@ -839,7 +824,7 @@ private:
             }
 
             if (auto pos = line.find('='); pos != std::string::npos) {
-                // A new section terminates a multi line section value.
+                // A new section terminates a multi-line section value.
                 // First process the current section value...
                 if (auto opt = inSection ? getOption(sectionName.c_str(), ft) : SharedOptPtr{}; opt.get()) {
                     addOptionValue(opt, sectionValue);

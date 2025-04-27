@@ -45,8 +45,8 @@ namespace Potassco::ProgramOptions {
  * a (typed) value, and an optional default value.
  *
  * \note
- *   When printing an option, occurrences of %D, %I and %A in its description are replaced
- *   with the option's default value, implicit value and the argument name,
+ *   When printing an option, occurrences of %D, %I, and %A in its description are replaced
+ *   with the option's default value, implicit value, and the argument name,
  *   respectively.
  */
 class Option : public Detail::RefCountable {
@@ -124,7 +124,7 @@ public:
      */
     OptionInitHelper addOptions();
 
-    //! Adds option to this group.
+    //! Adds the given option to this group.
     void addOption(const SharedOptPtr& option);
 
     void setDescriptionLevel(DescriptionLevel level) { level_ = level; }
@@ -151,7 +151,7 @@ public:
      * \param val  Value of the option
      * \param desc Description of the option
      *
-     * \note If <name> is followed by an exclamation mark ('!')
+     * \note If <name> is followed by an exclamation mark ('!'),
      *       the option is marked as negatable.
      */
     OptionInitHelper& operator()(const char* key, Value* val, const char* desc);
@@ -190,9 +190,9 @@ public:
     //! Adds the given group of options to this context.
     /*!
      * \note  If this object already contains a group with
-     *        the same caption as group, the groups are merged.
+     *        the same caption as `group`, the groups are merged.
      *
-     * \throw DuplicateOption if an option in group
+     * \throw DuplicateOption if an option in `group`
      *        has the same short or long name as one of the
      *        options in this context.
      */
@@ -226,17 +226,17 @@ public:
 
     //! Returns the option with the given key.
     /*!
-     * \note The second parameter defines how key is interpreted:
-     *        - find_name:   search for an option whose name equals key.
-     *        - find_prefix: search for an option whose name starts with the given key.
-     *        - find_alias:  search for an option whose alias equals key.
-     *       .
+     * \note The second parameter defines how `key` is interpreted:
+     *        - find_name:   search for an option whose name equals `key`.
+     *        - find_prefix: search for an option whose name starts with `key`.
+     *        - Find_alias:  search for an option whose alias equals `key`.
      *
-     * \note If second parameter is find_alias, a starting '-'
-     *       in key is valid but not required.
      *
-     * \throw UnknownOption if no option matches key.
-     * \throw AmbiguousOption if more than one option matches key.
+     * \note If the second parameter is find_alias, a starting '-'
+     *       in `key` is valid but not required.
+     *
+     * \throw UnknownOption if no option matches `key`.
+     * \throw AmbiguousOption if more than one option matches `key`.
      */
     option_iterator find(const char* key, FindType t = find_name) const;
     /*!
@@ -253,7 +253,7 @@ public:
     [[nodiscard]] const OptionGroup& findGroup(const std::string& caption) const;
     [[nodiscard]] const OptionGroup* tryFindGroup(const std::string& caption) const;
 
-    //! Sets the description level to be used when generating description.
+    //! Sets the description level to be used when generating a description.
     /*!
      * Once set, functions generating descriptions will only consider groups
      * and options with description level <= std::min(level, desc_level_all).
@@ -310,8 +310,8 @@ public:
      * \param p       parsed values to assign
      * \param exclude options that should be ignored during value assignment
      *
-     * \throw ValueError if p contains more than one value
-     *        for a non-composing option or if p contains a value that is
+     * \throw ValueError if `p` contains more than one value
+     *        for a non-composing option, or if `p` contains a value that is
      *        invalid for its option.
      */
     bool assign(const ParsedValues& p, const ParsedOptions* exclude = nullptr);
@@ -387,10 +387,10 @@ struct DefaultFormat {
     static std::size_t format(std::string& buffer, const Option& o, std::size_t maxW);
     //! Writes description to buffer.
     /*!
-     * Occurrences of %D, %I and %A in desc are replaced with
+     * Occurrences of %D, %I, and %A in desc are replaced with
      * the value's default value, implicit value, and name, respectively.
      */
-    static std::size_t format(std::string& buffer, const char* desc, const Value&, std::size_t maxW);
+    static std::size_t format(std::string& buffer, std::string_view desc, const Value&, std::string_view valSep = ": ");
 };
 
 //! Base class for printing options.
@@ -408,14 +408,9 @@ template <typename Formatter = DefaultFormat>
 class OptionOutputImpl : public OptionOutput {
 public:
     using Sink = std::function<void(std::string_view)>;
-    //! Writes formatted option descriptions to given FILE.
+    //! Writes formatted option descriptions to the given FILE.
     explicit OptionOutputImpl(FILE* f, const Formatter& form = Formatter())
-        : OptionOutputImpl(
-              [f](std::string_view view) {
-                  fwrite(view.data(), 1, view.size(), f);
-                  ;
-              },
-              form) {}
+        : OptionOutputImpl([f](std::string_view view) { fwrite(view.data(), 1, view.size(), f); }, form) {}
     //! Writes formatted option descriptions to given std::string.
     explicit OptionOutputImpl(std::string& str, const Formatter& form = Formatter())
         : OptionOutputImpl([&str](std::string_view view) { str.append(std::data(view), std::size(view)); }, form) {}
@@ -437,7 +432,7 @@ public:
     }
     bool printOption(const Option& opt, std::size_t maxW) override {
         writeBuffer(formatter_.format(buffer_, opt, maxW));
-        writeBuffer(formatter_.format(buffer_, opt.description(), *opt.value(), maxW));
+        writeBuffer(formatter_.format(buffer_, opt.description(), *opt.value()));
         return true;
     }
 
@@ -457,7 +452,7 @@ using OptionPrinter = OptionOutputImpl<>;
 // parse functions
 ///////////////////////////////////////////////////////////////////////////////
 /*!
- * A function type that is used by parsers for processing tokens that
+ * A function type that parsers use for processing tokens that
  * have no option name. Concrete functions shall either return true
  * and store the name of the option that should receive the token as value
  * in its second argument or return false to signal an error.
@@ -479,7 +474,7 @@ enum CommandLineFlags { command_line_allow_flag_value = 1u };
  * \return A ParsedOptions-Object containing names and values for all options found.
  *
  * \throw SyntaxError if command line syntax is incorrect.
- * \throw UnknownOption if allowUnregistered is false and an argument is found
+ * \throw UnknownOption if allowUnregistered is false, and an argument is found
  * that does not match any option.
  */
 ParsedValues parseCommandLine(int& argc, char** argv, const OptionContext& ctx, bool allowUnregistered = true,
@@ -499,7 +494,7 @@ ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsign
  * \return A ParsedOptions-Object containing names and values for all options found.
  *
  * \throw SyntaxError if argument syntax is incorrect.
- * \throw UnknownOption if allowUnregistered is false and an argument is found
+ * \throw UnknownOption if allowUnregistered is false, and an argument is found
  * that does not match any option.
  */
 ParsedValues parseCommandArray(const char* const args[], int nArgs, const OptionContext& ctx,
@@ -516,7 +511,7 @@ ParsedValues parseCommandArray(const char* const args[], int nArgs, const Option
  * \return A ParsedOptions-Object containing names and values for all options found.
  *
  * \throw SyntaxError if command line syntax is incorrect.
- * \throw UnknownOption if an argument is found that does not match any option.
+ * \throw UnknownOption if an argument is found, that does not match any option.
  */
 ParsedValues  parseCommandString(const std::string& cmd, const OptionContext& ctx, bool allowUnreg = false,
                                  PosOption posParser = nullptr, unsigned flags = command_line_allow_flag_value);
@@ -531,7 +526,7 @@ ParseContext& parseCommandString(const char* cmd, ParseContext& ctx, unsigned fl
  * \return A ParsedOptions-Object containing names and values for all options found.
  *
  * \throw SyntaxError if command line syntax is incorrect.
- * \throw UnknownOption if an argument is found that does not match any option.
+ * \throw UnknownOption if an argument is found, that does not match any option.
  * \note Keys are option's long names.
  * \note Lines starting with # are treated as comments and are ignored.
  */

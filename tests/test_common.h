@@ -78,7 +78,7 @@ public:
     }
     void acycEdge(int s, int t, LitSpan cond) override { edges.push_back({s, t, {begin(cond), end(cond)}}); }
     void outputAtom(Atom_t a, std::string_view str) override {
-        POTASSCO_CHECK_PRE(a, "invalid atom");
+        POTASSCO_CHECK_PRE(a || allowZeroAtom, "invalid atom");
         if (auto& s = atoms[lit(a)]; s.empty()) {
             s = str;
         }
@@ -91,7 +91,8 @@ public:
     AtomMap        atoms;
     Vec<Heuristic> heuristics;
     Vec<Edge>      edges;
-    int            nStep       = 0;
-    bool           incremental = false;
+    int            nStep         = 0;
+    bool           incremental   = false;
+    bool           allowZeroAtom = false;
 };
 } // namespace Potassco::Test

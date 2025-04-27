@@ -256,6 +256,7 @@ TEST_CASE("Test context", "[options]") {
         Po::OptionPrinter out(ex);
         g.format(out, 20);
         REQUIRE(ex.find("Some int <n> in %") != std::string::npos);
+        REQUIRE(ex.find("%%") == std::string::npos);
     }
     SECTION("option description supports default value placeholder '%D'") {
         int x;
@@ -264,6 +265,39 @@ TEST_CASE("Test context", "[options]") {
         Po::OptionPrinter out(ex);
         g.format(out, 20);
         REQUIRE(ex.find("Some int (Default: 99)") != std::string::npos);
+    }
+    SECTION("option description supports default value placeholder '%I'") {
+        int x;
+        g.addOptions()("foo", Po::storeTo(x)->implicit("99"), "Some int (Implicit: %I)");
+        std::string       ex;
+        Po::OptionPrinter out(ex);
+        g.format(out, 20);
+        REQUIRE(ex.find("Some int (Implicit: 99)") != std::string::npos);
+    }
+    SECTION("default value format") {
+        int                    x;
+        std::unique_ptr<Value> val(Po::storeTo(x));
+        std::string            out;
+        SECTION("empty") {
+            DefaultFormat::format(out, "", *val, "");
+            REQUIRE(out == "\n");
+        }
+        SECTION("empty with sep") {
+            DefaultFormat::format(out, "", *val);
+            REQUIRE(out == ": \n");
+        }
+        SECTION("missing replace value") {
+            DefaultFormat::format(out, "Default: [%D]", *val, "");
+            REQUIRE(out == "Default: []\n");
+        }
+        SECTION("missing replace char") {
+            DefaultFormat::format(out, "Default: %", *val, "");
+            REQUIRE(out == "Default: \n");
+        }
+        SECTION("missing unknown replace char") {
+            DefaultFormat::format(out, "Default: [%x]", *val, "");
+            REQUIRE(out == "Default: [x]\n");
+        }
     }
 }
 

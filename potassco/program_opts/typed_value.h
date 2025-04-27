@@ -25,7 +25,6 @@
 //
 #pragma once
 
-#include <potassco/program_opts/errors.h>
 #include <potassco/program_opts/string_convert.h>
 #include <potassco/program_opts/value.h>
 
@@ -64,7 +63,7 @@ auto values(std::vector<std::pair<std::string, EnumT>> vec) {
 template <typename EnumT, typename OutT>
 bool parseValue(const std::vector<std::pair<std::string, EnumT>>& candidates, const std::string& in, OutT& out) {
     for (const auto& [key, value] : candidates) {
-        if (key.length() == in.length() && Parse::eqIgnoreCase(key.c_str(), in.c_str(), in.length())) {
+        if (Parse::eqIgnoreCase(key, in)) {
             out = static_cast<OutT>(value);
             return true;
         }
@@ -103,7 +102,7 @@ inline bool store_false(const std::string& v, bool& b) {
 }
 
 /*!
- * Creates a value that is bound to an existing variable.
+ * Creates a value bound to an existing variable.
  * Assignments to the created value are directly stored in the given variable.
  *
  * \param v The variable to which the new value object is bound.
@@ -120,7 +119,7 @@ Value* storeTo(T& v, T init) {
 }
 
 /*!
- * Creates a value that is bound to an existing variable.
+ * Creates a value bound to an existing variable.
  * Assignments to the created value are directly stored in the given variable.
  *
  * \param v The variable to which the new value object is bound.
@@ -148,7 +147,7 @@ inline Value* flag(bool& b, bool init, bool (*action)(const std::string&, bool&)
 }
 
 /*!
- * Creates an action value, i.e. a value for which an action function is called once it was parsed.
+ * Creates an action value, i.e., a value for which an action function is called once it was parsed.
  *
  * \param action A callable to be invoked once a value has been parsed.
  *
@@ -162,7 +161,7 @@ Value* action(C&& action) {
 }
 
 /*!
- * Creates an action value, i.e. a value for which an action function is called once it was parsed.
+ * Creates an action value, i.e., a value for which an action function is called once it was parsed.
  *
  * \param action A callable to be invoked once a value has been parsed.
  * \param parser The parser to use for parsing the value.
@@ -183,7 +182,7 @@ Value* flag(C&& c, bool (*x)(const std::string&, bool&) = store_true) {
 }
 
 /*!
- * Creates a custom value, i.e. a value that is fully controlled by the caller.
+ * Creates a custom value, i.e., a value that is fully controlled by the caller.
  *
  * During parsing of options, the given callable is called with its option name and the parsed value.
  * The return value of the callable determines whether the value is considered valid (true) or invalid (false).

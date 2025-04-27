@@ -66,14 +66,14 @@ public:
     /*!
      * Sets the (initial) state of this value to s.
      */
-    Value* state(Value::State s) {
+    Value* state(State s) {
         state(true, s);
         return this;
     }
 
     //! Returns the name of this value.
     /*!
-     * \note The default name is "<arg>" unless isFlag() is true in which
+     * \note The default name is "<arg>" unless isFlag() is true, in which
      *       case the default is "".
      */
     [[nodiscard]] const char* arg() const;
@@ -100,8 +100,8 @@ public:
 
     //! Returns true if this is the value of a negatable option.
     /*!
-     * If an option '--option' is negatable, passing '--no-option'
-     * on the command-line will set the value of '--option' to 'no'.
+     * If an option `--option` is negatable, passing `--no-option`
+     * on the command-line will set the value of `--option` to `no`.
      */
     [[nodiscard]] bool isNegatable() const { return negatable_ != 0; }
     Value*             negatable() {
@@ -109,15 +109,15 @@ public:
         return this;
     }
 
-    //! Returns true if value can be implicitly created from an empty string.
+    //! Returns true if the value can be implicitly created from an empty string.
     /*!
-     * \note the implicit value comes into play if the corresponding
+     * \note The implicit value comes into play if the corresponding
      *       option is present but without an adjacent value.
      *
-     * \note an explicit value for an implicit value is only used if
-     *       it is unambiguously given. E.g. on the command-line one has
-     *       to use '--option=value' or '-ovalue' but *not* '--option value'
-     *       or '-o value'.
+     * \note An explicit value for an implicit value is only used if
+     *       it is unambiguously given. E.g., on the command-line one has
+     *       to use `--option=value` or `-ovalue` but *not* `--option value`
+     *       or `-o value`.
      */
     [[nodiscard]] bool isImplicit() const { return implicit_ != 0; }
 
@@ -126,12 +126,12 @@ public:
      * Similar to isImplicit but with the difference that
      * no value is accepted on the command-line.
      *
-     * Used for options like '--help' or '--version'.
+     * Used for options like `--help` or `--version`.
      */
     [[nodiscard]] bool isFlag() const { return flag_ != 0; }
 
     /*!
-     * Marks the value as flag.
+     * Marks the value as a flag.
      * \see bool Value::isFlag() const
      */
     Value* flag() {
@@ -155,12 +155,12 @@ public:
      * Sets a default value for this value.
      */
     Value* defaultsTo(const char* v) { return desc(desc_default, v); }
-    //! Returns the default value of this or 0 none exists
+    //! Returns the default value of this or 0 if none exists.
     [[nodiscard]] const char* defaultsTo() const { return desc(desc_default); }
     /*!
      * Sets an implicit value, which will be used
-     * if option is given without an adjacent value,
-     * e.g. '--option' instead of '--option value'
+     * if the option is given without an adjacent value,
+     * e.g. `--option` instead of `--option value`
      * \see bool Value::isImplicit() const
      */
     Value* implicit(const char* str) { return desc(desc_implicit, str); }
