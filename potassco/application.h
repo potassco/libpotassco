@@ -34,7 +34,11 @@ namespace Potassco {
 class Application {
 public:
     //! Description of and max value for the help option.
-    using HelpOpt = std::pair<const char*, unsigned>;
+    struct HelpOpt {
+        HelpOpt(ProgramOptions::Str str, unsigned lev) : desc(str), max(lev) {}
+        ProgramOptions::Str desc;
+        unsigned            max;
+    };
 
     Application(Application&&) = delete;
 
@@ -53,7 +57,7 @@ public:
     //! Returns the application's help option and its description.
     [[nodiscard]] virtual HelpOpt getHelpOption() const { return {"Print help information and exit", 1}; }
     //! Returns the name of the option that should receive the given positional value or nullptr if not supported.
-    [[nodiscard]] virtual const char* getPositional([[maybe_unused]] const std::string& value) const { return nullptr; }
+    [[nodiscard]] virtual const char* getPositional([[maybe_unused]] std::string_view value) const { return nullptr; }
     //@}
 
     /*!
@@ -61,6 +65,8 @@ public:
      */
     //@{
     //! Runs this application with the given command-line arguments.
+    int main(std::span<const char* const> args);
+    //! Runs this application with the given command-line arguments, skipping the first argument.
     int main(int argc, char** argv);
     //! Sets the value that should be returned as the application's exit code.
     void setExitCode(int n);
@@ -169,7 +175,7 @@ private:
         return os;
     }
     void              write(std::ostream& os, MessageType type, const char* msg) const;
-    bool              applyOptions(int argc, char** argv);
+    bool              applyOptions(std::span<const char* const> args);
     void              handleException();
     static void       initInstance(Application& app);
     static void       resetInstance(const Application& app);

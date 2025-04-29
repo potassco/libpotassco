@@ -57,6 +57,7 @@ public:
     [[nodiscard]] constexpr T*   get() const noexcept { return ptr_; }
     [[nodiscard]] constexpr bool unique() const noexcept { return ptr_ == nullptr || ptr_->refCount() == 1; }
     [[nodiscard]] constexpr int  count() const noexcept { return ptr_ ? ptr_->refCount() : 0; }
+    constexpr explicit           operator bool() const noexcept { return ptr_ != nullptr; }
 
     constexpr void reset() noexcept { release(); }
     constexpr void swap(IntrusiveSharedPtr& b) noexcept { std::swap(ptr_, b.ptr_); }

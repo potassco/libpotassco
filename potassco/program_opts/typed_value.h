@@ -31,86 +31,104 @@
 #include <vector>
 
 namespace Potassco::ProgramOptions {
-struct Parser {
+template <typename C, typename T>
+concept ActionFunction = std::is_invocable_v<C, std::string_view, T> || std::is_invocable_v<C, T>;
+
+//! Parser adapter for Potassco::stringTo.
+struct DefaultParser {
     template <typename T>
-    bool operator()(const std::string& v, T& out) const {
+    bool operator()(std::string_view v, T& out) const {
         return Parse::ok(Potassco::stringTo(v, out));
     }
 };
-
-template <typename T, typename P, typename A>
-bool runAction(const std::string& name, const std::string& value, const P& p, const A& act) {
-    T out;
-    if (not p(value, out)) {
+//! Parser adapter for parsing a fixed set of values.
+template <typename V>
+struct ParseValues {
+    explicit ParseValues(std::vector<std::pair<std::string, V>> candidates) : values(std::move(candidates)) {}
+    template <typename T>
+    bool operator()(std::string_view in, T& out) const {
+        for (const auto& [key, value] : values) {
+            if (Parse::eqIgnoreCase(key, in)) {
+                out = static_cast<T>(value);
+                return true;
+            }
+        }
         return false;
     }
-    if constexpr (std::is_invocable_v<A, std::string, T>) {
-        act(name, out);
-    }
-    else {
-        act(out);
-    }
-    return true;
-}
-///////////////////////////////////////////////////////////////////////////////
-// Enumeration Parser: string->int mapping
-///////////////////////////////////////////////////////////////////////////////
-template <typename EnumT>
-auto values(std::vector<std::pair<std::string, EnumT>> vec) {
-    return vec;
-}
+    std::vector<std::pair<std::string, V>> values;
+};
 
-template <typename EnumT, typename OutT>
-bool parseValue(const std::vector<std::pair<std::string, EnumT>>& candidates, const std::string& in, OutT& out) {
-    for (const auto& [key, value] : candidates) {
-        if (Parse::eqIgnoreCase(key, in)) {
-            out = static_cast<OutT>(value);
-            return true;
-        }
-    }
-    return false;
-}
-///////////////////////////////////////////////////////////////////////////////
-// TypedValue
-///////////////////////////////////////////////////////////////////////////////
-template <typename Callable>
-class TypedValue : public Value {
+//! Value type for storing a parsed value directly into a given variable.
+template <typename T, typename P = DefaultParser>
+class Store : public Value {
 public:
-    explicit TypedValue(Callable func) : func_(std::move(func)) {}
-    bool doParse(const std::string& opt, const std::string& value) override { return func_(opt, value); }
+    Store(T& v, P p) : address_(&v), parser_(std::move(p)) {}
+    bool doParse(std::string_view, std::string_view value) override { return parser_(value, *address_); }
 
 private:
-    Callable func_;
+    T*                                address_;
+    POTASSCO_ATTR_NO_UNIQUE_ADDRESS P parser_{};
+};
+
+//! Value type for calling a user-provided action function.
+template <typename T, ActionFunction<T> C, typename P = DefaultParser>
+class Action : public Value {
+public:
+    Action(C callable, P p) : action_(std::move(callable)), parser_(std::move(p)) {}
+    bool doParse([[maybe_unused]] std::string_view opt, std::string_view value) override {
+        T out;
+        if (not parser_(value, out)) {
+            return false;
+        }
+        if constexpr (std::is_invocable_v<C, std::string_view, T>) {
+            action_(opt, out);
+        }
+        else {
+            action_(out);
+        }
+        return true;
+    }
+
+private:
+    C                                 action_;
+    POTASSCO_ATTR_NO_UNIQUE_ADDRESS P parser_{};
+};
+
+//! Value type for calling a user-provided option handler.
+template <typename Callable>
+class Custom : public Value {
+public:
+    explicit Custom(Callable func) : handler_(std::move(func)) {}
+    bool doParse([[maybe_unused]] std::string_view opt, std::string_view value) override {
+        if constexpr (std::is_invocable_v<Callable, std::string_view, std::string_view>) {
+            return handler_(opt, value);
+        }
+        else {
+            return handler_(value);
+        }
+    }
+
+private:
+    Callable handler_;
 };
 ///////////////////////////////////////////////////////////////////////////////
 // value factories
 ///////////////////////////////////////////////////////////////////////////////
-inline bool store_true(const std::string& v, bool& b) {
-    if (bool temp = v.empty(); temp || Parser{}(v, temp)) {
-        b = temp;
-        return true;
-    }
-    return false;
+//! Returns a parser for mapping a string to some EnumT.
+template <typename EnumT>
+auto values(std::vector<std::pair<std::string, EnumT>> vec) -> ParseValues<EnumT> {
+    return ParseValues<EnumT>{std::move(vec)};
 }
-
-inline bool store_false(const std::string& v, bool& b) {
-    if (bool temp; store_true(v, temp)) {
-        b = not temp;
-        return true;
-    }
-    return false;
-}
-
 /*!
- * Creates a value bound to an existing variable.
+ * Creates a value bound to the given variable.
  * Assignments to the created value are directly stored in the given variable.
  *
  * \param v The variable to which the new value object is bound.
+ * \param parser The (optional) parser to use for converting from string to T.
  */
-template <typename T>
-Value* storeTo(T& v) {
-    return new TypedValue{
-        [address = &v](const std::string&, const std::string& value) { return Parser{}(value, *address); }};
+template <typename T, typename P = DefaultParser>
+Value* storeTo(T& v, P&& parser = P()) {
+    return new Store{v, std::forward<P>(parser)};
 }
 
 template <typename T>
@@ -119,66 +137,46 @@ Value* storeTo(T& v, T init) {
 }
 
 /*!
- * Creates a value bound to an existing variable.
- * Assignments to the created value are directly stored in the given variable.
- *
- * \param v The variable to which the new value object is bound.
- * \param parser The parser to use for parsing the value.
- */
-template <typename T, typename P>
-Value* storeTo(T& v, P parser) {
-    return new TypedValue{[address = &v, parser = std::move(parser)](const std::string&, const std::string& value) {
-        return parser(value, *address);
-    }};
-}
-
-template <typename T, typename U = T>
-Value* storeTo(T& v, std::vector<std::pair<std::string, U>> values) {
-    return storeTo(
-        v, [values = std::move(values)](const std::string& val, T& out) { return parseValue(values, val, out); });
-}
-
-inline Value* flag(bool& b, bool (*action)(const std::string&, bool&) = store_true) {
-    return storeTo(b, action)->flag();
-}
-
-inline Value* flag(bool& b, bool init, bool (*action)(const std::string&, bool&) = store_true) {
-    return flag(b = init, action);
-}
-
-/*!
  * Creates an action value, i.e., a value for which an action function is called once it was parsed.
  *
- * \param action A callable to be invoked once a value has been parsed.
- *
- * \see OptionGroup::addOptions()
- */
-template <typename T, typename C>
-Value* action(C&& action) {
-    return new TypedValue{[act = std::forward<C>(action)](const std::string& name, const std::string& value) {
-        return runAction<T>(name, value, Parser(), act);
-    }};
-}
-
-/*!
- * Creates an action value, i.e., a value for which an action function is called once it was parsed.
- *
- * \param action A callable to be invoked once a value has been parsed.
+ * \param action A callable to be invoked once a value of `T` has been parsed.
  * \param parser The parser to use for parsing the value.
  *
  * \see OptionGroup::addOptions()
  */
-template <typename T, typename C, typename P>
-Value* action(C&& action, P parser) {
-    return new TypedValue{
-        [act = std::forward<C>(action), parser = std::move(parser)](const std::string& name, const std::string& value) {
-            return runAction<T>(name, value, parser, act);
-        }};
+template <typename T, ActionFunction<T> C, typename P = DefaultParser>
+Value* action(C&& action, P&& parser = P()) {
+    return new Action<T, C, P>{std::forward<C>(action), std::forward<P>(parser)};
 }
 
-template <typename C>
-Value* flag(C&& c, bool (*x)(const std::string&, bool&) = store_true) {
-    return action<bool>(std::forward<C>(c), x)->flag();
+//! Alternative flag action.
+constexpr inline auto store_false = [](std::string_view v, bool& b) {
+    if (bool temp; DefaultParser{}(v, temp)) {
+        b = not temp;
+        return true;
+    }
+    return false;
+};
+
+//! Creates a flag value with an optional action function.
+/*!
+ * \param b A boolean variable that should receive parsed values or a callable to invoke when a value is parsed.
+ * \param pa An optional parser for converting a string into a boolean value.
+ */
+template <typename F, typename P = DefaultParser>
+Value* flag(F&& b, P&& pa = P()) {
+    static_assert(std::is_same_v<F, bool&> or ActionFunction<F, bool>,
+                  "'b' must be a modifiable lvalue reference to bool or a callable");
+    if constexpr (ActionFunction<F, bool>) {
+        return action<bool>(std::forward<F>(b), std::forward<P>(pa))->flag();
+    }
+    else {
+        return storeTo(std::forward<F>(b), std::forward<P>(pa))->flag();
+    }
+}
+template <typename P = DefaultParser>
+Value* flag(bool& b, bool init, P&& pa = P()) {
+    return storeTo(b = init, std::forward<P>(pa))->flag();
 }
 
 /*!
@@ -193,15 +191,7 @@ Value* flag(C&& c, bool (*x)(const std::string&, bool&) = store_true) {
  */
 template <typename C>
 Value* parse(C&& parser) {
-    return new TypedValue{
-        [parser = std::forward<C>(parser)]([[maybe_unused]] const std::string& name, const std::string& value) {
-            if constexpr (std::is_invocable_v<C, std::string, std::string>) {
-                return parser(name, value);
-            }
-            else {
-                return parser(value);
-            }
-        }};
+    return new Custom{std::forward<C>(parser)};
 }
 
 } // namespace Potassco::ProgramOptions

@@ -27,6 +27,8 @@
 
 #include <potassco/program_opts/errors.h>
 
+#include <potassco/bits.h>
+
 #include <algorithm> // std::sort
 #include <cassert>
 #include <cctype>
@@ -105,26 +107,26 @@ std::size_t DefaultFormat::format(std::string& buffer, const OptionGroup& grp) {
     }
     return buffer.size() - startSize;
 }
+const char* Str::clone(Str source) {
+    auto tmp = std::make_unique<char[]>(std::strlen(source.c_str()) + 1);
+    std::strcpy(tmp.get(), source.c_str());
+    return tmp.release();
+}
 ///////////////////////////////////////////////////////////////////////////////
 // class Value
 ///////////////////////////////////////////////////////////////////////////////
-Value::Value(State initial)
-    : desc_()
-    , state_(static_cast<uint8_t>(initial))
-    , descFlag_(0)
-    , optAlias_(0)
-    , implicit_(0)
-    , flag_(0)
-    , composing_(0)
-    , negatable_(0)
-    , level_(0) {
-    desc_.value = nullptr;
+Value::Value(State initial) : state_(static_cast<uint8_t>(initial)) {
     static_assert(sizeof(Value) == sizeof(void*) * 3, "unexpected size");
 }
 
 Value::~Value() {
-    if (descFlag_ == desc_pack) {
-        ::operator delete(desc_.pack);
+    for (auto x : {desc_name, desc_default, desc_implicit}) {
+        if (test_bit(own_, x)) {
+            delete[] desc(x);
+        }
+    }
+    if (descVal_ == desc_pack) {
+        ::operator delete(static_cast<void*>(desc_.pack));
     }
 }
 
@@ -135,37 +137,47 @@ const char* Value::arg() const {
     return isFlag() ? "" : "<arg>";
 }
 
-Value* Value::desc(DescType t, const char* d) {
-    if (d == nullptr) {
-        return this;
-    }
+Value* Value::desc(DescType t, Str s) {
     if (t == desc_implicit) {
         implicit_ = 1;
-        if (not *d) {
+        if (s.empty()) {
             return this;
         }
     }
-    if (descFlag_ == 0 || descFlag_ == t) {
-        desc_.value = d;
-        descFlag_   = static_cast<uint8_t>(t);
+    if (descVal_ == t || (descVal_ == 0 && desc_.value == nullptr)) {
+        copyOrBorrow(&desc_.value, s, t);
+        descVal_ = static_cast<uint8_t>(t);
         return this;
     }
-    if (descFlag_ != desc_pack) {
-        const char* oldVal = desc_.value;
-        unsigned    oldKey = descFlag_ >> 1u;
-        desc_.pack         = static_cast<const char**>(::operator new(sizeof(const char* [3])));
-        desc_.pack[0] = desc_.pack[1] = desc_.pack[2] = nullptr;
-        descFlag_                                     = desc_pack;
-        desc_.pack[oldKey]                            = oldVal;
+    if (descVal_ != desc_pack) {
+        auto* pack = static_cast<const char**>(::operator new(sizeof(const char* [3])));
+        pack[0] = pack[1] = pack[2] = nullptr;
+        pack[descVal_]              = desc_.value;
+        desc_.pack                  = pack;
+        descVal_                    = desc_pack;
     }
-    desc_.pack[t >> 1u] = d;
+    copyOrBorrow(&desc_.pack[t], s, t);
     return this;
 }
-const char* Value::desc(DescType t) const {
-    if (descFlag_ == t || descFlag_ == desc_pack) {
-        return descFlag_ == t ? desc_.value : desc_.pack[t >> 1u];
+void Value::copyOrBorrow(const char** target, Str source, DescType t) {
+    if (test_bit(own_, t)) {
+        delete[] *target;
     }
-    return nullptr;
+    if (source.isLit()) {
+        *target = source.c_str();
+        own_    = clear_bit(own_, t);
+    }
+    else {
+        *target = Str::clone(source);
+        own_    = set_bit(own_, t);
+    }
+}
+
+const char* Value::desc(DescType t) const {
+    if (descVal_ == desc_pack) {
+        return desc_.pack[t];
+    }
+    return t == descVal_ ? desc_.value : nullptr;
 }
 
 const char* Value::implicit() const {
@@ -176,7 +188,7 @@ const char* Value::implicit() const {
     return x ? x : "1";
 }
 
-bool Value::parse(const std::string& name, const std::string& value, State st) {
+bool Value::parse(std::string_view name, std::string_view value, State st) {
     if (not value.empty() || not isImplicit()) {
         return state(doParse(name, value), st);
     }
@@ -187,13 +199,36 @@ bool Value::parse(const std::string& name, const std::string& value, State st) {
 ///////////////////////////////////////////////////////////////////////////////
 // class Option
 ///////////////////////////////////////////////////////////////////////////////
-Option::Option(std::string_view longName, char alias, const char* desc, Value* v)
+Option::Option(std::string_view longName, char alias, Str desc, Value* v)
     : name_(longName)
-    , description_(desc ? desc : "")
+    , description_(desc.c_str())
     , value_(v) {
     assert(v);
     assert(not longName.empty());
     value_->alias(alias);
+    if (not desc.isLit()) {
+        description_ = Str::clone(desc);
+        value_->rtDesc(true);
+    }
+}
+Option::~Option() {
+    if (value_ && value_->rtDesc()) {
+        delete[] description_;
+    }
+}
+Option::Option(Option&& opt) noexcept
+    : name_(std::move(opt.name_))
+    , description_(std::exchange(opt.description_, nullptr))
+    , value_(std::move(opt.value_)) {}
+
+Option& Option::operator=(Option&& rhs) noexcept {
+    if (this != &rhs) {
+        Option t(std::move(*this));
+        name_        = std::move(rhs.name_);
+        description_ = std::exchange(rhs.description_, nullptr);
+        value_       = std::move(rhs.value_);
+    }
+    return *this;
 }
 
 std::size_t Option::maxColumn() const {
@@ -253,7 +288,7 @@ void OptionGroup::format(OptionOutput& out, size_t maxW, DescriptionLevel dl) co
 ///////////////////////////////////////////////////////////////////////////////
 OptionInitHelper::OptionInitHelper(OptionGroup& owner) : owner_(&owner) {}
 
-OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, const char* desc) {
+OptionInitHelper& OptionInitHelper::operator()(const char* name, Value* val, Str desc) {
     std::unique_ptr<Value> cleanup(val);
     if (not name || not *name || *name == ',' || *name == '!') {
         throw Error("Invalid empty option name");
@@ -307,7 +342,7 @@ OptionContext::OptionContext(std::string_view caption, DescriptionLevel def) : c
 
 auto   OptionContext::caption() const -> const std::string& { return caption_; }
 void   OptionContext::setActiveDescLevel(DescriptionLevel level) { descLevel_ = std::min(level, desc_level_all); }
-size_t OptionContext::findGroupKey(const std::string& name) const {
+size_t OptionContext::findGroupKey(std::string_view name) const {
     for (size_t i = 0; i != groups_.size(); ++i) {
         if (groups_[i].caption() == name) {
             return i;
@@ -328,23 +363,24 @@ OptionContext& OptionContext::add(const OptionGroup& group) {
     return *this;
 }
 
-OptionContext& OptionContext::addAlias(const std::string& aliasName, option_iterator option) {
+OptionContext& OptionContext::addAlias(std::string aliasName, option_iterator option) {
     if (option != end() && not aliasName.empty()) {
-        if (auto k = static_cast<KeyType>(option - begin());
-            not index_.insert(Name2Key::value_type(aliasName, k)).second) {
-            throw DuplicateOption(caption(), aliasName);
+        auto k         = static_cast<KeyType>(option - begin());
+        auto [it, ins] = index_.try_emplace(std::move(aliasName), k);
+        if (not ins) {
+            throw DuplicateOption(caption(), it->first);
         }
     }
     return *this;
 }
 
-const OptionGroup& OptionContext::findGroup(const std::string& name) const {
+const OptionGroup& OptionContext::findGroup(std::string_view name) const {
     if (std::size_t x = findGroupKey(name); x < groups_.size()) {
         return groups_[x];
     }
     throw ContextError(caption(), ContextError::unknown_group, name);
 }
-const OptionGroup* OptionContext::tryFindGroup(const std::string& name) const {
+const OptionGroup* OptionContext::tryFindGroup(std::string_view name) const {
     std::size_t x = findGroupKey(name);
     return x < groups_.size() ? &groups_[x] : nullptr;
 }
@@ -372,38 +408,36 @@ void OptionContext::insertOption(size_t groupId, const SharedOptPtr& opt) {
     groups_[groupId].options_.push_back(opt);
 }
 
-OptionContext::option_iterator OptionContext::find(const char* key, FindType t) const {
+OptionContext::option_iterator OptionContext::find(std::string_view key, FindType t) const {
     return options_.begin() + static_cast<std::ptrdiff_t>(findImpl(key, t, static_cast<unsigned>(-1)).first->second);
 }
 
-OptionContext::option_iterator OptionContext::tryFind(const char* key, FindType t) const {
+OptionContext::option_iterator OptionContext::tryFind(std::string_view key, FindType t) const {
     PrefixRange r = findImpl(key, t, 0u);
     return std::distance(r.first, r.second) == 1 ? options_.begin() + static_cast<std::ptrdiff_t>(r.first->second)
                                                  : end();
 }
 
-OptionContext::PrefixRange OptionContext::findImpl(const char* key, FindType t, unsigned eMask,
-                                                   const std::string& eCtx) const {
-    std::string k(key ? key : "");
-    if (t == find_alias && not k.empty() && k[0] != '-') {
-        k    += k[0];
-        k[0]  = '-';
+OptionContext::PrefixRange OptionContext::findImpl(std::string_view key, FindType t, unsigned eMask,
+                                                   std::string_view eCtx) const {
+    std::string alias;
+    if (t == find_alias && not key.starts_with('-')) {
+        alias.append(1, '-').append(key);
+        key = alias;
     }
-    auto it = index_.lower_bound(k);
+    auto it = index_.lower_bound(key);
     auto up = it;
     if (it != index_.end()) {
-        if ((it->first == k) && ((t & (find_alias | find_name)) != 0)) {
+        if ((it->first == key) && ((t & (find_alias | find_name)) != 0)) {
             ++up;
         }
         else if ((t & find_prefix) != 0) {
-            k  += static_cast<char>(CHAR_MAX);
-            up  = index_.upper_bound(k);
-            k.erase(k.end() - 1);
+            while (up->first.starts_with(key) && ++up != index_.end()) {}
         }
     }
     if (std::distance(it, up) != 1 && eMask) {
         if ((eMask & 1u) && it == up) {
-            throw UnknownOption(eCtx, k);
+            throw UnknownOption(eCtx, key);
         }
         if ((eMask & 2u) && it != up) {
             std::string str;
@@ -412,7 +446,7 @@ OptionContext::PrefixRange OptionContext::findImpl(const char* key, FindType t, 
                 str += it->first;
                 str += "\n";
             }
-            throw AmbiguousOption(eCtx, k, str);
+            throw AmbiguousOption(eCtx, key, str);
         }
     }
     return {it, up};
@@ -540,8 +574,8 @@ int ParsedOptions::assign(const Option& o, const std::string& value) {
 ///////////////////////////////////////////////////////////////////////////////
 // class ParsedValues
 ///////////////////////////////////////////////////////////////////////////////
-void ParsedValues::add(const std::string& name, const std::string& value) {
-    if (auto it = ctx->tryFind(name.c_str()); it != ctx->end()) {
+void ParsedValues::add(std::string_view name, std::string_view value) {
+    if (auto it = ctx->tryFind(name); it != ctx->end()) {
         add(*it, value);
     }
 }
@@ -565,64 +599,71 @@ class CommandLineParser : public OptionParser {
 public:
     enum OptionType { short_opt, long_opt, end_opt, no_opt };
     CommandLineParser(ParseContext& ctx, unsigned f) : OptionParser(ctx), flags(f) {}
-    std::vector<const char*> remaining;
-    unsigned                 flags;
+    unsigned flags;
+    unsigned consumed{0};
 
 private:
-    virtual const char* next() = 0;
-    void                doParse() override {
-        bool        breakEarly = false;
-        int         posKey     = 0;
-        const char* curr;
-        while ((curr = next()) != nullptr && not breakEarly) {
+    virtual std::string_view next() = 0;
+    void                     doParse() override {
+        bool breakEarly = false;
+        int  posKey     = 0;
+        for (std::string_view curr; not(curr = next()).empty() && not breakEarly;) {
             switch (getOptionType(curr)) {
                 case short_opt:
-                    if (handleShortOpt(curr + 1)) {
-                        curr = nullptr;
+                    if (handleShortOpt(curr.substr(1))) {
+                        curr = {};
                     }
                     break;
                 case long_opt:
-                    if (handleLongOpt(curr + 2)) {
-                        curr = nullptr;
+                    if (handleLongOpt(curr.substr(2))) {
+                        curr = {};
                     }
                     break;
                 case end_opt:
-                    curr       = nullptr;
+                    curr       = {};
                     breakEarly = true;
                     break;
                 case no_opt: {
                     SharedOptPtr opt = getOption(posKey++, curr);
                     if (opt.get()) {
                         addOptionValue(opt, curr);
-                        curr = nullptr;
+                        curr = {};
                     }
                     break;
                 }
                 default: assert(0);
             }
-            if (curr) {
-                remaining.push_back(curr);
+            if (curr.empty()) {
+                ++consumed;
             }
         }
-        while (curr) {
-            remaining.push_back(curr);
-            curr = next();
+    }
+    static OptionType getOptionType(std::string_view o) {
+        if (o.starts_with("--")) {
+            return o.size() > 2 ? long_opt : end_opt;
+        }
+        return o.starts_with('-') && o.size() > 1 ? short_opt : no_opt;
+    }
+    template <typename ErrorCb>
+    [[nodiscard]] auto getOpt(std::string_view optName, ErrorCb&& cb) const -> SharedOptPtr {
+        try {
+            return getOption(optName, OptionContext::find_name_or_prefix);
+        }
+        catch (const ContextError& error) {
+            return std::forward<ErrorCb>(cb)(error.type());
+        }
+        catch (...) {
+            return std::forward<ErrorCb>(cb)(static_cast<ContextError::Type>(-1));
         }
     }
-    static OptionType getOptionType(const char* o) {
-        if (strncmp(o, "--", 2) == 0) {
-            return o[2] ? long_opt : end_opt;
-        }
-        return *o == '-' && *(o + 1) != '\0' ? short_opt : no_opt;
-    }
-    bool handleShortOpt(const char* optName) {
+    bool handleShortOpt(std::string_view optName) {
         // either -o value or -o[value|opts]
-        char optn[2];
-        optn[1] = '\0';
-        while (*optName) {
-            optn[0]         = *optName;
-            const char* val = optName + 1;
-            if (auto o = getOption(optn, OptionContext::find_alias); o.get()) {
+        char             tmp[2] = {'-', 0};
+        std::string_view opt(tmp, 2);
+        while (not optName.empty()) {
+            tmp[1]   = optName.front();
+            auto val = optName.substr(1);
+            if (auto o = getOption(opt, OptionContext::find_alias); o.get()) {
                 if (o->value()->isImplicit()) {
                     // -ovalue or -oopts
                     if (not o->value()->isFlag()) {
@@ -631,16 +672,16 @@ private:
                         return true;
                     }
                     // -o + more options
-                    addOptionValue(o, "");
-                    ++optName;
+                    addOptionValue(o, {});
+                    optName.remove_prefix(1);
                 }
-                else if (val = *val == 0 ? next() : val; val) {
+                else if (val = val.empty() ? next() : val; not val.empty()) {
                     //  -ovalue or -o value
                     addOptionValue(o, val);
                     return true;
                 }
                 else {
-                    throw SyntaxError(SyntaxError::missing_value, optn);
+                    throw SyntaxError(SyntaxError::missing_value, opt);
                 }
             }
             else {
@@ -649,54 +690,34 @@ private:
         }
         return true;
     }
-    bool handleLongOpt(const char* optName) {
-        string name(optName);
-        string value;
-        if (auto p = name.find('='); p != string::npos) {
-            value.assign(name, p + 1, string::npos);
-            name.erase(p, string::npos);
-        }
-        SharedOptPtr o, on;
-        bool         neg = false;
-        if (value.empty() && std::strncmp(optName, "no-", 3) == 0) {
-            try {
-                on = getOption(optName + 3, OptionContext::find_name_or_prefix);
-            }
-            catch (...) { // NOLINT(*-empty-catch)
-                // ignore - will try name next.
-            }
-            if (on.get() && not on->value()->isNegatable()) {
-                on.reset();
+    bool handleLongOpt(std::string_view optName) {
+        auto         opt = optName.substr(0, optName.find('='));
+        auto         val = opt.length() < optName.length() ? optName.substr(opt.length() + 1) : std::string_view{};
+        SharedOptPtr fallback;
+        bool         flagVal = (flags & static_cast<unsigned>(command_line_allow_flag_value)) != 0u;
+        if (val.empty() && optName.starts_with("no-")) {
+            if (auto no = getOpt(optName.substr(3), [](auto) { return SharedOptPtr(); });
+                no && no->value()->isNegatable()) {
+                fallback = std::move(no);
             }
         }
-        try {
-            o = getOption(name.c_str(), OptionContext::find_name_or_prefix);
-        }
-        catch (const UnknownOption&) {
-            if (not on.get()) {
-                throw;
+        if (auto o = getOpt(opt,
+                            [&](ContextError::Type t) {
+                                if (t == ContextError::unknown_option && fallback) {
+                                    flagVal = true;
+                                    val     = "no";
+                                    return fallback;
+                                }
+                                throw;
+                            });
+            o) {
+            if (val.empty() && not o->value()->isImplicit() && (val = next()).empty()) { // NOLINT
+                throw SyntaxError(SyntaxError::missing_value, opt);
             }
-        }
-        if (not o.get() && on.get()) {
-            o.swap(on);
-            value = "no";
-            neg   = true;
-        }
-        if (o.get()) {
-            if (not o->value()->isImplicit() && value.empty()) {
-                if (const char* v = next()) {
-                    value = v;
-                }
-                else {
-                    throw SyntaxError(SyntaxError::missing_value, name);
-                }
+            if (not val.empty() && not flagVal && o->value()->isFlag()) { // flags don't have values
+                throw SyntaxError(SyntaxError::extra_value, opt);
             }
-            else if (o->value()->isFlag() && not value.empty() && not neg &&
-                     (flags & static_cast<unsigned>(command_line_allow_flag_value)) == 0u) {
-                // flags don't have values
-                throw SyntaxError(SyntaxError::extra_value, name);
-            }
-            addOptionValue(o, value);
+            addOptionValue(o, val);
             return true;
         }
         return false;
@@ -705,44 +726,43 @@ private:
 
 class ArgvParser : public CommandLineParser {
 public:
-    ArgvParser(ParseContext& ctx, int startPos, int endPos, const char* const* argv, unsigned cmdFlags)
+    ArgvParser(ParseContext& ctx, std::span<const char* const> argv, unsigned cmdFlags)
         : CommandLineParser(ctx, cmdFlags)
-        , argPos_(startPos)
-        , endPos_(endPos)
         , argv_(argv) {}
 
 private:
-    const char* next() override {
-        currentArg_ = argPos_ != endPos_ ? argv_[argPos_++] : nullptr;
-        return currentArg_;
+    std::string_view next() override {
+        if (not argv_.empty()) {
+            std::string_view r(argv_.front());
+            argv_ = argv_.subspan(1);
+            return r; // NOLINT
+        }
+        return {};
     }
-    const char*        currentArg_{nullptr};
-    int                argPos_;
-    int                endPos_;
-    const char* const* argv_;
+    std::span<const char* const> argv_;
 };
 
 class CommandStringParser : public CommandLineParser {
 public:
-    CommandStringParser(const char* cmd, ParseContext& ctx, unsigned cmdFlags)
+    CommandStringParser(std::string_view cmd, ParseContext& ctx, unsigned cmdFlags)
         : CommandLineParser(ctx, cmdFlags)
-        , cmd_(cmd ? cmd : "") {
+        , cmd_(cmd) {
         tok_.reserve(80);
     }
     CommandStringParser& operator=(const CommandStringParser&) = delete;
 
 private:
-    const char* next() override {
+    std::string_view next() override {
         // skip leading white
-        while (std::isspace(static_cast<unsigned char>(*cmd_))) { ++cmd_; }
-        if (not *cmd_) {
-            return nullptr;
+        while (not cmd_.empty() && std::isspace(static_cast<unsigned char>(cmd_.front()))) { cmd_.remove_prefix(1); }
+        if (cmd_.empty()) {
+            return {};
         }
         tok_.clear();
         static constexpr std::string_view special{"\"'\\"};
         // find the end of the current arg
-        for (char c, t = ' '; (c = *cmd_) != 0; ++cmd_) {
-            if (c == t) {
+        for (char c, t = ' '; not cmd_.empty(); cmd_.remove_prefix(1)) {
+            if (c = cmd_.front(); c == t) {
                 if (t == ' ') {
                     break;
                 }
@@ -751,18 +771,18 @@ private:
             else if ((c == '\'' || c == '"') && t == ' ') {
                 t = c;
             }
-            else if (c != '\\' || special.find(cmd_[1]) == std::string_view::npos) {
+            else if (c != '\\' || special.find(cmd_[cmd_.size() > 1]) == std::string_view::npos) {
                 tok_ += c;
             }
-            else {
+            else if (cmd_.size() > 1) {
                 tok_ += cmd_[1];
-                ++cmd_;
+                cmd_.remove_prefix(1);
             }
         }
-        return tok_.c_str();
+        return tok_;
     }
-    const char* cmd_;
-    std::string tok_;
+    std::string_view cmd_;
+    std::string      tok_;
 };
 ///////////////////////////////////////////////////////////////////////////////
 // class CfgFileParser
@@ -773,13 +793,13 @@ public:
     void operator=(const CfgFileParser&) = delete;
 
 private:
-    static inline void trimLeft(std::string& str, const std::string& charList = " \t") {
+    static void trimLeft(std::string& str, const std::string& charList = " \t") {
         std::string::size_type pos = str.find_first_not_of(charList);
         if (pos != 0) {
             str.erase(0, pos);
         }
     }
-    static inline void trimRight(std::string& str, const std::string& charList = " \t") {
+    static void trimRight(std::string& str, const std::string& charList = " \t") {
         std::string::size_type pos = str.find_last_not_of(charList);
         if (pos != std::string::npos) {
             str.erase(pos + 1, std::string::npos);
@@ -815,7 +835,7 @@ private:
             if (line.empty() || line.starts_with('#')) {
                 // An empty line or single line comment stops a multi-line section value.
                 if (inSection) {
-                    if (auto opt = getOption(sectionName.c_str(), ft); opt.get()) {
+                    if (auto opt = getOption(sectionName, ft); opt.get()) {
                         addOptionValue(opt, sectionValue);
                     }
                     inSection = false;
@@ -826,7 +846,7 @@ private:
             if (auto pos = line.find('='); pos != std::string::npos) {
                 // A new section terminates a multi-line section value.
                 // First process the current section value...
-                if (auto opt = inSection ? getOption(sectionName.c_str(), ft) : SharedOptPtr{}; opt.get()) {
+                if (auto opt = inSection ? getOption(sectionName, ft) : SharedOptPtr{}; opt.get()) {
                     addOptionValue(opt, sectionValue);
                 }
                 // ...then save the new section's value.
@@ -843,8 +863,8 @@ private:
                 throw SyntaxError(SyntaxError::invalid_format, line);
             }
         }
-        if (inSection) { // file does not end with an empty line
-            if (auto opt = getOption(sectionName.c_str(), ft); opt.get()) {
+        if (inSection) { // config file does not end with an empty line
+            if (auto opt = getOption(sectionName, ft); opt.get()) {
                 addOptionValue(opt, sectionValue);
             }
         }
@@ -857,59 +877,42 @@ public:
         : posOpt(std::move(po))
         , parsed(o)
         , eMask(2u + static_cast<unsigned>(not allowUnreg)) {}
-    SharedOptPtr getOption(const char* name, FindType ft) override {
-        OptionContext::OptionRange r = parsed.ctx->findImpl(name, ft, eMask);
-        if (r.first != r.second) {
+    SharedOptPtr getOption(std::string_view name, FindType ft) override {
+        if (auto r = parsed.ctx->findImpl(name, ft, eMask); r.first != r.second) {
             return *(parsed.ctx->begin() + static_cast<std::ptrdiff_t>(r.first->second));
         }
         return SharedOptPtr(nullptr);
     }
-    SharedOptPtr getOption(int, const char* tok) override {
+    SharedOptPtr getOption(int, std::string_view tok) override {
         std::string optName;
         if (not posOpt || not posOpt(tok, optName)) {
             return getOption("Positional Option", OptionContext::find_name_or_prefix);
         }
-        return getOption(optName.c_str(), OptionContext::find_name_or_prefix);
+        return getOption(optName, OptionContext::find_name_or_prefix);
     }
-    void         addValue(const SharedOptPtr& key, const std::string& value) override { parsed.add(key, value); }
+    void         addValue(const SharedOptPtr& key, std::string_view value) override { parsed.add(key, value); }
     PosOption    posOpt;
     ParsedValues parsed;
     unsigned     eMask;
 };
 
 } // end unnamed namespace
-
-ParsedValues parseCommandLine(int& argc, char** argv, const OptionContext& ctx, bool allowUnreg, PosOption posParser,
-                              unsigned flags) {
-    DefaultContext parseCtx(ctx, allowUnreg, std::move(posParser));
-    parseCommandLine(argc, argv, parseCtx, flags);
+ParsedValues parseCommandArray(std::span<const char* const> args, const OptionContext& ctx, PosOption posParser,
+                               unsigned flags, unsigned* consumed) {
+    DefaultContext parseCtx(ctx, (flags & command_line_allow_unregistered) != 0, std::move(posParser));
+    ArgvParser     parser(parseCtx, args, flags);
+    parser.parse();
+    if (consumed) {
+        *consumed = parser.consumed;
+    }
     return parseCtx.parsed;
 }
-ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsigned flags) {
-    while (argv[argc]) { ++argc; }
-    ArgvParser parser(ctx, 1, argc, argv, flags);
-    parser.parse();
-
-    argc  = 1 + static_cast<int>(parser.remaining.size());
-    int i = 1;
-    for (const char* r : parser.remaining) { argv[i++] = const_cast<char*>(r); }
-    argv[argc] = nullptr;
-    return ctx;
-}
-ParsedValues parseCommandArray(const char* const* argv, int nArgs, const OptionContext& ctx, bool allowUnreg,
-                               PosOption posParser, unsigned flags) {
-    DefaultContext parseCtx(ctx, allowUnreg, std::move(posParser));
-    ArgvParser     parser(parseCtx, 0, nArgs, argv, flags);
-    parser.parse();
-    return parseCtx.parsed;
-}
-ParseContext& parseCommandString(const char* cmd, ParseContext& ctx, unsigned flags) {
+ParseContext& parseCommandString(std::string_view cmd, ParseContext& ctx, unsigned flags) {
     return CommandStringParser(cmd, ctx, flags).parse();
 }
-ParsedValues parseCommandString(const std::string& cmd, const OptionContext& ctx, bool allowUnreg, PosOption posParser,
-                                unsigned flags) {
-    DefaultContext parseCtx(ctx, allowUnreg, std::move(posParser));
-    CommandStringParser(cmd.c_str(), parseCtx, flags).parse();
+ParsedValues parseCommandString(std::string_view cmd, const OptionContext& ctx, PosOption posParser, unsigned flags) {
+    DefaultContext parseCtx(ctx, (flags & command_line_allow_unregistered) != 0, std::move(posParser));
+    CommandStringParser(cmd, parseCtx, flags).parse();
     return parseCtx.parsed;
 }
 
@@ -922,8 +925,8 @@ ParsedValues parseCfgFile(std::istream& in, const OptionContext& o, bool allowUn
 ///////////////////////////////////////////////////////////////////////////////
 // Errors
 ///////////////////////////////////////////////////////////////////////////////
-static std::string quote(const std::string& x) { return std::string(1, '\'').append(x).append(1, '\''); }
-static std::string format(SyntaxError::Type t, const std::string& key) {
+static std::string quote(std::string_view x) { return std::string(1, '\'').append(x).append(1, '\''); }
+static std::string format(SyntaxError::Type t, std::string_view key) {
     return std::string("SyntaxError: "sv).append(quote(key)).append([](SyntaxError::Type type) {
         switch (type) {
             case SyntaxError::missing_value : return " requires a value!"sv;
@@ -933,15 +936,14 @@ static std::string format(SyntaxError::Type t, const std::string& key) {
         }
     }(t));
 }
-static std::string formatContext(const std::string& ctx) {
+static std::string formatContext(std::string_view ctx) {
     std::string ret;
     if (not ctx.empty()) {
         ret.append("In context "sv).append(quote(ctx)).append(": "sv);
     }
     return ret;
 }
-static std::string format(ContextError::Type t, const std::string& ctx, const std::string& key,
-                          const std::string& alt) {
+static std::string format(ContextError::Type t, std::string_view ctx, std::string_view key, std::string_view alt) {
     std::string ret = formatContext(ctx);
     switch (t) {
         case ContextError::duplicate_option: ret.append("duplicate option: "sv); break;
@@ -956,8 +958,7 @@ static std::string format(ContextError::Type t, const std::string& ctx, const st
     }
     return ret;
 }
-static std::string format(ValueError::Type t, const std::string& ctx, const std::string& key,
-                          const std::string& value) {
+static std::string format(ValueError::Type t, std::string_view ctx, std::string_view key, std::string_view value) {
     std::string ret = formatContext(ctx);
     switch (std::string_view x; t) {
         case ValueError::multiple_occurrences: ret.append("multiple occurrences: "sv); break;
@@ -970,13 +971,13 @@ static std::string format(ValueError::Type t, const std::string& ctx, const std:
     ret.append(quote(key));
     return ret;
 }
-SyntaxError::SyntaxError(Type t, const std::string& key) : Error(format(t, key)), key_(key), type_(t) {}
-ContextError::ContextError(const std::string& ctx, Type t, const std::string& key, const std::string& alt)
+SyntaxError::SyntaxError(Type t, std::string_view key) : Error(format(t, key)), key_(key), type_(t) {}
+ContextError::ContextError(std::string_view ctx, Type t, std::string_view key, std::string_view alt)
     : Error(format(t, ctx, key, alt))
     , ctx_(ctx)
     , key_(key)
     , type_(t) {}
-ValueError::ValueError(const std::string& ctx, Type t, const std::string& opt, const std::string& value)
+ValueError::ValueError(std::string_view ctx, Type t, std::string_view opt, std::string_view value)
     : Error(format(t, ctx, opt, value))
     , ctx_(ctx)
     , key_(opt)

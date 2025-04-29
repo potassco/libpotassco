@@ -57,6 +57,13 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(Potassco::fromChars("+", iVal).ec == std::errc::invalid_argument);
         REQUIRE(Potassco::fromChars("+", uVal).ec == std::errc::invalid_argument);
     }
+    SECTION("works with string view") {
+        const char*      source = "123";
+        std::string_view in(source, 2);
+        int              iVal{0};
+        REQUIRE(stringTo(in, iVal) == std::errc{});
+        REQUIRE(iVal == 12);
+    }
     SECTION("overflow is an error") {
         int64_t  iVal;
         uint64_t uVal;

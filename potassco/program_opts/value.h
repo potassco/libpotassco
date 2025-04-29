@@ -24,8 +24,10 @@
 //       see: www.boost.org/libs/program_options
 //
 #pragma once
+
+#include <cassert>
 #include <cstdint>
-#include <string>
+#include <string_view>
 
 namespace Potassco::ProgramOptions {
 
@@ -36,6 +38,23 @@ enum DescriptionLevel {
     desc_level_e3      = 3,
     desc_level_all     = 4,
     desc_level_hidden  = 5 //!< Never shown in description.
+};
+
+class Str {
+public:
+    template <auto N>
+    consteval Str(const char (&s)[N]) : str_{s}
+                                      , lit_{true} {}
+    Str(const volatile char* s) : str_{const_cast<const char*>(s)} { assert(str_); }
+    [[nodiscard]] const char* c_str() const { return str_; }
+    [[nodiscard]] bool        isLit() const { return lit_; }
+    [[nodiscard]] bool        empty() const { return *str_ == 0; }
+
+    static const char* clone(Str str);
+
+private:
+    const char* str_{};
+    bool        lit_{false};
 };
 
 //! Manages the value of an option and defines how it is parsed from a string.
@@ -54,11 +73,14 @@ public:
     };
     //! Possible value descriptions.
     enum DescType {
-        desc_name     = 1,
-        desc_default  = 2,
-        desc_implicit = 4,
+        desc_name     = 0,
+        desc_default  = 1,
+        desc_implicit = 2,
     };
     virtual ~Value();
+
+    void               rtDesc(bool x) { rtDesc_ = x; }
+    [[nodiscard]] bool rtDesc() const { return rtDesc_; }
 
     //! Returns the current state of this value.
     [[nodiscard]] State state() const { return static_cast<State>(state_); }
@@ -77,7 +99,7 @@ public:
      *       case the default is "".
      */
     [[nodiscard]] const char* arg() const;
-    Value*                    arg(const char* n) { return desc(desc_name, n); }
+    Value*                    arg(Str n) { return desc(desc_name, n); }
 
     //! Sets an alias name for the corresponding option.
     Value* alias(char c) {
@@ -154,7 +176,8 @@ public:
     /*!
      * Sets a default value for this value.
      */
-    Value* defaultsTo(const char* v) { return desc(desc_default, v); }
+    Value* defaultsTo(Str s) { return desc(desc_default, s); }
+
     //! Returns the default value of this or 0 if none exists.
     [[nodiscard]] const char* defaultsTo() const { return desc(desc_default); }
     /*!
@@ -163,7 +186,7 @@ public:
      * e.g. `--option` instead of `--option value`
      * \see bool Value::isImplicit() const
      */
-    Value* implicit(const char* str) { return desc(desc_implicit, str); }
+    Value* implicit(Str str) { return desc(desc_implicit, str); }
     //! Returns the implicit value of this or 0 if isImplicit() == false.
     [[nodiscard]] const char* implicit() const;
 
@@ -179,11 +202,12 @@ public:
      *
      * \post if true is returned, state() is st
      */
-    bool parse(const std::string& name, const std::string& value, State st = value_fixed);
+    bool parse(std::string_view name, std::string_view value, State st = value_fixed);
 
 protected:
     explicit Value(State initial = value_unassigned);
     [[nodiscard]] const char* desc(DescType t) const;
+    void                      copyOrBorrow(const char** target, Str source, DescType t);
 
     bool state(bool b, State s) {
         if (b) {
@@ -191,23 +215,26 @@ protected:
         }
         return b;
     }
-    Value* desc(DescType t, const char* d);
+    Value* desc(DescType t, Str str);
 
-    virtual bool doParse(const std::string& name, const std::string& value) = 0;
+    virtual bool doParse(std::string_view name, std::string_view value) = 0;
 
 private:
-    static constexpr auto desc_pack = 8u;
+    static constexpr auto desc_pack = 3u;
     union ValueDesc {       // optional value descriptions either
         const char*  value; // a single value or
         const char** pack;  // a pointer to a full pack
-    } desc_;
-    uint8_t state_;         // state: one of State
-    uint8_t descFlag_;      // either desc_pack or one of DescType
-    uint8_t optAlias_;      // alias name of option
-    uint8_t implicit_  : 1; // implicit value?
-    uint8_t flag_      : 1; // implicit and type bool?
-    uint8_t composing_ : 1; // multiple values allowed?
-    uint8_t negatable_ : 1; // negatable form allowed?
-    uint8_t level_     : 4; // help level
+    } desc_{nullptr};
+    uint8_t state_{0};          // state: one of State
+    uint8_t optAlias_{0};       // alias name of option
+    uint8_t descVal_   : 2 {0}; // either desc_pack or one of DescType
+    uint8_t own_       : 3 {0}; // type of strings we own
+    uint8_t rtDesc_    : 1 {0};
+    uint8_t reserved_  : 2 {0};
+    uint8_t implicit_  : 1 {0}; // implicit value?
+    uint8_t flag_      : 1 {0}; // implicit and type bool?
+    uint8_t composing_ : 1 {0}; // multiple values allowed?
+    uint8_t negatable_ : 1 {0}; // negatable form allowed?
+    uint8_t level_     : 4 {0}; // help level
 };
 } // namespace Potassco::ProgramOptions

@@ -34,6 +34,7 @@
 #include <memory>
 #include <ostream>
 #include <set>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -59,7 +60,10 @@ public:
      * \param description description of the option, used for printing help
      * \param value       value object to be associated with this option
      */
-    Option(std::string_view longName, char shortName, const char* description, Value* value);
+    Option(std::string_view longName, char shortName, Str description, Value* value);
+    ~Option();
+    Option(Option&& opt) noexcept;
+    Option& operator=(Option&&) noexcept;
 
     [[nodiscard]] const std::string& name() const { return name_; }
     [[nodiscard]] char               alias() const { return value_->alias(); }
@@ -154,7 +158,7 @@ public:
      * \note If <name> is followed by an exclamation mark ('!'),
      *       the option is marked as negatable.
      */
-    OptionInitHelper& operator()(const char* key, Value* val, const char* desc);
+    OptionInitHelper& operator()(const char* key, Value* val, Str desc);
 
 private:
     OptionGroup* owner_;
@@ -172,7 +176,7 @@ private:
 class OptionContext {
 private:
     using KeyType        = std::size_t;
-    using Name2Key       = std::map<std::string, KeyType>;
+    using Name2Key       = std::map<std::string, KeyType, std::less<>>;
     using GroupList      = std::vector<OptionGroup>;
     using index_iterator = Name2Key::const_iterator; // NOLINT
     using PrefixRange    = std::pair<index_iterator, index_iterator>;
@@ -202,7 +206,7 @@ public:
     /*!
      * \throw DuplicateOption if an option with the name aliasName already exists.
      */
-    OptionContext& addAlias(const std::string& aliasName, option_iterator option);
+    OptionContext& addAlias(std::string aliasName, option_iterator option);
 
     //! Adds all groups (and their options) from other to this context.
     /*!
@@ -227,10 +231,9 @@ public:
     //! Returns the option with the given key.
     /*!
      * \note The second parameter defines how `key` is interpreted:
-     *        - find_name:   search for an option whose name equals `key`.
-     *        - find_prefix: search for an option whose name starts with `key`.
-     *        - Find_alias:  search for an option whose alias equals `key`.
-     *
+     *        - find_name:   search for an option whose name equals `key`
+     *        - find_prefix: search for an option whose name starts with `key`
+     *        - find_alias:  search for an option whose alias equals `key`
      *
      * \note If the second parameter is find_alias, a starting '-'
      *       in `key` is valid but not required.
@@ -238,20 +241,21 @@ public:
      * \throw UnknownOption if no option matches `key`.
      * \throw AmbiguousOption if more than one option matches `key`.
      */
-    option_iterator find(const char* key, FindType t = find_name) const;
+    [[nodiscard]] option_iterator find(std::string_view key, FindType t = find_name) const;
     /*!
      * Behaves like find but returns end() instead of throwing
      * UnknownOption or AmbiguousOption.
      */
-    option_iterator tryFind(const char* key, FindType t = find_name) const;
+    [[nodiscard]] option_iterator tryFind(std::string_view key, FindType t = find_name) const;
 
-    OptionRange findImpl(const char* key, FindType t, unsigned eMask = static_cast<unsigned>(-1)) const {
+    [[nodiscard]] OptionRange findImpl(std::string_view key, FindType t,
+                                       unsigned eMask = static_cast<unsigned>(-1)) const {
         return findImpl(key, t, eMask, caption());
     }
-    OptionRange findImpl(const char* key, FindType t, unsigned eMask, const std::string& eCtx) const;
+    [[nodiscard]] OptionRange findImpl(std::string_view key, FindType t, unsigned eMask, std::string_view eCtx) const;
 
-    [[nodiscard]] const OptionGroup& findGroup(const std::string& caption) const;
-    [[nodiscard]] const OptionGroup* tryFindGroup(const std::string& caption) const;
+    [[nodiscard]] const OptionGroup& findGroup(std::string_view caption) const;
+    [[nodiscard]] const OptionGroup* tryFindGroup(std::string_view caption) const;
 
     //! Sets the description level to be used when generating a description.
     /*!
@@ -278,47 +282,13 @@ public:
 
 private:
     void                 insertOption(size_t groupId, const SharedOptPtr& o);
-    [[nodiscard]] size_t findGroupKey(const std::string& name) const;
+    [[nodiscard]] size_t findGroupKey(std::string_view name) const;
 
     Name2Key         index_;
     OptionList       options_;
     GroupList        groups_;
     std::string      caption_;
     DescriptionLevel descLevel_;
-};
-
-class OptionParser;
-class ParsedValues;
-
-//! Set of options holding a parsed value.
-class ParsedOptions {
-public:
-    ParsedOptions();
-    ~ParsedOptions();
-    [[nodiscard]] bool        empty() const { return parsed_.empty(); }
-    [[nodiscard]] std::size_t size() const { return parsed_.size(); }
-    [[nodiscard]] bool        contains(const std::string& name) const { return parsed_.contains(name); }
-
-    void add(const std::string& name) { parsed_.insert(name); }
-
-    //! Assigns the parsed values in p to their options.
-    /*!
-     * Parsed values for options that already have a value (and are
-     * not composing) are ignored. On the other hand, parsed values
-     * overwrite any existing default values.
-     *
-     * \param p       parsed values to assign
-     * \param exclude options that should be ignored during value assignment
-     *
-     * \throw ValueError if `p` contains more than one value
-     *        for a non-composing option, or if `p` contains a value that is
-     *        invalid for its option.
-     */
-    bool assign(const ParsedValues& p, const ParsedOptions* exclude = nullptr);
-
-private:
-    std::set<std::string> parsed_;
-    int                   assign(const Option& o, const std::string& value);
 };
 
 /*!
@@ -337,8 +307,8 @@ public:
     const OptionContext* ctx;
 
     //! Adds a value for option opt.
-    void add(const std::string& opt, const std::string& value);
-    void add(const SharedOptPtr& opt, const std::string& value) { parsed_.emplace_back(opt, value); }
+    void add(std::string_view opt, std::string_view value);
+    void add(const SharedOptPtr& opt, std::string_view value) { parsed_.emplace_back(opt, value); }
 
     [[nodiscard]] iterator begin() const { return parsed_.begin(); }
     [[nodiscard]] iterator end() const { return parsed_.end(); }
@@ -349,13 +319,44 @@ private:
     Values parsed_;
 };
 
+//! Set of options holding a parsed value.
+class ParsedOptions {
+public:
+    ParsedOptions();
+    ~ParsedOptions();
+    [[nodiscard]] bool        empty() const { return parsed_.empty(); }
+    [[nodiscard]] std::size_t size() const { return parsed_.size(); }
+    [[nodiscard]] bool        contains(std::string_view name) const { return parsed_.contains(name); }
+
+    void add(std::string_view name) { parsed_.emplace(name); }
+
+    //! Assigns the parsed values in p to their options.
+    /*!
+     * Parsed values for options that already have a value (and are
+     * not composing) are ignored. On the other hand, parsed values
+     * overwrite any existing default values.
+     *
+     * \param p       parsed values to assign
+     * \param exclude options that should be ignored during value assignment
+     *
+     * \throw ValueError if `p` contains more than one value
+     *        for a non-composing option, or if `p` contains a value that is
+     *        invalid for its option.
+     */
+    bool assign(const ParsedValues& p, const ParsedOptions* exclude = nullptr);
+
+private:
+    std::set<std::string, std::less<>> parsed_;
+    int                                assign(const Option& o, const std::string& value);
+};
+
 class ParseContext {
 public:
     using FindType = OptionContext::FindType;
     virtual ~ParseContext();
-    virtual SharedOptPtr getOption(const char* name, FindType ft)                    = 0;
-    virtual SharedOptPtr getOption(int posKey, const char* tok)                      = 0;
-    virtual void         addValue(const SharedOptPtr& key, const std::string& value) = 0;
+    virtual SharedOptPtr getOption(std::string_view name, FindType ft)             = 0;
+    virtual SharedOptPtr getOption(int posKey, std::string_view tok)               = 0;
+    virtual void         addValue(const SharedOptPtr& key, std::string_view value) = 0;
 };
 
 //! Base class for options parsers.
@@ -368,10 +369,11 @@ public:
 
 protected:
     [[nodiscard]] ParseContext& ctx() const { return *ctx_; }
-
-    SharedOptPtr getOption(const char* name, FindType ft) const { return ctx_->getOption(name, ft); }
-    SharedOptPtr getOption(int posKey, const char* tok) const { return ctx_->getOption(posKey, tok); }
-    void         addOptionValue(const SharedOptPtr& key, const std::string& value) { ctx_->addValue(key, value); }
+    [[nodiscard]] SharedOptPtr getOption(std::string_view name, FindType ft) const { return ctx_->getOption(name, ft); }
+    [[nodiscard]] SharedOptPtr getOption(int posKey, std::string_view tok) const {
+        return ctx_->getOption(posKey, tok);
+    }
+    void addOptionValue(const SharedOptPtr& key, std::string_view value) { ctx_->addValue(key, value); }
 
 private:
     virtual void  doParse() = 0;
@@ -457,54 +459,35 @@ using OptionPrinter = OptionOutputImpl<>;
  * and store the name of the option that should receive the token as value
  * in its second argument or return false to signal an error.
  */
-using PosOption = std::function<bool(const std::string&, std::string&)>;
+using PosOption = std::function<bool(std::string_view, std::string&)>;
 
-enum CommandLineFlags { command_line_allow_flag_value = 1u };
-
-/*!
- * Parses the command line starting at index 1 and removes
- * all found options from argv.
- * \param argc nr of arguments in argv
- * \param argv the command line arguments
- * \param ctx options to search in the command line.
- * \param allowUnregistered Allow arguments that match no option in ctx
- * \param posParser parse function for positional options
- * \param flags optional config flags (see CommandLineFlags).
- *
- * \return A ParsedOptions-Object containing names and values for all options found.
- *
- * \throw SyntaxError if command line syntax is incorrect.
- * \throw UnknownOption if allowUnregistered is false, and an argument is found
- * that does not match any option.
- */
-ParsedValues parseCommandLine(int& argc, char** argv, const OptionContext& ctx, bool allowUnregistered = true,
-                              PosOption posParser = nullptr, unsigned flags = 0);
-
-ParseContext& parseCommandLine(int& argc, char** argv, ParseContext& ctx, unsigned flags = 0);
+enum CommandLineFlags {
+    command_line_allow_flag_value   = 1u,
+    command_line_allow_unregistered = 2u, //!< Allow arguments that don't match any option
+};
 
 /*!
- * Parses the command arguments given in the array args.
+ * Parses the command arguments given in `args`.
  * \param args  the arguments to parse
- * \param nArgs number of arguments in args.
  * \param ctx options to search in the arguments
- * \param allowUnregistered Allow arguments that match no option in ctx
  * \param posParser parse function for positional options
- * \param flags optional config flags (see CommandLineFlags).
+ * \param flags optional config flags (see CommandLineFlags)
+ * \param[out] consumed (optional) output parameter receiving the number of arguments parsed
  *
  * \return A ParsedOptions-Object containing names and values for all options found.
  *
  * \throw SyntaxError if argument syntax is incorrect.
- * \throw UnknownOption if allowUnregistered is false, and an argument is found
- * that does not match any option.
+ * \throw UnknownOption if an argument is found that does not match any option and `flags` does not contain
+ *                      `command_line_allow_unregistered`.
  */
-ParsedValues parseCommandArray(const char* const args[], int nArgs, const OptionContext& ctx,
-                               bool allowUnregistered = true, PosOption posParser = nullptr, unsigned flags = 0);
+ParsedValues  parseCommandArray(std::span<const char* const> args, const OptionContext& ctx,
+                                PosOption posParser = nullptr, unsigned flags = 0, unsigned* consumed = nullptr);
+ParseContext& parseCommandArray(std::span<const char* const> args, ParseContext& ctx, unsigned flags = 0);
 
 /*!
  * Parses the command line given in the first parameter.
  * \param cmd command line to parse
  * \param ctx options to search in the command string.
- * \param allowUnreg Allow arguments that match no option in ctx
  * \param posParser parse function for positional options
  * \param flags optional config flags (see CommandLineFlags).
  *
@@ -513,9 +496,10 @@ ParsedValues parseCommandArray(const char* const args[], int nArgs, const Option
  * \throw SyntaxError if command line syntax is incorrect.
  * \throw UnknownOption if an argument is found, that does not match any option.
  */
-ParsedValues  parseCommandString(const std::string& cmd, const OptionContext& ctx, bool allowUnreg = false,
-                                 PosOption posParser = nullptr, unsigned flags = command_line_allow_flag_value);
-ParseContext& parseCommandString(const char* cmd, ParseContext& ctx, unsigned flags = command_line_allow_flag_value);
+ParsedValues  parseCommandString(std::string_view cmd, const OptionContext& ctx, PosOption posParser = nullptr,
+                                 unsigned flags = command_line_allow_flag_value);
+ParseContext& parseCommandString(std::string_view cmd, ParseContext& ctx,
+                                 unsigned flags = command_line_allow_flag_value);
 
 /*!
  * Parses a config file having the format key = value.

@@ -141,13 +141,13 @@ void Application::killAlarm() {
 }
 
 // Application entry point.
-int Application::main(int argc, char** argv) {
+int Application::main(std::span<const char* const> args) {
     initInstance(*this); // singleton instance used for signal handling
     exitCode_ = EXIT_FAILURE;
     blocked_  = 0;
     pending_  = 0;
     try {
-        if (applyOptions(argc, argv)) {
+        if (applyOptions(args)) {
             // install signal handlers
             for (const int* sig = getSignals(); sig && *sig; ++sig) {
                 if (signal(*sig, &Application::sigHandler) == SIG_IGN) {
@@ -186,6 +186,12 @@ int Application::main(int argc, char** argv) {
     }
     flush();
     return exitCode_;
+}
+int Application::main(int argc, char** argv) {
+    POTASSCO_CHECK_PRE(argc >= 0, "invalid arg count");
+    POTASSCO_CHECK_PRE(argc == 0 || argv != nullptr, "invalid arg vector");
+    auto sz = static_cast<std::size_t>(argc);
+    return main(std::span<const char* const>(argv, sz).subspan(sz > 0));
 }
 
 Application* Application::getInstance() { return g_instance; }
@@ -340,18 +346,18 @@ std::size_t Application::formatMessage(std::span<char> buffer, MessageType t, co
 }
 
 // Process command-line options.
-bool Application::applyOptions(int argc, char** argv) {
+bool Application::applyOptions(std::span<const char* const> args) {
     using namespace ProgramOptions;
 
     unsigned      help    = 0;
     bool          version = false;
-    ParsedOptions parsed; // options found in command-line
+    ParsedOptions parsed; // options found in the command-line
     OptionContext allOpts(std::string("<").append(getName()).append(">"));
     OptionGroup   basic("Basic Options");
     if (auto [message, level] = getHelpOption(); level > 0) {
         Value* hv = level == 1 ? storeTo(help)->flag()
                                : storeTo(help,
-                                         [maxV = level](const std::string& v, unsigned& out) {
+                                         [maxV = level](std::string_view v, unsigned& out) {
                                              return Potassco::stringTo(v, out) == std::errc{} && out > 0 && out <= maxV;
                                          })
                                      ->arg("<n>")
@@ -365,7 +371,7 @@ bool Application::applyOptions(int argc, char** argv) {
         ("fast-exit,@1", flag(fastExit_ = false), "Force fast exit (do not call dtors)");              //
     allOpts.add(basic);
     initOptions(allOpts);
-    auto values = parseCommandLine(argc, argv, allOpts, false, [this](const std::string& value, std::string& opt) {
+    auto values = parseCommandArray(args, allOpts, [this](std::string_view value, std::string& opt) {
         if (const auto* n = getPositional(value); n) {
             opt = n;
             return true;

@@ -39,7 +39,7 @@ public:
 class SyntaxError : public Error {
 public:
     enum Type { missing_value, extra_value, invalid_format };
-    SyntaxError(Type t, const std::string& key);
+    SyntaxError(Type t, std::string_view key);
     [[nodiscard]] Type               type() const { return type_; }
     [[nodiscard]] const std::string& key() const { return key_; }
 
@@ -52,7 +52,7 @@ private:
 class ContextError : public Error {
 public:
     enum Type { duplicate_option, unknown_option, ambiguous_option, unknown_group };
-    ContextError(const std::string& ctx, Type t, const std::string& key, const std::string& desc = "");
+    ContextError(std::string_view ctx, Type t, std::string_view key, std::string_view desc = {});
     [[nodiscard]] Type               type() const { return type_; }
     [[nodiscard]] const std::string& key() const { return key_; }
     [[nodiscard]] const std::string& ctx() const { return ctx_; }
@@ -65,15 +65,15 @@ private:
 
 class DuplicateOption : public ContextError {
 public:
-    DuplicateOption(const std::string& ctx, const std::string& key) : ContextError(ctx, duplicate_option, key) {}
+    DuplicateOption(std::string_view ctx, std::string_view key) : ContextError(ctx, duplicate_option, key) {}
 };
 class UnknownOption : public ContextError {
 public:
-    UnknownOption(const std::string& ctx, const std::string& key) : ContextError(ctx, unknown_option, key) {}
+    UnknownOption(std::string_view ctx, std::string_view key) : ContextError(ctx, unknown_option, key) {}
 };
 class AmbiguousOption : public ContextError {
 public:
-    AmbiguousOption(const std::string& ctx, const std::string& key, const std::string& alt)
+    AmbiguousOption(std::string_view ctx, std::string_view key, std::string_view alt)
         : ContextError(ctx, ambiguous_option, key, alt) {}
 };
 
@@ -81,7 +81,7 @@ public:
 class ValueError : public Error {
 public:
     enum Type { multiple_occurrences, invalid_default, invalid_value };
-    ValueError(const std::string& ctx, Type t, const std::string& opt, const std::string& value);
+    ValueError(std::string_view ctx, Type t, std::string_view opt, std::string_view value);
     [[nodiscard]] Type               type() const { return type_; }
     [[nodiscard]] const std::string& key() const { return key_; }
     [[nodiscard]] const std::string& ctx() const { return ctx_; }

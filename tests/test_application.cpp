@@ -35,7 +35,7 @@ struct MyApp : Application {
     [[nodiscard]] const char* getVersion() const override { return "1.0"; }
     [[nodiscard]] const char* getUsage() const override { return "[options] [files]"; }
     [[nodiscard]] HelpOpt     getHelpOption() const override { return {"Print {1=basic|2=extended} help and exit", 2}; }
-    [[nodiscard]] const char* getPositional(const std::string&) const override { return "file"; }
+    [[nodiscard]] const char* getPositional(std::string_view) const override { return "file"; }
     void                      run() override { setExitCode(doRun ? doRun() : 0); }
     void                      setup() override {}
     void                      initOptions(OptionContext& root) override {
@@ -84,7 +84,6 @@ TEST_CASE("Test application formatting", "[app]") {
                            "*** Info : (TestApp): Some info\n");
     }
     SECTION("fail and stop") {
-        char* argv[] = {(char*) "app", nullptr}; // NOLINT
         SECTION("noop if not running") {
             SECTION("fail") {
                 REQUIRE_NOTHROW(app.fail(79, "Something is not right!", "Info line 1\nInfo line 2"));
@@ -121,18 +120,17 @@ TEST_CASE("Test application formatting", "[app]") {
                 expected.second = "";
             }
             CAPTURE(action);
-            REQUIRE(app.main(0, argv) == expected.first);
+            REQUIRE(app.main({}) == expected.first);
             REQUIRE(app.getExitCode() == expected.first);
             REQUIRE(app.messages["error"] == expected.second);
         }
     }
 }
 TEST_CASE("Test application", "[app]") {
-    MyApp app;
-    char* argv[] = {(char*) "app", (char*) "-h", (char*) "-V3", (char*) "--vers", (char*) "hallo", nullptr}; // NOLINT
+    MyApp       app;
+    const char* args[] = {"-h", "-V3", "--vers", "hallo"};
     SECTION("args") {
-        int argc = 5;
-        REQUIRE(app.main(argc, argv) == EXIT_SUCCESS);
+        REQUIRE(app.main(args) == EXIT_SUCCESS);
         REQUIRE(app.getVerbose() == 3);
         REQUIRE(app.input.at(0) == "hallo");
         REQUIRE_FALSE(app.messages["help"].empty());
@@ -158,18 +156,26 @@ TEST_CASE("Test application", "[app]") {
         REQUIRE_FALSE(contains(help, "E1"));
     }
     SECTION("version") {
-        argv[1]  = (char*) "--vers"; // NOLINT
-        argv[2]  = nullptr;
-        int argc = 2;
-        REQUIRE(app.main(argc, argv) == EXIT_SUCCESS);
+        args[0] = "--vers";
+        REQUIRE(app.main(std::span(args).subspan(0, 1)) == EXIT_SUCCESS);
         REQUIRE(app.messages["version"].starts_with("TestApp version 1.0\nAddress model: "));
     }
     SECTION("arg error") {
-        argv[1] = (char*) "-h3"; // NOLINT
-        argv[2] = nullptr;
-        REQUIRE(app.main(2, argv) == EXIT_FAILURE);
+        args[0] = "-h3";
+        REQUIRE(app.main(std::span(args).subspan(0, 1)) == EXIT_FAILURE);
         REQUIRE(app.messages["error"] == "*** ERROR: (TestApp): In context '<TestApp>': '3' invalid value for: 'help'\n"
                                          "*** Info : (TestApp): Try '--help' for usage information");
+    }
+    SECTION("argv overload") {
+        SECTION("skips first") {
+            char* argv[] = {(char*) "app", (char*) "--version"}; // NOLINT
+            REQUIRE(app.main(2, argv) == EXIT_SUCCESS);
+            REQUIRE(app.messages["version"].starts_with("TestApp version 1.0\nAddress model: "));
+        }
+        SECTION("handles empty") {
+            char** argv = nullptr;
+            REQUIRE(app.main(0, argv) == EXIT_SUCCESS);
+        }
     }
 }
 TEST_CASE("Test alarm", "[app]") {
@@ -186,10 +192,9 @@ TEST_CASE("Test alarm", "[app]") {
         std::atomic<int> stop;
     };
 
-    TimedApp app;
-    char*    argv[] = {(char*) "app", (char*) "--time-limit=1", nullptr}; // NOLINT
-    int      argc   = 2;
-    app.main(argc, argv);
+    TimedApp    app;
+    const char* args[] = {"--time-limit=1"}; // NOLINT
+    app.main(args);
     REQUIRE(app.stop == 14);
 }
 } // namespace Potassco::ProgramOptions::Test

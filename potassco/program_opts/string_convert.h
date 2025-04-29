@@ -280,7 +280,7 @@ std::errc stringTo(std::string_view arg, T& x) {
         return r.ec;
     }
     else {
-        return !*r.ptr ? std::errc{} : std::errc::invalid_argument;
+        return r.ptr == arg.data() + arg.size() ? std::errc{} : std::errc::invalid_argument;
     }
 }
 ///////////////////////////////////////////////////////////////////////////////

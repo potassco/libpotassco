@@ -133,7 +133,7 @@ constexpr void addEntries(std::pair<EnumT, std::string_view>* out, EnumT e, std:
 }
 template <typename Op, typename E, typename... Args>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr E applyBitOp(Op op, E arg1, Args... args) noexcept {
-#if defined(__clang__)
+#if defined(__clang__) && __clang_major__ > 17
     [[clang::suppress]] // suppress clang analyzer warning optin.core.EnumCastOutOfRange
 #endif
     return static_cast<E>(op(Potassco::to_underlying(arg1), Potassco::to_underlying(args)...));

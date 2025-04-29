@@ -975,7 +975,7 @@ static unsigned compareRead(std::stringstream& input, ReadObserver& observer, st
             return i;
         }
     }
-    return rules.size();
+    return static_cast<unsigned>(rules.size());
 }
 
 TEST_CASE("Test AspifInput", "[aspif]") {

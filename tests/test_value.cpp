@@ -30,6 +30,72 @@
 namespace Potassco::ProgramOptions::Test {
 namespace Po   = ProgramOptions;
 using ValuePtr = std::unique_ptr<Value>;
+using namespace std::literals;
+
+TEST_CASE("Test base", "[value]") {
+    SECTION("str lit") {
+        Str x("Hallo");
+        REQUIRE(x.isLit());
+        REQUIRE(x.c_str() == "Hallo"s);
+    }
+    SECTION("runtime str") {
+        std::string s("Hallo");
+        Str         x(s.c_str());
+        REQUIRE_FALSE(x.isLit());
+        REQUIRE(x.c_str() == s);
+    }
+    SECTION("initial") {
+        int      x;
+        ValuePtr v(Po::storeTo(x));
+        REQUIRE(v->arg() == "<arg>"s);
+        REQUIRE(v->implicit() == nullptr);
+        REQUIRE(v->defaultsTo() == nullptr);
+        REQUIRE(v->state() == Value::value_unassigned);
+        REQUIRE(v->alias() == 0);
+        REQUIRE(v->level() == 0);
+        REQUIRE_FALSE(v->isNegatable());
+        REQUIRE_FALSE(v->isComposing());
+        REQUIRE_FALSE(v->isFlag());
+        REQUIRE_FALSE(v->isImplicit());
+
+        v->flag();
+        REQUIRE(v->arg() == ""s);
+        REQUIRE(v->implicit() == "1"s);
+    }
+    SECTION("switch to flag late") {
+        int      x;
+        ValuePtr v(Po::storeTo(x));
+        v->implicit("2");
+        v->flag();
+        REQUIRE(v->arg() == ""s);
+        REQUIRE(v->implicit() == "2"s);
+    }
+    SECTION("runtime string") {
+        std::string d("defaultValue");
+        int         x;
+        ValuePtr    v(Po::storeTo(x)->defaultsTo(d.c_str()));
+        d.clear();
+        REQUIRE(v->defaultsTo() != d.c_str());
+        REQUIRE(std::strcmp(v->defaultsTo(), "defaultValue") == 0);
+    }
+    SECTION("extra data") {
+        std::string s;
+        ValuePtr    v(Po::storeTo(s));
+        v->arg("foo");
+        REQUIRE(v->arg() == "foo"s);
+        v->implicit("implicit");
+        REQUIRE(v->arg() == "foo"s);
+        REQUIRE(v->implicit() == "implicit"s);
+        v->implicit("fromRt"s.c_str());
+        REQUIRE(v->implicit() == "fromRt"s);
+        v->implicit("backToCt");
+        REQUIRE(v->implicit() == "backToCt"s);
+        v->defaultsTo("def");
+        REQUIRE(v->defaultsTo() == "def"s);
+        REQUIRE(v->implicit() == "backToCt"s);
+        REQUIRE(v->arg() == "foo"s);
+    }
+}
 
 TEST_CASE("Test flag", "[value]") {
     bool loud;
@@ -52,6 +118,20 @@ TEST_CASE("Test flag", "[value]") {
         quietFlag->parse("", "off");
         REQUIRE(loud == true);
     }
+    SECTION("alternative action for flag") {
+        bool     got = true;
+        ValuePtr quietFlag(Po::flag([&](bool val) { got = val; }, Po::store_false));
+        REQUIRE((quietFlag->parse("", "") && got == false));
+        quietFlag->parse("", "off");
+        REQUIRE(got == true);
+    }
+    SECTION("flag init") {
+        loud = true;
+        ValuePtr loudFlag(Po::flag(loud, false));
+        REQUIRE_FALSE(loud);
+        loudFlag.reset(Po::flag(loud, true, Po::store_false));
+        REQUIRE(loud);
+    }
 }
 
 TEST_CASE("Test storeTo", "[value]") {
@@ -59,6 +139,7 @@ TEST_CASE("Test storeTo", "[value]") {
     bool     y;
     ValuePtr v1(Po::storeTo(x));
     ValuePtr v2(Po::flag(y));
+    SECTION("no unique address") { STATIC_CHECK(sizeof(Store<int>) == sizeof(Value) + sizeof(void*)); }
     SECTION("store int") {
         REQUIRE(v1->parse("", "22"));
         REQUIRE(x == 22);
@@ -94,7 +175,7 @@ TEST_CASE("Test storeTo", "[value]") {
         bool     parsed = false;
         ValuePtr vc(Po::storeTo(
                         parsed,
-                        +[](const std::string&, bool& p) {
+                        +[](std::string_view, bool& p) {
                             p = true;
                             return true;
                         })
@@ -106,7 +187,7 @@ TEST_CASE("Test storeTo", "[value]") {
 
 TEST_CASE("Test action value", "[value]") {
     std::map<std::string, int> m;
-    ValuePtr                   v1(Po::action<int>([&](const std::string& name, int v) { m[name] = v; }));
+    ValuePtr                   v1(Po::action<int>([&](std::string_view name, int v) { m[std::string(name)] = v; }));
     ValuePtr                   v2(Po::action<int>([&](int v) { m["v2"] = v; }));
     CHECK(v1->parse("foo", "123"));
     CHECK(v1->parse("bar", "342"));
@@ -118,15 +199,19 @@ TEST_CASE("Test action value", "[value]") {
 }
 TEST_CASE("Test custom value", "[value]") {
     std::map<std::string, int> m;
-    auto                       parser = [&](const std::string& name, const std::string& v) {
+    auto                       parser = [&](std::string_view name, std::string_view v) {
         if (int temp; Potassco::stringTo(v, temp) == std::errc{}) {
-            m[name] = temp;
+            m[std::string(name)] = temp;
             return true;
         }
         return false;
     };
     ValuePtr v1(Po::parse(parser));
-    ValuePtr v2(Po::parse([&](const std::string& v) { return parser("v2", v); }));
+    ValuePtr v2(Po::parse([&](std::string_view v) { return parser("v2", v); }));
+    ValuePtr v3(Po::parse([&, m = 0](std::string_view v) mutable {
+        ++m;
+        return parser("v3", v);
+    }));
     REQUIRE(v1->parse("foo", "123"));
     REQUIRE(v2->parse("", "342"));
     REQUIRE(v1->parse("jojo", "999"));

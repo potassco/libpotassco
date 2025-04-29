@@ -110,7 +110,7 @@ TEST_CASE("Test option default value", "[options]") {
         REQUIRE(x == 2);
     }
 }
-static bool negatable_int(const std::string& s, int& out) {
+static bool negatable_int(std::string_view s, int& out) {
     if (s == "no") {
         out = 0;
         return true;
@@ -249,6 +249,39 @@ TEST_CASE("Test context", "[options]") {
         REQUIRE(ctx.tryFind("Hilfe") != ctx.end());
     }
 
+    SECTION("option description can be runtime string") {
+        std::string desc("Some option description coming from elsewhere");
+        int         x;
+        g.addOptions()("number,n", Po::storeTo(x)->arg("<n>"), desc.c_str());
+        REQUIRE_FALSE(g.empty());
+        auto o = *g.begin();
+        REQUIRE(o);
+        REQUIRE(o->name() == "number");
+        REQUIRE(o->alias() == 'n');
+        REQUIRE(o->description() == desc);
+        REQUIRE(o->value()->rtDesc());
+        REQUIRE((void*) o->description() != (void*) desc.c_str());
+        desc.clear();
+        REQUIRE(o->description() != desc);
+
+        SECTION("move") {
+            Option m(std::move(*o));
+            REQUIRE(m.name() == "number");
+            REQUIRE(m.value()->rtDesc());
+            REQUIRE(m.description() != nullptr);
+            REQUIRE(o->value() == nullptr);
+            REQUIRE(o->description() == nullptr);
+        }
+        SECTION("move assign") {
+            Option m("bla", 0, "blub", Po::storeTo(x));
+            *o = std::move(m);
+            REQUIRE(o->value() != nullptr);
+            REQUIRE(o->description() == std::string("blub"));
+            REQUIRE(o->name() == "bla");
+            REQUIRE(m.value() == nullptr);
+            REQUIRE(m.description() == nullptr);
+        }
+    }
     SECTION("option description supports argument description placeholder '%A'") {
         int x;
         g.addOptions()("number", Po::storeTo(x)->arg("<n>"), "Some int %A in %%");
@@ -340,7 +373,7 @@ TEST_CASE("Test parse argv array", "[options]") {
     Po::OptionContext ctx;
     ctx.add(g);
     Po::ParsedOptions po;
-    Po::ParsedValues  pv = Po::parseCommandArray(argv, sizeof(argv) / sizeof(const char*), ctx);
+    Po::ParsedValues  pv = Po::parseCommandArray(argv, ctx);
     po.assign(pv);
     REQUIRE(x);
     REQUIRE(i1 == 3);
@@ -357,7 +390,7 @@ TEST_CASE("Test parser", "[options]") {
         struct PC : public Po::ParseContext {
             Po::OptionGroup* g;
             PC(Po::OptionGroup& grp) : g(&grp) {}
-            Po::SharedOptPtr getOption(const char* name, FindType) override {
+            Po::SharedOptPtr getOption(std::string_view name, FindType) override {
                 for (const auto& opt : *g) {
                     if (opt->name() == name) {
                         return opt;
@@ -365,8 +398,8 @@ TEST_CASE("Test parser", "[options]") {
                 }
                 return Po::SharedOptPtr(nullptr);
             }
-            Po::SharedOptPtr getOption(int, const char*) override { return Po::SharedOptPtr(nullptr); }
-            void             addValue(const Po::SharedOptPtr& key, const std::string& value) override {
+            Po::SharedOptPtr getOption(int, std::string_view) override { return Po::SharedOptPtr(nullptr); }
+            void             addValue(const Po::SharedOptPtr& key, std::string_view value) override {
                 if (not key->value()->parse(key->name(), value, Po::Value::value_unassigned)) {
                     throw std::logic_error("Invalid value");
                 }
@@ -379,10 +412,15 @@ TEST_CASE("Test parser", "[options]") {
         Po::OptionContext ctx;
         ctx.add(g);
         std::string cmd = "--flag=false --foo=on";
-        REQUIRE_THROWS_AS(Po::parseCommandString(cmd, ctx, false, nullptr, 0), Po::SyntaxError);
-        Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, false, nullptr, Po::command_line_allow_flag_value));
+        REQUIRE_THROWS_AS(Po::parseCommandString(cmd, ctx, nullptr, 0), Po::SyntaxError);
+        Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, nullptr, Po::command_line_allow_flag_value));
         REQUIRE(flag1 == false);
         REQUIRE(flag2 == true);
+    }
+    SECTION("parser reports missing value") {
+        Po::OptionContext ctx;
+        ctx.add(g);
+        REQUIRE_THROWS_AS(Po::parseCommandString("--int1", ctx, nullptr, 0), Po::SyntaxError);
     }
     SECTION("parser supports quoting") {
         std::vector<std::string> tok;
@@ -390,7 +428,7 @@ TEST_CASE("Test parser", "[options]") {
         Po::OptionContext ctx;
         ctx.add(g);
         struct P {
-            static bool func(const std::string&, std::string& o) {
+            static bool func(std::string_view, std::string& o) {
                 o = "path";
                 return true;
             }
@@ -404,7 +442,7 @@ TEST_CASE("Test parser", "[options]") {
         cmd.append("foo bar");
         cmd.append("\\");
         cmd.append("\"");
-        Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, false, &P::func));
+        Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, &P::func));
         REQUIRE(tok.size() == 6);
         REQUIRE(tok[0] == "foo");
         REQUIRE(tok[1] == "bar");
@@ -414,7 +452,7 @@ TEST_CASE("Test parser", "[options]") {
         REQUIRE(tok[5] == "bar\"");
         tok.clear();
         cmd = R"(\\"Hallo Welt\\")";
-        Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, false, &P::func));
+        Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, &P::func));
         REQUIRE(tok.size() == 1);
         REQUIRE(tok[0] == "\\Hallo Welt\\");
     }
@@ -430,13 +468,13 @@ TEST_CASE("Test gringo example", "[options]") {
         Debug                    outputDebug = Debug::NONE;
     };
     GringoOpts opts;
-    gringo.addOptions()("text,t", parse([&](const std::string&) {
+    gringo.addOptions()("text,t", parse([&](std::string_view) {
                                       opts.outputFormat = "text";
                                       return true;
                                   })->flag(),
                         "Print plain text format")("const,c",
-                                                   parse([&](const std::string& v) {
-                                                       opts.defines.push_back(v);
+                                                   parse([&](std::string_view v) {
+                                                       opts.defines.emplace_back(v);
                                                        return true;
                                                    })
                                                        ->composing()

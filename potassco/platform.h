@@ -36,6 +36,11 @@
 #define POTASSCO_CONCAT(X, Y)  POTASSCO_CONCAT2(X, Y)
 
 #define POTASSCO_ATTR_NORETURN [[noreturn]]
+#if defined(_MSC_VER)
+#define POTASSCO_ATTR_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#else
+#define POTASSCO_ATTR_NO_UNIQUE_ADDRESS [[no_unique_address]]
+#endif
 
 #if (defined(_MSVC_TRADITIONAL) && _MSVC_TRADITIONAL == 1) || (not defined(_MSC_VER) && __cplusplus < 202002L)
 #define POTASSCO_OPTARGS(...) , ##__VA_ARGS__
