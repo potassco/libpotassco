@@ -50,7 +50,7 @@ TEST_CASE("Test base", "[value]") {
         REQUIRE(v->arg() == "<arg>"s);
         REQUIRE(v->implicit() == nullptr);
         REQUIRE(v->defaultsTo() == nullptr);
-        REQUIRE(v->state() == Value::value_unassigned);
+        REQUIRE_FALSE(v->isDefaulted());
         REQUIRE(v->alias() == 0);
         REQUIRE(v->level() == 0);
         REQUIRE_FALSE(v->isNegatable());
@@ -94,6 +94,9 @@ TEST_CASE("Test base", "[value]") {
         REQUIRE(v->defaultsTo() == "def"s);
         REQUIRE(v->implicit() == "backToCt"s);
         REQUIRE(v->arg() == "foo"s);
+        // Back to empty
+        v->implicit("");
+        REQUIRE(v->implicit() == ""s);
     }
 }
 
@@ -149,14 +152,11 @@ TEST_CASE("Test storeTo", "[value]") {
         REQUIRE(not v1->parse("", "ab"));
         REQUIRE(x == 99);
     }
-    SECTION("init with state") {
-        ValuePtr v(Po::storeTo(x)->state(Po::Value::value_defaulted));
-        REQUIRE(v->state() == Po::Value::value_defaulted);
-        REQUIRE((v2->state() == Po::Value::value_unassigned && v2->isImplicit() && v2->isFlag()));
-    }
-    SECTION("parse as default") {
-        REQUIRE(v2->parse("", "off", Po::Value::value_defaulted));
-        REQUIRE(v2->state() == Po::Value::value_defaulted);
+    SECTION("parse updates default state") {
+        REQUIRE(v2->parse("", "off", true));
+        REQUIRE(v2->isDefaulted());
+        REQUIRE(v2->parse("", "off", false));
+        REQUIRE_FALSE(v2->isDefaulted());
     }
     SECTION("parse bool as implicit") {
         REQUIRE(v2->parse("", ""));

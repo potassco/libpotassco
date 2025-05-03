@@ -62,7 +62,7 @@ struct ParseValues {
 template <typename T, typename P = DefaultParser>
 class Store : public Value {
 public:
-    Store(T& v, P p) : address_(&v), parser_(std::move(p)) {}
+    Store(T& v, P p) : address_(std::addressof(v)), parser_(std::move(p)) {}
     bool doParse(std::string_view, std::string_view value) override { return parser_(value, *address_); }
 
 private:

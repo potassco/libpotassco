@@ -40,14 +40,14 @@ struct MyApp : Application {
     void                      setup() override {}
     void                      initOptions(OptionContext& root) override {
         OptionGroup g("Basic Options");
-        g.addOptions()("foo,@,@1", Po::storeTo(foo), "Option on level 1");
+        g.addOptions()("foo", "-@@1", Po::storeTo(foo), "Option on level 1");
         root.add(g);
         OptionGroup g2("E1 Options");
         g2.setDescriptionLevel(Po::desc_level_e1);
-        g2.addOptions()("file,f", Po::storeTo(input)->composing(), "Input files");
+        g2.addOptions()("file", "-f", Po::storeTo(input)->composing(), "Input files");
         root.add(g2);
     }
-    void validateOptions(const OptionContext&, const ParsedOptions&, const ParsedValues&) override {}
+    void validateOptions(const OptionContext&, const ParsedOptions&) override {}
     void onHelp(const std::string& str, DescriptionLevel) override { messages["help"].append(str); }
     void onVersion(const std::string& str) override { messages["version"].append(str); }
     bool onUnhandledException(const std::exception_ptr&, const char* err) noexcept override {
@@ -137,6 +137,7 @@ TEST_CASE("Test application", "[app]") {
         REQUIRE(app.messages["version"].empty()); // help processed first
         REQUIRE(app.messages["error"].empty());
         std::string_view help(app.messages["help"]);
+        CAPTURE(help);
         REQUIRE(help.starts_with("TestApp version 1.0\n"
                                  "usage: TestApp [options] [files]\n"));
 
@@ -146,7 +147,8 @@ TEST_CASE("Test application", "[app]") {
         constexpr auto contains = [](std::string_view where, std::string_view what) {
             return where.find(what) < where.size();
         };
-        REQUIRE(contains(help, "--verbose[=<n>],-V"));
+        CAPTURE(help);
+        REQUIRE(contains(help, "-V,--verbose[=<n>]"));
         REQUIRE(contains(help, "--time-limit=<n>"));
         REQUIRE(contains(help, "Default command-line:\n"
                                "TestApp "));

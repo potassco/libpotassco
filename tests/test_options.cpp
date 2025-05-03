@@ -25,6 +25,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstring>
+#include <ranges>
 
 namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
@@ -80,22 +81,23 @@ TEST_CASE("Test intrusive pointer", "[options]") {
 TEST_CASE("Test option default value", "[options]") {
     int x;
     SECTION("options don't have defaults by default") {
-        Po::Option o("other-int", 'i', "some other integer", Po::storeTo(x)->arg("<n>"));
+        Po::Option o("other-int", "some other integer", Po::storeTo(x)->arg("<n>"));
         REQUIRE(o.value()->defaultsTo() == static_cast<const char*>(nullptr));
     }
     SECTION("options can have default values") {
-        Po::Option o("some-int", 'i', "some integer", Po::storeTo(x)->defaultsTo("123")->arg("<n>"));
+        Po::Option o("some-int", "some integer", Po::storeTo(x)->defaultsTo("123")->arg("<n>"));
         REQUIRE(strcmp(o.value()->defaultsTo(), "123") == 0);
-        REQUIRE(strcmp(o.argName(), "<n>") == 0);
+        REQUIRE(o.argName() == "<n>");
         REQUIRE(o.assignDefault());
         REQUIRE(x == 123);
-        REQUIRE(o.value()->state() == Po::Value::value_defaulted);
+        REQUIRE(o.value()->isDefaulted());
     }
     SECTION("careful with invalid default values") {
-        Po::Option o("other-int", 'i', "some other integer", Po::storeTo(x)->defaultsTo("123Hallo?")->arg("<n>"));
+        Po::Option o("other-int", "some other integer", Po::storeTo(x)->defaultsTo("123Hallo?")->arg("<n>"));
         REQUIRE(not o.assignDefault());
-        REQUIRE(o.value()->state() == Po::Value::value_unassigned);
+        REQUIRE_FALSE(o.value()->isDefaulted());
     }
+
     SECTION("parsing overwrites default value") {
         Po::OptionGroup g;
         g.addOptions()("int", Po::storeTo(x)->defaultsTo("10"), "An int");
@@ -104,10 +106,36 @@ TEST_CASE("Test option default value", "[options]") {
         Po::ParsedOptions po;
         ctx.assignDefaults(po);
         REQUIRE(x == 10);
-        Po::ParsedValues pv(ctx);
-        pv.add("int", "2");
-        po.assign(pv);
+        Po::DefaultParseContext pc(ctx);
+        pc.setValue(pc.getOption("int", OptionContext::find_name), "2");
         REQUIRE(x == 2);
+    }
+}
+TEST_CASE("Test option supports runtime string", "[options]") {
+    SECTION("option name") {
+        std::string tmp("number");
+        int         x;
+        Po::Option  o(tmp.c_str(), "some num", Po::storeTo(x));
+        REQUIRE(o.name() == "number");
+        REQUIRE(o.value()->rtName());
+        REQUIRE(o.description() == "some num");
+        REQUIRE_FALSE(o.value()->rtDesc());
+
+        tmp.assign("reused for other stuff");
+        REQUIRE(o.name() == "number");
+    }
+
+    SECTION("option description") {
+        std::string desc("Some option description coming from elsewhere");
+        int         x;
+        Po::Option  o("number", desc.c_str(), Po::storeTo(x));
+        REQUIRE(o.name() == "number");
+        REQUIRE(o.description() == desc);
+        REQUIRE(o.value()->rtDesc());
+        REQUIRE_FALSE(o.value()->rtName());
+        REQUIRE((void*) o.description().data() != (void*) desc.c_str());
+        desc.clear();
+        REQUIRE(o.description() != desc);
     }
 }
 static bool negatable_int(std::string_view s, int& out) {
@@ -123,53 +151,57 @@ TEST_CASE("Test negatable options", "[options]") {
     Po::OptionGroup   g;
     Po::OptionContext ctx;
     SECTION("options are not negatable by default") {
-        Po::Option o("flag", 'f', "some flag", Po::flag(b1));
+        Po::Option o("flag", "some flag", Po::flag(b1));
         REQUIRE(o.value()->isNegatable() == false);
     }
     SECTION("exclamation mark ('!') in init helper makes option negatable") {
-        g.addOptions()("flag!,f", Po::flag(b1), "some flag");
+        g.addOptions()("!,flag", Po::flag(b1), "some flag");
         REQUIRE((*g.begin())->value()->isNegatable() == true);
         ctx.add(g);
-        REQUIRE(ctx.tryFind("flag!") == ctx.end());
+        REQUIRE_THROWS_AS(ctx["flag!"], UnknownOption);
     }
-    SECTION("exclamation mark ('!') can be quoted") {
-        g.addOptions()("flag\\!,f", Po::flag(b1), "some flag");
+    SECTION("exclamation mark ('!') in name") {
+        g.addOptions()("flag!", Po::flag(b1), "some flag");
         REQUIRE((*g.begin())->value()->isNegatable() == false);
         ctx.add(g);
-        REQUIRE(ctx.tryFind("flag!") != ctx.end());
+        REQUIRE_NOTHROW(ctx["flag!"]);
     }
     SECTION("negatable options are shown in description") {
         int i;
-        g.addOptions()("flag!,f", Po::flag(b1), "some negatable flag")(
-            "value!", Po::storeTo(i, &negatable_int)->arg("<n>"), "some negatable int");
+        g.addOptions()                                        //
+            ("!-f,flag", Po::flag(b1), "some negatable flag") //
+            ("!,value", Po::storeTo(i, &negatable_int)->arg("<n>"), "some negatable int");
         ctx.add(g);
         std::string       help;
         Po::OptionPrinter out(help);
         ctx.description(out);
+        CAPTURE(help);
         REQUIRE(help.find("[no-]flag") != std::string::npos);
         REQUIRE(help.find("<n>|no") != std::string::npos);
     }
     SECTION("negatable options are correctly parsed") {
         int i = 123;
-        g.addOptions()("flag!,f", Po::flag(b1), "some negatable flag")("flag\\!", Po::flag(b2), "some flag")(
-            "value!", Po::storeTo(i, &negatable_int)->arg("<n>"), "some negatable int");
+        g.addOptions()                                        //
+            ("-f!,flag", Po::flag(b1), "some negatable flag") //
+            ("flag!", Po::flag(b2), "some flag")              //
+            ("!,value", Po::storeTo(i, &negatable_int)->arg("<n>"), "some negatable int");
         ctx.add(g);
-        Po::ParsedOptions po;
-        Po::ParsedValues  pv = Po::parseCommandString("--flag! --no-flag --no-value", ctx);
-        REQUIRE(po.assign(pv) == true);
+        Po::DefaultParseContext po{ctx};
+        Po::parseCommandString(po, "--flag! --no-flag --no-value");
         REQUIRE((b1 == false && b2 == true && i == 0));
 
-        REQUIRE_THROWS_AS(Po::parseCommandString("--no-value=2", ctx), Po::UnknownOption);
-        pv = Po::parseCommandString("--no-value --value=2", ctx);
-        REQUIRE_THROWS_AS(Po::ParsedOptions().assign(pv), Po::ValueError);
+        REQUIRE_THROWS_AS(Po::parseCommandString(po.clearParsed(), "--no-value=2"), Po::UnknownOption);
+        REQUIRE_THROWS_AS(Po::parseCommandString(po.clearParsed(), "--no-value --value=2"), Po::ValueError);
     }
     SECTION("negatable options should better not be a prefix of other option") {
         b1 = true, b2 = false;
-        g.addOptions()("swi!", Po::flag(b1), "A negatable switch")("no-swi2", Po::flag(b2), "A switch");
+        g.addOptions()                                               //
+            ("swi", Po::flag(b1)->negatable(), "A negatable switch") //
+            ("no-swi2", Po::flag(b2), "A switch");
         ctx.add(g);
-        Po::ParsedOptions po;
-        Po::ParsedValues  pv = Po::parseCommandString("--no-swi", ctx);
-        REQUIRE((po.assign(pv) && b1 && b2));
+        Po::DefaultParseContext po{ctx};
+        Po::parseCommandString(po, "--no-swi");
+        REQUIRE((b1 && b2));
     }
 }
 
@@ -177,41 +209,34 @@ TEST_CASE("Test parsed options", "[options]") {
     Po::OptionGroup g;
     int             i1, i2;
     g.addOptions()("int1", Po::storeTo(i1), "An int")("int2", Po::storeTo(i2)->defaultsTo("10"), "Another int");
-    Po::OptionContext ctx;
+    Po::OptionContext       ctx;
+    Po::DefaultParseContext po{ctx};
     ctx.add(g);
     SECTION("assign parsed values") {
-        Po::ParsedOptions po;
-        Po::ParsedValues  pv = Po::parseCommandString("--int1=2", ctx);
-        po.assign(pv);
-        ctx.assignDefaults(po);
-        REQUIRE(po.contains("int1"));
-        REQUIRE_FALSE(po.contains("int2"));
+        Po::parseCommandString(po, "--int1=2");
+        ctx.assignDefaults(po.parsed());
+        REQUIRE(po.parsed().contains("int1"));
+        REQUIRE_FALSE(po.parsed().contains("int2"));
         REQUIRE(i2 == 10); // default value
         REQUIRE(i1 == 2);  // parsed value
-        pv.add("int2", "20");
-        po.assign(pv);
-        REQUIRE(po.contains("int2"));
+        po.setValue(po.getOption("int2", OptionContext::find_name_or_prefix), "20");
+        po.finish(nullptr);
+        REQUIRE(po.parsed().contains("int2"));
         REQUIRE(i2 == 20); // parsed value
     }
-    SECTION("parsed options support exclude list") {
-        Po::ParsedOptions po, po2;
-        po.assign(Po::parseCommandString("--int1=1", ctx));
-        po2.assign(Po::parseCommandString("--int1=10 --int2=2", ctx), &po);
-        REQUIRE((i1 == 1 && i2 == 2));
-    }
-    SECTION("assign options from multiple sources") {
+    SECTION("parse options from multiple sources") {
         Po::OptionGroup g2;
         bool            b1;
         int             int3;
-        g2.addOptions()("flag!", Po::flag(b1), "A switch")("int3", Po::storeTo(int3), "Yet another int");
+        g2.addOptions()("!,flag", Po::flag(b1), "A switch")("int3", Po::storeTo(int3), "Yet another int");
         ctx.add(g2);
-        Po::ParsedOptions po;
-        po.assign(Po::parseCommandString("--int1=2 --flag --int3=3", ctx));
+        REQUIRE_NOTHROW(Po::parseCommandString(po, "--int1=2 --flag --int3=3"));
         REQUIRE((i1 == 2 && b1 == true && int3 == 3));
-        Po::ParsedOptions p1(po), p2;
-        p1.assign(Po::parseCommandString("--int1=3 --no-flag --int2=4 --int3=5", ctx));
+
+        REQUIRE_NOTHROW(Po::parseCommandString(po, "--int1=3 --no-flag --int2=4 --int3=5"));
         REQUIRE((i1 == 2 && b1 == true && i2 == 4 && int3 == 3));
-        p2.assign(Po::parseCommandString("--int1=3 --no-flag --int2=5 --int3=5", ctx));
+
+        REQUIRE_NOTHROW(Po::parseCommandString(po.clearParsed(), "--int1=3 --no-flag --int2=5 --int3=5"));
         REQUIRE((i1 == 3 && b1 == false && i2 == 5 && int3 == 5));
     }
 }
@@ -225,8 +250,8 @@ TEST_CASE("Test option groups", "[options]") {
     Po::OptionContext ctx;
     ctx.add(g1);
     ctx.add(g2);
-    REQUIRE_THROWS_AS(ctx.findGroup("Foo"), Po::ContextError);
-    const Po::OptionGroup& x1 = ctx.findGroup(g1.caption());
+    REQUIRE_THROWS_AS(ctx.group("Foo"), Po::ContextError);
+    const auto& x1 = ctx.group(g1.caption());
     REQUIRE(x1.size() == g1.size());
     for (auto gIt = g1.begin(), xIt = x1.begin(); gIt != g1.end(); ++gIt, ++xIt) {
         REQUIRE(((*gIt)->name() == (*xIt)->name() && (*gIt)->value() == (*xIt)->value()));
@@ -236,52 +261,19 @@ TEST_CASE("Test option groups", "[options]") {
 TEST_CASE("Test context", "[options]") {
     Po::OptionGroup   g;
     Po::OptionContext ctx;
-    SECTION("option context supports find") {
+    SECTION("option context supports get") {
         bool b1;
         bool b2;
         g.addOptions()("help", Po::flag(b1), "")("help2", Po::flag(b2), "");
         ctx.add(g);
-        REQUIRE(ctx.tryFind("help") != ctx.end());
-        REQUIRE(ctx.tryFind("help", Po::OptionContext::find_name_or_prefix) != ctx.end());
-        REQUIRE(ctx.tryFind("help", Po::OptionContext::find_prefix) == ctx.end());
+        REQUIRE_NOTHROW(ctx.option("help").get());
+        REQUIRE_NOTHROW(ctx.option("help", Po::OptionContext::find_name_or_prefix).get());
+        REQUIRE_THROWS_AS(ctx.option("help", Po::OptionContext::find_prefix), AmbiguousOption);
 
-        ctx.addAlias("Hilfe", ctx.find("help"));
-        REQUIRE(ctx.tryFind("Hilfe") != ctx.end());
+        ctx.addAlias(ctx.optionIndex("help"), "Hilfe");
+        REQUIRE_NOTHROW(ctx.option("Hilfe").get());
     }
 
-    SECTION("option description can be runtime string") {
-        std::string desc("Some option description coming from elsewhere");
-        int         x;
-        g.addOptions()("number,n", Po::storeTo(x)->arg("<n>"), desc.c_str());
-        REQUIRE_FALSE(g.empty());
-        auto o = *g.begin();
-        REQUIRE(o);
-        REQUIRE(o->name() == "number");
-        REQUIRE(o->alias() == 'n');
-        REQUIRE(o->description() == desc);
-        REQUIRE(o->value()->rtDesc());
-        REQUIRE((void*) o->description() != (void*) desc.c_str());
-        desc.clear();
-        REQUIRE(o->description() != desc);
-
-        SECTION("move") {
-            Option m(std::move(*o));
-            REQUIRE(m.name() == "number");
-            REQUIRE(m.value()->rtDesc());
-            REQUIRE(m.description() != nullptr);
-            REQUIRE(o->value() == nullptr);
-            REQUIRE(o->description() == nullptr);
-        }
-        SECTION("move assign") {
-            Option m("bla", 0, "blub", Po::storeTo(x));
-            *o = std::move(m);
-            REQUIRE(o->value() != nullptr);
-            REQUIRE(o->description() == std::string("blub"));
-            REQUIRE(o->name() == "bla");
-            REQUIRE(m.value() == nullptr);
-            REQUIRE(m.description() == nullptr);
-        }
-    }
     SECTION("option description supports argument description placeholder '%A'") {
         int x;
         g.addOptions()("number", Po::storeTo(x)->arg("<n>"), "Some int %A in %%");
@@ -334,32 +326,93 @@ TEST_CASE("Test context", "[options]") {
     }
 }
 
+TEST_CASE("Test apply spec", "[options]") {
+    struct DummyValue : Value {
+        bool doParse(std::string_view, std::string_view) override { return true; }
+    };
+    SECTION("alias") {
+        DummyValue v;
+        REQUIRE(OptionInitHelper::applySpec("-f", v));
+        REQUIRE(v.alias() == 'f');
+        SECTION("fail if not single char") { REQUIRE_FALSE(OptionInitHelper::applySpec("-fo", v)); }
+        SECTION("fail if missing char") { REQUIRE_FALSE(OptionInitHelper::applySpec("-", v)); }
+        SECTION("fail if duplicate") { REQUIRE_FALSE(OptionInitHelper::applySpec("-f-q", v)); }
+    }
+    SECTION("level") {
+        DummyValue v;
+        REQUIRE(OptionInitHelper::applySpec("@2", v));
+        REQUIRE(v.level() == Potassco::ProgramOptions::desc_level_e2);
+        SECTION("fail if not a number") { REQUIRE_FALSE(OptionInitHelper::applySpec("@x", v)); }
+        SECTION("fail if missing char") { REQUIRE_FALSE(OptionInitHelper::applySpec("@", v)); }
+        SECTION("fail if out of bounds") { REQUIRE_FALSE(OptionInitHelper::applySpec("@6", v)); }
+        SECTION("fail if duplicate") { REQUIRE_FALSE(OptionInitHelper::applySpec("@2@1", v)); }
+    }
+    SECTION("negatable") {
+        DummyValue v;
+        REQUIRE_FALSE(v.isFlag());
+        REQUIRE(OptionInitHelper::applySpec("*", v));
+        REQUIRE(v.isFlag());
+        SECTION("fail if duplicate") { REQUIRE_FALSE(OptionInitHelper::applySpec("**", v)); }
+    }
+    SECTION("negatable") {
+        DummyValue v;
+        REQUIRE(OptionInitHelper::applySpec("!", v));
+        REQUIRE(v.negatable());
+        SECTION("fail if duplicate") { REQUIRE_FALSE(OptionInitHelper::applySpec("!!", v)); }
+    }
+    SECTION("composable") {
+        DummyValue v;
+        REQUIRE(OptionInitHelper::applySpec("+", v));
+        REQUIRE(v.composing());
+        SECTION("fail if duplicate") { REQUIRE_FALSE(OptionInitHelper::applySpec("++", v)); }
+    }
+    SECTION("everything") {
+        std::string elems[] = {"*", "!", "+", "@3", "-q"};
+        std::ranges::sort(elems);
+        while (std::ranges::next_permutation(elems).found) {
+            std::string spec;
+            DummyValue  v;
+            for (const auto& x : elems) { spec += x; }
+            CAPTURE(spec);
+            REQUIRE(OptionInitHelper::applySpec(spec, v));
+            REQUIRE(v.alias() == 'q');
+            REQUIRE(v.isFlag());
+            REQUIRE(v.negatable());
+            REQUIRE(v.composing());
+            REQUIRE(v.level() == Potassco::ProgramOptions::desc_level_e3);
+
+            spec.append(elems[1]);
+            CAPTURE(spec);
+            REQUIRE_FALSE(OptionInitHelper::applySpec(spec, v));
+        }
+    }
+}
+
 TEST_CASE("Test errors", "[options]") {
     Po::OptionGroup      g;
     Po::OptionInitHelper x = g.addOptions();
     Po::OptionContext    ctx;
     bool                 b;
-    SECTION("option name must not be empty") {
-        REQUIRE_THROWS_AS(x(nullptr, Po::flag(b), ""), Po::Error);
-        REQUIRE_THROWS_AS(x("", Po::flag(b), ""), Po::Error);
-    }
-    SECTION("alias must be a single character") { REQUIRE_THROWS_AS(x("foo,fo", Po::flag(b), ""), Po::Error); }
+    SECTION("option name must not be empty") { REQUIRE_THROWS_AS(x("", Po::flag(b), ""), Po::Error); }
+    SECTION("alias must be a single character") { REQUIRE_THROWS_AS(x("foo", "-fo", Po::flag(b), ""), Po::Error); }
+    SECTION("level must be a number") { REQUIRE_THROWS_AS(x("foo", "@x", Po::flag(b), ""), Po::Error); }
+    SECTION("level must be in range") { REQUIRE_THROWS_AS(x("foo", "@8", Po::flag(b), ""), Po::Error); }
     SECTION("multiple occurrences are not allowed") {
         g.addOptions()("help", Po::flag(b), "")("rand", Po::flag(b), "");
         ctx.add(g);
-        Po::ParsedValues pv(ctx);
-        pv.add("help", "1");
-        pv.add("help", "1");
-        REQUIRE_THROWS_AS(Po::ParsedOptions().assign(pv), Po::ValueError);
+        Po::DefaultParseContext pc{ctx};
+        pc.setValue(pc.getOption("help", OptionContext::find_name), "1");
+        REQUIRE_THROWS_AS(pc.setValue(pc.getOption("help", OptionContext::find_name), "1"), Po::ValueError);
     }
     SECTION("unknown options are not allowed") {
-        REQUIRE_THROWS_AS(Po::parseCommandString("--help", ctx), Po::UnknownOption);
+        Po::DefaultParseContext po{ctx};
+        REQUIRE_THROWS_AS(Po::parseCommandString(po, "--help"), Po::UnknownOption);
     }
     SECTION("options must not be ambiguous") {
         g.addOptions()("help", Po::flag(b), "")("help-a", Po::flag(b), "")("help-b", Po::flag(b), "")("help-c",
                                                                                                       Po::flag(b), "");
         ctx.add(g);
-        REQUIRE_THROWS_AS(ctx.find("he", Po::OptionContext::find_prefix), Po::AmbiguousOption);
+        REQUIRE_THROWS_AS(ctx.option("he", Po::OptionContext::find_prefix), Po::AmbiguousOption);
     }
 }
 
@@ -368,13 +421,13 @@ TEST_CASE("Test parse argv array", "[options]") {
     Po::OptionGroup g;
     bool            x;
     int             i1, i2;
-    g.addOptions()("help,h", Po::flag(x), "")("version,V", Po::storeTo(i1), "An int")("int", Po::storeTo(i2),
-                                                                                      "Another int");
+    g.addOptions()("-h,help", Po::flag(x), "")    //
+        ("-V,version", Po::storeTo(i1), "An int") //
+        ("int", Po::storeTo(i2), "Another int");
     Po::OptionContext ctx;
     ctx.add(g);
-    Po::ParsedOptions po;
-    Po::ParsedValues  pv = Po::parseCommandArray(argv, ctx);
-    po.assign(pv);
+    Po::DefaultParseContext po{ctx};
+    REQUIRE_NOTHROW(Po::parseCommandArray(po, argv));
     REQUIRE(x);
     REQUIRE(i1 == 3);
     REQUIRE(i2 == 6);
@@ -384,13 +437,19 @@ TEST_CASE("Test parser", "[options]") {
     int             i1, i2;
     bool            flag1 = true, flag2 = false;
     Po::OptionGroup g;
-    g.addOptions()("int1", Po::storeTo(i1), "An int")("int2", Po::storeTo(i2), "Another int")(
-        "flag", Po::flag(flag1), "A flag")("foo,f", Po::flag(flag2), "A flag");
+    g.addOptions()                               //
+        ("-i,int1", Po::storeTo(i1), "An int")   //
+        ("int2", Po::storeTo(i2), "Another int") //
+        ("-x,flag", Po::flag(flag1), "A flag")   //
+        ("-f,foo", Po::flag(flag2), "A flag");
+
     SECTION("parser supports custom context") {
         struct PC : public Po::ParseContext {
             Po::OptionGroup* g;
-            PC(Po::OptionGroup& grp) : g(&grp) {}
-            Po::SharedOptPtr getOption(std::string_view name, FindType) override {
+            PC(Po::OptionGroup& grp) : Po::ParseContext("dummy"), g(&grp) {}
+            [[nodiscard]] auto state(const Option&) const -> OptState override { return OptState::state_open; }
+
+            Po::SharedOptPtr doGetOption(std::string_view name, FindType) override {
                 for (const auto& opt : *g) {
                     if (opt->name() == name) {
                         return opt;
@@ -398,42 +457,41 @@ TEST_CASE("Test parser", "[options]") {
                 }
                 return Po::SharedOptPtr(nullptr);
             }
-            Po::SharedOptPtr getOption(int, std::string_view) override { return Po::SharedOptPtr(nullptr); }
-            void             addValue(const Po::SharedOptPtr& key, std::string_view value) override {
-                if (not key->value()->parse(key->name(), value, Po::Value::value_unassigned)) {
-                    throw std::logic_error("Invalid value");
-                }
+            bool doSetValue(const Po::SharedOptPtr& key, std::string_view value) override {
+                return key->value()->parse(key->name(), value);
             }
+            void doFinish(const std::exception_ptr&) override {}
         } pc(g);
-        Po::parseCommandString("--int1=10 --int2 22", pc);
+        REQUIRE_NOTHROW(Po::parseCommandString(pc, "--int1=10 --int2 22"));
         REQUIRE((i1 == 10 && i2 == 22));
     }
     SECTION("parser optionally supports flags with explicit value") {
         Po::OptionContext ctx;
         ctx.add(g);
-        std::string cmd = "--flag=false --foo=on";
-        REQUIRE_THROWS_AS(Po::parseCommandString(cmd, ctx, nullptr, 0), Po::SyntaxError);
-        Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, nullptr, Po::command_line_allow_flag_value));
+        Po::DefaultParseContext po{ctx};
+        std::string             cmd = "--flag=false --foo=on";
+        REQUIRE_THROWS_AS(Po::parseCommandString(po, cmd, nullptr, 0), Po::SyntaxError);
+        REQUIRE_NOTHROW(Po::parseCommandString(po, cmd, nullptr, Po::command_line_allow_flag_value));
         REQUIRE(flag1 == false);
         REQUIRE(flag2 == true);
     }
     SECTION("parser reports missing value") {
         Po::OptionContext ctx;
         ctx.add(g);
-        REQUIRE_THROWS_AS(Po::parseCommandString("--int1", ctx, nullptr, 0), Po::SyntaxError);
+        Po::DefaultParseContext po{ctx};
+        REQUIRE_THROWS_AS(Po::parseCommandString(po, "--int1"), Po::SyntaxError);
     }
     SECTION("parser supports quoting") {
         std::vector<std::string> tok;
-        g.addOptions()("path", Po::storeTo(tok)->composing(), "An int");
+        g.addOptions()("+,path", Po::storeTo(tok), "An int");
         Po::OptionContext ctx;
         ctx.add(g);
-        struct P {
-            static bool func(std::string_view, std::string& o) {
-                o = "path";
-                return true;
-            }
+        auto positional = [](std::string_view, std::string& o) {
+            o = "path";
+            return true;
         };
-        std::string cmd;
+        Po::DefaultParseContext po{ctx};
+        std::string             cmd;
         cmd.append("foo bar");
         cmd.append(" \"foo bar\"");
         cmd.append(" '\\foo bar'");
@@ -442,7 +500,7 @@ TEST_CASE("Test parser", "[options]") {
         cmd.append("foo bar");
         cmd.append("\\");
         cmd.append("\"");
-        Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, &P::func));
+        REQUIRE_NOTHROW(Po::parseCommandString(po, cmd, positional));
         REQUIRE(tok.size() == 6);
         REQUIRE(tok[0] == "foo");
         REQUIRE(tok[1] == "bar");
@@ -452,9 +510,18 @@ TEST_CASE("Test parser", "[options]") {
         REQUIRE(tok[5] == "bar\"");
         tok.clear();
         cmd = R"(\\"Hallo Welt\\")";
-        Po::ParsedOptions().assign(Po::parseCommandString(cmd, ctx, &P::func));
+        REQUIRE_NOTHROW(Po::parseCommandString(po.clearParsed(), cmd, positional));
         REQUIRE(tok.size() == 1);
         REQUIRE(tok[0] == "\\Hallo Welt\\");
+    }
+    SECTION("parser supports short flags followed by short option") {
+        Po::OptionContext ctx;
+        ctx.add(g);
+        Po::DefaultParseContext po{ctx};
+        REQUIRE_NOTHROW(Po::parseCommandString(po, "-xfi10"));
+        REQUIRE(flag1 == true);
+        REQUIRE(flag2 == true);
+        REQUIRE(i1 == 10);
     }
 }
 
@@ -468,32 +535,31 @@ TEST_CASE("Test gringo example", "[options]") {
         Debug                    outputDebug = Debug::NONE;
     };
     GringoOpts opts;
-    gringo.addOptions()("text,t", parse([&](std::string_view) {
-                                      opts.outputFormat = "text";
-                                      return true;
-                                  })->flag(),
-                        "Print plain text format")("const,c",
-                                                   parse([&](std::string_view v) {
-                                                       opts.defines.emplace_back(v);
-                                                       return true;
-                                                   })
-                                                       ->composing()
-                                                       ->arg("<id>=<term>"),
-                                                   "Replace term occurrences of <id> with <term>")(
-        "output-debug",
-        storeTo(opts.outputDebug = GringoOpts::Debug::NONE,
-                values<GringoOpts::Debug>({{"none", GringoOpts::Debug::NONE},
-                                           {"text", GringoOpts::Debug::TEXT},
-                                           {"translate", GringoOpts::Debug::TRANSLATE},
-                                           {"all", GringoOpts::Debug::ALL}})),
-        "Print debug information during output:\n"
-        "      none     : no additional info\n"
-        "      text     : print rules as plain text (prefix %%)\n"
-        "      translate: print translated rules as plain text (prefix %%%%)\n"
-        "      all      : combines text and translate");
+    gringo.addOptions() //
+        ("text", "-t", parse([&](std::string_view) {
+                           opts.outputFormat = "text";
+                           return true;
+                       })->flag(),
+         "Print plain text format") //
+        ("-c+,const", parse([&](std::string_view v) {
+                          opts.defines.emplace_back(v);
+                          return true;
+                      })->arg("<id>=<term>"),
+         "Replace term occurrences of <id> with <term>") //
+        ("output-debug",
+         storeTo(opts.outputDebug = GringoOpts::Debug::NONE,
+                 values<GringoOpts::Debug>({{"none", GringoOpts::Debug::NONE},
+                                            {"text", GringoOpts::Debug::TEXT},
+                                            {"translate", GringoOpts::Debug::TRANSLATE},
+                                            {"all", GringoOpts::Debug::ALL}})),
+         "Print debug information during output:\n"
+         "      none     : no additional info\n"
+         "      text     : print rules as plain text (prefix %%)\n"
+         "      translate: print translated rules as plain text (prefix %%%%)\n"
+         "      all      : combines text and translate"); //
     ctx.add(gringo);
-    REQUIRE_NOTHROW(
-        Po::ParsedOptions().assign(Po::parseCommandString("--text -c a=b -c x=y --output-debug=translate", ctx)));
+    Po::DefaultParseContext po{ctx};
+    REQUIRE_NOTHROW(Po::parseCommandString(po, "--text -c a=b -c x=y --output-debug=translate"));
 
     CHECK(opts.outputFormat == "text");
     CHECK(opts.outputDebug == GringoOpts::Debug::TRANSLATE);

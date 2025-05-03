@@ -53,29 +53,29 @@ namespace Potassco::ProgramOptions {
 class Option : public Detail::RefCountable {
 public:
     /*!
-     * \pre longName != ""
-     * \pre vd != 0
-     * \param longName    name (and unique key) of the option
-     * \param shortName   possible alias name
+     * \pre name != ""
+     * \pre value != nullptr
+     * \param name        name (and unique key) of the option
      * \param description description of the option, used for printing help
      * \param value       value object to be associated with this option
      */
-    Option(std::string_view longName, char shortName, Str description, Value* value);
-    ~Option();
-    Option(Option&& opt) noexcept;
-    Option& operator=(Option&&) noexcept;
+    Option(Str name, Str description, std::unique_ptr<Value> value);
+    Option(Str name, Str description, Value* value);
+    Option(Str name, char alias, Str description, Value* value);
 
-    [[nodiscard]] const std::string& name() const { return name_; }
-    [[nodiscard]] char               alias() const { return value_->alias(); }
-    [[nodiscard]] Value*             value() const { return value_.get(); }
-    [[nodiscard]] const char*        description() const { return description_; }
-    [[nodiscard]] const char*        argName() const { return value_->arg(); }
-    [[nodiscard]] bool               assignDefault() const;
-    [[nodiscard]] std::size_t        maxColumn() const;
-    [[nodiscard]] DescriptionLevel   descLevel() const { return value_->level(); }
+    ~Option();
+
+    [[nodiscard]] std::string_view name() const { return name_; }
+    [[nodiscard]] char             alias() const { return value_->alias(); }
+    [[nodiscard]] Value*           value() const { return value_.get(); }
+    [[nodiscard]] std::string_view description() const { return description_; }
+    [[nodiscard]] std::string_view argName() const { return value_->arg(); }
+    [[nodiscard]] bool             assignDefault() const;
+    [[nodiscard]] std::size_t      maxColumn() const;
+    [[nodiscard]] DescriptionLevel descLevel() const { return value_->level(); }
 
 private:
-    std::string            name_;        // name (and unique key) of option
+    const char*            name_;        // name (and unique key) of option
     const char*            description_; // description of the option (used for --help)
     std::unique_ptr<Value> value_;       // the option's value manager
 };
@@ -85,7 +85,6 @@ using SharedOptPtr = Detail::IntrusiveSharedPtr<Option>;
 class OptionInitHelper;
 class OptionContext;
 class OptionParser;
-class ParsedValues;
 class ParsedOptions;
 class OptionOutput;
 
@@ -147,18 +146,37 @@ private:
 
 class OptionInitHelper {
 public:
+    //! Applies the given spec.
+    /*!
+     * Parses and applies a spec like `[!][+][*][-<alias>][@<level>]` such that:
+     *  - `!` is mapped to `value.negatable()`,
+     *  - `+` is mapped to `value.composing()`,
+     *  - `*` is mapped to `value.flag()`,
+     *  - `-<alias>` is mapped to `value.alias(<alias>)`, and
+     *  - `@<level>` is mapped `value.level(enum_cast<DescriptionLevel>(level))`
+     *
+     *  \return true if `spec` is valid, i.e., elements are either not present or valid.
+     */
+    static bool applySpec(std::string_view spec, Value& value);
+
     explicit OptionInitHelper(OptionGroup& owner);
 
     //! Factory function for creating an option.
     /*!
-     * \param key <name>[!][,<alias>][,@<level>]
+     * \param name Name (and unique key) of the option
+     * \param spec Additional value specification (see OptionInitHelper::applySpec(std::string_view, Value&)
      * \param val  Value of the option
      * \param desc Description of the option
      *
-     * \note If <name> is followed by an exclamation mark ('!'),
-     *       the option is marked as negatable.
+     * \throw Error if `<name>` is empty or `<spec>` is not valid.
      */
-    OptionInitHelper& operator()(const char* key, Value* val, Str desc);
+    OptionInitHelper& operator()(Str name, std::string_view spec, Value* val, Str desc);
+
+    //! Factory function for creating an option.
+    /*!
+     * \overload OptionInitHelper::operator()(Str name, std::string_view spec, Value* val, Str desc)
+     */
+    OptionInitHelper& operator()(Str name, Value* val, Str desc);
 
 private:
     OptionGroup* owner_;
@@ -170,22 +188,18 @@ private:
  * Options in a context have to be unique (w.r.t name and alias)
  * within that context.
  *
- * An OptionContext defines the granularity of option parsing
- * and option lookup.
+ * An OptionContext defines the granularity of option parsing and option lookup.
  */
 class OptionContext {
 private:
-    using KeyType        = std::size_t;
-    using Name2Key       = std::map<std::string, KeyType, std::less<>>;
-    using GroupList      = std::vector<OptionGroup>;
-    using index_iterator = Name2Key::const_iterator; // NOLINT
-    using PrefixRange    = std::pair<index_iterator, index_iterator>;
-    using OptionList     = OptionGroup::OptionList;
+    using KeyType    = std::size_t;
+    using Name2Key   = std::map<std::string, KeyType, std::less<>>;
+    using GroupList  = std::vector<OptionGroup>;
+    using OptionList = OptionGroup::OptionList;
 
 public:
     //! Type for identifying an option within a context
     using option_iterator = OptionList::const_iterator; // NOLINT
-    using OptionRange     = PrefixRange;
 
     explicit OptionContext(std::string_view caption = "", DescriptionLevel desc_default = desc_level_default);
 
@@ -202,11 +216,11 @@ public:
      */
     OptionContext& add(const OptionGroup& group);
 
-    //! Adds an alias name for the given option.
+    //! Adds an alias name for the option at the given position.
     /*!
      * \throw DuplicateOption if an option with the name aliasName already exists.
      */
-    OptionContext& addAlias(std::string aliasName, option_iterator option);
+    OptionContext& addAlias(std::size_t pos, std::string_view aliasName);
 
     //! Adds all groups (and their options) from other to this context.
     /*!
@@ -228,35 +242,29 @@ public:
 
     enum FindType { find_name = 1, find_prefix = 2, find_name_or_prefix = find_name | find_prefix, find_alias = 4 };
 
-    //! Returns the option with the given key.
+    //! Returns the option with the given name or prefix.
     /*!
-     * \note The second parameter defines how `key` is interpreted:
-     *        - find_name:   search for an option whose name equals `key`
-     *        - find_prefix: search for an option whose name starts with `key`
-     *        - find_alias:  search for an option whose alias equals `key`
+     * \note The second parameter `t` defines how `name` is interpreted:
+     *        - find_name:   search for an option whose name equals `name`
+     *        - find_prefix: search for an option whose name starts with `name`
+     *        - find_alias:  search for an option whose alias equals `name`
      *
-     * \note If the second parameter is find_alias, a starting '-'
-     *       in `key` is valid but not required.
+     * \note If `t` is find_alias, a starting '-' in `name` is valid but not required.
      *
-     * \throw UnknownOption if no option matches `key`.
-     * \throw AmbiguousOption if more than one option matches `key`.
+     * \throw UnknownOption if no option matches `name`.
+     * \throw AmbiguousOption if more than one option matches `name`.
      */
-    [[nodiscard]] option_iterator find(std::string_view key, FindType t = find_name) const;
+    [[nodiscard]] auto option(std::string_view name, FindType t = find_name) const -> SharedOptPtr;
+    [[nodiscard]] auto operator[](std::string_view name) const -> const Option&;
+
+    //! Returns the index of the option with the given name.
     /*!
-     * Behaves like find but returns end() instead of throwing
-     * UnknownOption or AmbiguousOption.
+     * \throw UnknownOption if no option matches `name`.
      */
-    [[nodiscard]] option_iterator tryFind(std::string_view key, FindType t = find_name) const;
+    [[nodiscard]] auto optionIndex(std::string_view name) const -> std::size_t;
 
-    [[nodiscard]] OptionRange findImpl(std::string_view key, FindType t,
-                                       unsigned eMask = static_cast<unsigned>(-1)) const {
-        return findImpl(key, t, eMask, caption());
-    }
-    [[nodiscard]] OptionRange findImpl(std::string_view key, FindType t, unsigned eMask, std::string_view eCtx) const;
-
-    [[nodiscard]] const OptionGroup& findGroup(std::string_view caption) const;
-    [[nodiscard]] const OptionGroup* tryFindGroup(std::string_view caption) const;
-
+    //! Returns the option group with the given caption or throws `ContextError` if no such group exists.
+    [[nodiscard]] const OptionGroup& group(std::string_view caption) const;
     //! Sets the description level to be used when generating a description.
     /*!
      * Once set, functions generating descriptions will only consider groups
@@ -281,42 +289,15 @@ public:
     void assignDefaults(const ParsedOptions& exclude) const;
 
 private:
-    void                 insertOption(size_t groupId, const SharedOptPtr& o);
     [[nodiscard]] size_t findGroupKey(std::string_view name) const;
+    [[nodiscard]] size_t findOption(std::string_view name, FindType t) const;
+    void                 insertOption(size_t groupId, const SharedOptPtr& o);
 
     Name2Key         index_;
     OptionList       options_;
     GroupList        groups_;
     std::string      caption_;
     DescriptionLevel descLevel_;
-};
-
-/*!
- * Container of option-value-pairs representing values found by a parser.
- */
-class ParsedValues {
-public:
-    using OptionAndValue = std::pair<SharedOptPtr, std::string>;
-    using Values         = std::vector<OptionAndValue>;
-    using iterator       = Values::const_iterator; // NOLINT
-
-    /*!
-     * \param a_ctx The OptionContext for which this object stores raw-values.
-     */
-    explicit ParsedValues(const OptionContext& a_ctx) : ctx(&a_ctx) {}
-    const OptionContext* ctx;
-
-    //! Adds a value for option opt.
-    void add(std::string_view opt, std::string_view value);
-    void add(const SharedOptPtr& opt, std::string_view value) { parsed_.emplace_back(opt, value); }
-
-    [[nodiscard]] iterator begin() const { return parsed_.begin(); }
-    [[nodiscard]] iterator end() const { return parsed_.end(); }
-
-    void clear() { parsed_.clear(); }
-
-private:
-    Values parsed_;
 };
 
 //! Set of options holding a parsed value.
@@ -329,34 +310,61 @@ public:
     [[nodiscard]] bool        contains(std::string_view name) const { return parsed_.contains(name); }
 
     void add(std::string_view name) { parsed_.emplace(name); }
-
-    //! Assigns the parsed values in p to their options.
-    /*!
-     * Parsed values for options that already have a value (and are
-     * not composing) are ignored. On the other hand, parsed values
-     * overwrite any existing default values.
-     *
-     * \param p       parsed values to assign
-     * \param exclude options that should be ignored during value assignment
-     *
-     * \throw ValueError if `p` contains more than one value
-     *        for a non-composing option, or if `p` contains a value that is
-     *        invalid for its option.
-     */
-    bool assign(const ParsedValues& p, const ParsedOptions* exclude = nullptr);
+    void merge(ParsedOptions&& other);
 
 private:
     std::set<std::string, std::less<>> parsed_;
-    int                                assign(const Option& o, const std::string& value);
 };
 
 class ParseContext {
 public:
     using FindType = OptionContext::FindType;
+    explicit ParseContext(std::string_view name);
     virtual ~ParseContext();
-    virtual SharedOptPtr getOption(std::string_view name, FindType ft)             = 0;
-    virtual SharedOptPtr getOption(int posKey, std::string_view tok)               = 0;
-    virtual void         addValue(const SharedOptPtr& key, std::string_view value) = 0;
+    [[nodiscard]] auto name() const -> std::string_view { return name_; }
+
+    auto getOption(std::string_view name, FindType ft) -> SharedOptPtr;
+    void setValue(const SharedOptPtr& opt, std::string_view value);
+    void finish(const std::exception_ptr& error);
+
+protected:
+    enum class OptState {
+        state_open,
+        state_seen,
+        state_skip,
+    };
+    [[nodiscard]] virtual auto state(const Option& opt) const -> OptState = 0;
+
+    virtual auto doGetOption(std::string_view name, FindType ft) -> SharedOptPtr = 0;
+    virtual bool doSetValue(const SharedOptPtr& opt, std::string_view value)     = 0;
+    virtual void doFinish(const std::exception_ptr& error)                       = 0;
+
+private:
+    std::string_view name_;
+};
+
+//! Default parsing context to be used with parsing functions.
+class DefaultParseContext : public ParseContext {
+public:
+    /*!
+     * Creates a context over the given options.
+     * \param o  Set of known options.
+     */
+    explicit DefaultParseContext(const OptionContext& o);
+
+    auto parsed() -> const ParsedOptions&;
+    auto clearParsed() -> DefaultParseContext&;
+
+private:
+    [[nodiscard]] auto state(const Option& opt) const -> OptState override;
+
+    auto doGetOption(std::string_view name, FindType ft) -> SharedOptPtr override;
+    bool doSetValue(const SharedOptPtr& opt, std::string_view value) override;
+    void doFinish(const std::exception_ptr&) override;
+
+    const OptionContext* ctx_;
+    ParsedOptions        parsed_;
+    ParsedOptions        seen_;
 };
 
 //! Base class for options parsers.
@@ -369,11 +377,8 @@ public:
 
 protected:
     [[nodiscard]] ParseContext& ctx() const { return *ctx_; }
-    [[nodiscard]] SharedOptPtr getOption(std::string_view name, FindType ft) const { return ctx_->getOption(name, ft); }
-    [[nodiscard]] SharedOptPtr getOption(int posKey, std::string_view tok) const {
-        return ctx_->getOption(posKey, tok);
-    }
-    void addOptionValue(const SharedOptPtr& key, std::string_view value) { ctx_->addValue(key, value); }
+    [[nodiscard]] SharedOptPtr  getOption(std::string_view name, FindType ft) const;
+    void                        applyValue(const SharedOptPtr& key, std::string_view value);
 
 private:
     virtual void  doParse() = 0;
@@ -454,66 +459,50 @@ using OptionPrinter = OptionOutputImpl<>;
 // parse functions
 ///////////////////////////////////////////////////////////////////////////////
 /*!
- * A function type that parsers use for processing tokens that
- * have no option name. Concrete functions shall either return true
- * and store the name of the option that should receive the token as value
- * in its second argument or return false to signal an error.
+ * A function type for processing tokens that have no option name.
+ * Concrete functions shall either return true and store the name of the option that
+ * should receive the token as value in its second argument or return false to signal an error.
  */
 using PosOption = std::function<bool(std::string_view, std::string&)>;
 
 enum CommandLineFlags {
-    command_line_allow_flag_value   = 1u,
-    command_line_allow_unregistered = 2u, //!< Allow arguments that don't match any option
+    command_line_allow_flag_value = 1u, //!< Allow explicit values even for flags (e.g., --flag=1)
 };
 
+//! Parses the command arguments given in `args`.
 /*!
- * Parses the command arguments given in `args`.
- * \param args  the arguments to parse
- * \param ctx options to search in the arguments
- * \param posParser parse function for positional options
- * \param flags optional config flags (see CommandLineFlags)
- * \param[out] consumed (optional) output parameter receiving the number of arguments parsed
+ * \param ctx   Parse context to use for looking up and assigning found options.
+ * \param args  The arguments to parse.
+ * \param flags Optional config flags (see CommandLineFlags).
  *
- * \return A ParsedOptions-Object containing names and values for all options found.
+ * \return The given parse context.
  *
  * \throw SyntaxError if argument syntax is incorrect.
- * \throw UnknownOption if an argument is found that does not match any option and `flags` does not contain
- *                      `command_line_allow_unregistered`.
+ * \throw UnknownOption if an argument is found that does not match any option.
  */
-ParsedValues  parseCommandArray(std::span<const char* const> args, const OptionContext& ctx,
-                                PosOption posParser = nullptr, unsigned flags = 0, unsigned* consumed = nullptr);
-ParseContext& parseCommandArray(std::span<const char* const> args, ParseContext& ctx, unsigned flags = 0);
+ParseContext& parseCommandArray(ParseContext& ctx, std::span<const char* const> args, PosOption pos = nullptr,
+                                unsigned flags = 0);
 
+//! Parses the command line given in `args`.
 /*!
- * Parses the command line given in the first parameter.
- * \param cmd command line to parse
- * \param ctx options to search in the command string.
- * \param posParser parse function for positional options
- * \param flags optional config flags (see CommandLineFlags).
- *
- * \return A ParsedOptions-Object containing names and values for all options found.
- *
- * \throw SyntaxError if command line syntax is incorrect.
- * \throw UnknownOption if an argument is found, that does not match any option.
+ * \copydetails parseCommandArray
  */
-ParsedValues  parseCommandString(std::string_view cmd, const OptionContext& ctx, PosOption posParser = nullptr,
-                                 unsigned flags = command_line_allow_flag_value);
-ParseContext& parseCommandString(std::string_view cmd, ParseContext& ctx,
+ParseContext& parseCommandString(ParseContext& ctx, std::string_view args, PosOption pos = nullptr,
                                  unsigned flags = command_line_allow_flag_value);
 
+//! Parses a config file having the format key = value.
 /*!
- * Parses a config file having the format key = value.
- * \param is the stream representing the config file
- * \param o options to search in the config file
- * \param allowUnregistered Allow arguments that match no option in ctx
- *
- * \return A ParsedOptions-Object containing names and values for all options found.
- *
- * \throw SyntaxError if command line syntax is incorrect.
- * \throw UnknownOption if an argument is found, that does not match any option.
  * \note Keys are option's long names.
  * \note Lines starting with # are treated as comments and are ignored.
+ *
+ * \param ctx Parse context to use for looking up and assigning found options.
+ * \param is  The stream representing the config file.
+ *
+ * \return The given parse context.
+ *
+ * \throw SyntaxError if config file syntax is incorrect.
+ * \throw UnknownOption if a key is found that does not match any option.
  */
-ParsedValues parseCfgFile(std::istream& is, const OptionContext& o, bool allowUnregistered);
+ParseContext& parseCfgFile(ParseContext& ctx, std::istream& is);
 
 } // namespace Potassco::ProgramOptions

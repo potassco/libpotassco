@@ -349,9 +349,9 @@ std::size_t Application::formatMessage(std::span<char> buffer, MessageType t, co
 bool Application::applyOptions(std::span<const char* const> args) {
     using namespace ProgramOptions;
 
-    unsigned      help    = 0;
+    unsigned help         = 0;
+    std::ignore           = std::addressof(help); // Disable false positive from CppDFAUnreachableCode analysis
     bool          version = false;
-    ParsedOptions parsed; // options found in the command-line
     OptionContext allOpts(std::string("<").append(getName()).append(">"));
     OptionGroup   basic("Basic Options");
     if (auto [message, level] = getHelpOption(); level > 0) {
@@ -362,24 +362,24 @@ bool Application::applyOptions(std::span<const char* const> args) {
                                          })
                                      ->arg("<n>")
                                      ->implicit("1");
-        basic.addOptions()("help,h", hv, message);
+        basic.addOptions()("help", "-h", hv, message);
     }
-    basic.addOptions()                                                                                 //
-        ("version,v", flag(version), "Print version information and exit")                             //
-        ("verbose,V", storeTo(verbose_ = 0)->implicit("-1")->arg("<n>"), "Set verbosity level to %A")  //
-        ("time-limit", storeTo(timeout_ = 0)->arg("<n>"), "Set time limit to %A seconds (0=no limit)") //
-        ("fast-exit,@1", flag(fastExit_ = false), "Force fast exit (do not call dtors)");              //
+    basic.addOptions()                                                                                    //
+        ("version", "-v", flag(version), "Print version information and exit")                            //
+        ("verbose", "-V", storeTo(verbose_ = 0)->implicit("-1")->arg("<n>"), "Set verbosity level to %A") //
+        ("time-limit", storeTo(timeout_ = 0)->arg("<n>"), "Set time limit to %A seconds (0=no limit)")    //
+        ("fast-exit", "@1", flag(fastExit_ = false), "Force fast exit (do not call dtors)");              //
     allOpts.add(basic);
     initOptions(allOpts);
-    auto values = parseCommandArray(args, allOpts, [this](std::string_view value, std::string& opt) {
+    DefaultParseContext parseContext{allOpts};
+    parseCommandArray(parseContext, args, [this](std::string_view value, std::string& opt) {
         if (const auto* n = getPositional(value); n) {
             opt = n;
             return true;
         }
         return false;
     });
-    parsed.assign(values);
-    allOpts.assignDefaults(parsed);
+    allOpts.assignDefaults(parseContext.parsed());
     if (help || version) {
         exitCode_ = EXIT_SUCCESS;
         std::stringstream msg;
@@ -401,7 +401,7 @@ bool Application::applyOptions(std::span<const char* const> args) {
         }
         return false;
     }
-    validateOptions(allOpts, parsed, values);
+    validateOptions(allOpts, parseContext.parsed());
     return true;
 }
 

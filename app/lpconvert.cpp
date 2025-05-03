@@ -48,7 +48,7 @@ public:
                "Convert program in <file> or standard input";
     }
     void initOptions(OptionContext& root) override;
-    void validateOptions(const OptionContext& ctx, const ParsedOptions& parsed, const ParsedValues&) override {
+    void validateOptions(const OptionContext& ctx, const ParsedOptions& parsed) override {
         if (parsed.contains("text") && parsed.contains("format")) {
             throw Potassco::ProgramOptions::Error("options 'text' and 'format' are mutually exclusive");
         }
@@ -98,14 +98,14 @@ POTASSCO_SET_ENUM_ENTRIES(LpConvert::Format, {auto_, "auto"sv}, {text, "text"sv}
 
 void LpConvert::initOptions(OptionContext& root) {
     OptionGroup convert("Conversion Options");
-    convert.addOptions()                                                                                            //
-        ("input,i,@2", storeTo(input_, std::string()), "Input file")                                                //
-        ("potassco,p", flag(potassco_, false), "Enable potassco extensions")                                        //
-        ("filter,f", flag(filter_, false), "Hide converted potassco predicates")                                    //
-        ("output,o", storeTo(output_, std::string())->arg("<file>"), "Write output to <file> (default: stdout)")    //
-        ("format", storeTo(format_, Format::auto_), "Output format (text|smodels|aspif|aspif-v1)")                  //
-        ("text,t", action<bool>([this](bool) { format_ = Format::text; })->flag(), "Convert to ground text format") //
-        ("aux-pred", storeTo(pred_, std::string()), "Prefix/Predicate for atom numbers in text output")             //
+    convert.addOptions()                                                                                          //
+        ("-i@2,input", storeTo(input_, std::string()), "Input file")                                              //
+        ("-p,potassco", flag(potassco_, false), "Enable potassco extensions")                                     //
+        ("-f,filter", flag(filter_, false), "Hide converted potassco predicates")                                 //
+        ("-o,output", storeTo(output_, std::string())->arg("<file>"), "Write output to <file> (default: stdout)") //
+        ("format", storeTo(format_, Format::auto_), "Output format (text|smodels|aspif|aspif-v1)")                //
+        ("-t,text", flag([this](bool) { format_ = Format::text; }), "Convert to ground text format")              //
+        ("aux-pred", storeTo(pred_, std::string()), "Prefix/Predicate for atom numbers in text output")           //
         ;
     root.add(convert);
 }

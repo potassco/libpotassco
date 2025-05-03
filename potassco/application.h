@@ -128,8 +128,8 @@ protected:
     //! Adds all application options to the given context.
     virtual void initOptions(ProgramOptions::OptionContext& root) = 0;
     //! Validates parsed options. Shall throw to signal error.
-    virtual void validateOptions(const ProgramOptions::OptionContext& root, const ProgramOptions::ParsedOptions& parsed,
-                                 const ProgramOptions::ParsedValues& values) = 0;
+    virtual void validateOptions(const ProgramOptions::OptionContext& root,
+                                 const ProgramOptions::ParsedOptions& parsed) = 0;
     //! Shall print the provided help message.
     virtual void onHelp(const std::string& help, ProgramOptions::DescriptionLevel level) = 0;
     //! Shall print the provided version info.
