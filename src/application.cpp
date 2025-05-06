@@ -210,8 +210,8 @@ void         Application::handleException() {
     catch (const RuntimeError& e) {
         auto m = e.message();
         auto d = e.details();
-        buffer = buffer.subspan(formatMessage(buffer, message_error, "%.*s\n", static_cast<int>(m.size()), m.data()));
-        formatMessage(buffer, message_error, "%.*s", static_cast<int>(d.size()), d.data());
+        buffer = buffer.subspan(formatMessage(buffer, message_error, "%" PRIsv "\n", PRI_SV(m)));
+        formatMessage(buffer, message_error, "%" PRIsv, PRI_SV(d));
     }
     catch (const Error& e) {
         snprintf(buffer.data(), buffer.size(), "%s", e.what());
@@ -241,11 +241,11 @@ void Application::fail(int code, std::string_view message, std::string_view info
         char  mem[1024];
         auto* pos  = std::begin(mem);
         auto* end  = std::end(mem);
-        pos       += formatMessage(mem, message_error, "%.*s", static_cast<int>(message.length()), message.data());
+        pos       += formatMessage(mem, message_error, "%" PRIsv, PRI_SV(message));
         while (not info.empty() && (end - pos) > 1) {
             auto line  = info.substr(0, std::min(info.find('\n'), info.size()));
             *pos++     = '\n';
-            pos       += formatMessage({pos, end}, message_info, "%.*s", static_cast<int>(line.length()), line.data());
+            pos       += formatMessage({pos, end}, message_info, "%" PRIsv, PRI_SV(line));
             info.remove_prefix(std::min(info.size(), line.size() + 1));
         }
         if (not fastExit_) {
@@ -320,20 +320,22 @@ void Application::processSignal(int sigNum) {
 
 bool Application::onSignal(int x) { exit(128 + x); }
 
-static const char* prefix(Application::MessageType t) {
+static std::string_view prefix(Application::MessageType t) {
     switch (t) {
-        default                          : return "<?>";
-        case Application::message_error  : return "*** ERROR: ";
-        case Application::message_warning: return "*** Warn : ";
-        case Application::message_info   : return "*** Info : ";
+        default                          : return "<?>"sv;
+        case Application::message_error  : return "*** ERROR: "sv;
+        case Application::message_warning: return "*** Warn : "sv;
+        case Application::message_info   : return "*** Info : "sv;
     }
 }
 
-void Application::write(std::ostream& os, MessageType type, const char* msg) const {
-    os << prefix(type) << "(" << getName() << "): " << (msg ? msg : "");
+void Application::write(std::ostream& os, MessageType type, std::string_view msg) const {
+    os << prefix(type) << "(" << getName() << "): " << msg;
 }
 std::size_t Application::formatMessage(std::span<char> buffer, MessageType t, const char* fmt, ...) const {
-    auto r1 = snprintf(buffer.data(), buffer.size(), "%s(%s): ", prefix(t), getName());
+    auto pre  = prefix(t);
+    auto name = getName();
+    auto r1   = snprintf(buffer.data(), buffer.size(), "%" PRIsv "(%" PRIsv "): ", PRI_SV(pre), PRI_SV(name));
     if (r1 <= 0 || static_cast<std::size_t>(r1) >= buffer.size()) {
         return r1 <= 0 ? static_cast<std::size_t>(0) : buffer.size() - 1;
     }
@@ -373,7 +375,7 @@ bool Application::applyOptions(std::span<const char* const> args) {
     initOptions(allOpts);
     DefaultParseContext parseContext{allOpts};
     parseCommandArray(parseContext, args, [this](std::string_view value, std::string& opt) {
-        if (const auto* n = getPositional(value); n) {
+        if (auto n = getPositional(value); not n.empty()) {
             opt = n;
             return true;
         }
@@ -392,7 +394,7 @@ bool Application::applyOptions(std::span<const char* const> args) {
             allOpts.description(printer);
             msg << "\n";
             msg << "usage: " << getName() << " " << getUsage() << "\n";
-            msg << "Default command-line:\n" << getName() << " " << allOpts.defaults(strlen(getName()) + 1);
+            msg << "Default command-line:\n" << getName() << " " << allOpts.defaults(getName().size() + 1);
             onHelp(msg.str(), x);
         }
         else {

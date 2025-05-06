@@ -340,10 +340,10 @@ public:
      * \pre <tt>i \< size(mapK)</tt>
      * \note The order of elements in a map is unspecified and might change after a solve operation.
      */
-    [[nodiscard]] virtual const char* key(Key_t mapK, size_t i) const = 0;
+    [[nodiscard]] virtual std::string_view key(Key_t mapK, size_t i) const = 0;
 
     //! Returns the element stored in the map under the given name.
-    [[nodiscard]] virtual Key_t get(Key_t mapK, const char* at) const = 0;
+    [[nodiscard]] virtual Key_t get(Key_t mapK, std::string_view at) const = 0;
 
     //! Searches the given map for an element.
     /*!
@@ -353,7 +353,7 @@ public:
      * \return Whether the element was found.
      * \post !find(mapK, element, outKey) || !outKey || *outKey == get(mapK, element).
      */
-    [[nodiscard]] virtual bool find(Key_t mapK, const char* element, Key_t* outKey) const = 0;
+    [[nodiscard]] virtual bool find(Key_t mapK, std::string_view element, Key_t* outKey) const = 0;
 
     //! Creates a statistic object under the given name in the given map.
     /*!
@@ -367,7 +367,7 @@ public:
      *       the function either returns its key provided that the types match,
      *       or otherwise signals failure by throwing a std::logic_error.
      */
-    virtual Key_t add(Key_t mapK, const char* name, Type type) = 0;
+    virtual Key_t add(Key_t mapK, std::string_view name, Type type) = 0;
     //@}
     /*!
      * \name Value

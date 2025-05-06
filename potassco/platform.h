@@ -123,6 +123,8 @@
 #define POTASSCO_WARNING_IGNORE_GNU(X) POTASSCO_WARNING_IGNORE_GCC(X) POTASSCO_WARNING_IGNORE_CLANG(X)
 
 static_assert(UINTPTR_MAX <= UINT64_MAX, "Unsupported platform!");
+#define PRIsv     ".*s"
+#define PRI_SV(v) static_cast<int>((v).size()), (v).data()
 
 /*!
  * \addtogroup BasicTypes

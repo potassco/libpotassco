@@ -171,16 +171,16 @@ struct SmodelsConvert::SmData {
     }
     SymTab::iterator addOutput(Atom_t atom, std::string_view str) {
         auto [it, added] = symTab.try_emplace(atom, str);
-        POTASSCO_CHECK_PRE(added, "Redefinition: atom '%u:%.*s' already shown as '%s'", atom,
-                           static_cast<int>(str.size()), str.data(), it->second.c_str());
+        POTASSCO_CHECK_PRE(added, "Redefinition: atom '%u:%" PRIsv "' already shown as '%s'", atom, PRI_SV(str),
+                           it->second.c_str());
         output.emplace_back(it);
         return it;
     }
     void addTerm(Id_t termId, std::string_view str) {
         auto [it, added] = termTab.try_emplace(termId, scratch, str);
         POTASSCO_CHECK_PRE(added || it->second.name.view() == str,
-                           "Redefinition: term '%u:%.*s' already defined as '%s'", termId, static_cast<int>(str.size()),
-                           str.data(), it->second.name.c_str());
+                           "Redefinition: term '%u:%" PRIsv "' already defined as '%s'", termId, PRI_SV(str),
+                           it->second.name.c_str());
     }
     void addMinimize(Weight_t prio, WeightLitSpan lits) {
         if (minimize.empty() || minimize.back().prio != prio) {

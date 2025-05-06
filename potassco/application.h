@@ -47,17 +47,17 @@ public:
      */
     //@{
     //! Returns the name of this application.
-    [[nodiscard]] virtual const char* getName() const = 0;
+    [[nodiscard]] virtual std::string_view getName() const = 0;
     //! Returns the version number of this application.
-    [[nodiscard]] virtual const char* getVersion() const = 0;
+    [[nodiscard]] virtual std::string_view getVersion() const = 0;
     //! Returns a null-terminated array of signals that this application handles.
     [[nodiscard]] virtual const int* getSignals() const { return nullptr; }
     //! Returns the usage information of this application.
-    [[nodiscard]] virtual const char* getUsage() const { return "[options]"; }
+    [[nodiscard]] virtual std::string_view getUsage() const { return "[options]"; }
     //! Returns the application's help option and its description.
     [[nodiscard]] virtual HelpOpt getHelpOption() const { return {"Print help information and exit", 1}; }
-    //! Returns the name of the option that should receive the given positional value or nullptr if not supported.
-    [[nodiscard]] virtual const char* getPositional([[maybe_unused]] std::string_view value) const { return nullptr; }
+    //! Returns the name of the option that should receive the given positional value or an empty view if not supported.
+    [[nodiscard]] virtual std::string_view getPositional([[maybe_unused]] std::string_view value) const { return {}; }
     //@}
 
     /*!
@@ -107,15 +107,15 @@ public:
         POTASSCO_ATTRIBUTE_FORMAT(4, 5); // NOLINT
 
     //! Returns an io-manipulator that writes the given messages formatted as `message_error` to a stream.
-    [[nodiscard]] auto error(const char* msg = "") const {
+    [[nodiscard]] auto error(std::string_view msg = {}) const {
         return Prefix{.app = this, .msg = msg, .type = message_error};
     }
     //! Returns an io-manipulator that writes the given messages formatted as `message_warning` to a stream.
-    [[nodiscard]] auto warn(const char* msg = "") const {
+    [[nodiscard]] auto warn(std::string_view msg = {}) const {
         return Prefix{.app = this, .msg = msg, .type = message_warning};
     }
     //! Returns an io-manipulator that writes the given messages formatted as `message_info` to a stream.
-    [[nodiscard]] auto info(const char* msg = "") const {
+    [[nodiscard]] auto info(std::string_view msg = {}) const {
         return Prefix{.app = this, .msg = msg, .type = message_info};
     }
 
@@ -145,7 +145,7 @@ protected:
      * The return value defines whether the application should exit immediately without calling destructors (true) or
      * just return from main() (false).
      */
-    virtual bool onUnhandledException(const std::exception_ptr& e, const char* msg) noexcept = 0;
+    virtual bool onUnhandledException(const std::exception_ptr& e, std::string_view msg) noexcept = 0;
     //! Called when a signal is received. The default terminates the application.
     virtual bool onSignal(int);
     //! Shall write any pending application output. Always called before the Application terminates.
@@ -167,14 +167,14 @@ private:
     struct Stop;
     struct Prefix {
         const Application* app;
-        const char*        msg;
+        std::string_view   msg;
         MessageType        type;
     };
     friend std::ostream& operator<<(std::ostream& os, const Prefix& p) {
         p.app->write(os, p.type, p.msg);
         return os;
     }
-    void              write(std::ostream& os, MessageType type, const char* msg) const;
+    void              write(std::ostream& os, MessageType type, std::string_view msg) const;
     bool              applyOptions(std::span<const char* const> args);
     void              handleException();
     static void       initInstance(Application& app);

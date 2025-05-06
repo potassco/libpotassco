@@ -31,14 +31,14 @@ namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
 
 struct MyApp : Application {
-    [[nodiscard]] const char* getName() const override { return "TestApp"; }
-    [[nodiscard]] const char* getVersion() const override { return "1.0"; }
-    [[nodiscard]] const char* getUsage() const override { return "[options] [files]"; }
-    [[nodiscard]] HelpOpt     getHelpOption() const override { return {"Print {1=basic|2=extended} help and exit", 2}; }
-    [[nodiscard]] const char* getPositional(std::string_view) const override { return "file"; }
-    void                      run() override { setExitCode(doRun ? doRun() : 0); }
-    void                      setup() override {}
-    void                      initOptions(OptionContext& root) override {
+    [[nodiscard]] std::string_view getName() const override { return "TestApp"; }
+    [[nodiscard]] std::string_view getVersion() const override { return "1.0"; }
+    [[nodiscard]] std::string_view getUsage() const override { return "[options] [files]"; }
+    [[nodiscard]] HelpOpt getHelpOption() const override { return {"Print {1=basic|2=extended} help and exit", 2}; }
+    [[nodiscard]] std::string_view getPositional(std::string_view) const override { return "file"; }
+    void                           run() override { setExitCode(doRun ? doRun() : 0); }
+    void                           setup() override {}
+    void                           initOptions(OptionContext& root) override {
         OptionGroup g("Basic Options");
         g.addOptions()("foo", "-@@1", Po::storeTo(foo), "Option on level 1");
         root.add(g);
@@ -50,7 +50,7 @@ struct MyApp : Application {
     void validateOptions(const OptionContext&, const ParsedOptions&) override {}
     void onHelp(const std::string& str, DescriptionLevel) override { messages["help"].append(str); }
     void onVersion(const std::string& str) override { messages["version"].append(str); }
-    bool onUnhandledException(const std::exception_ptr&, const char* err) noexcept override {
+    bool onUnhandledException(const std::exception_ptr&, std::string_view err) noexcept override {
         messages["error"].append(err);
         return false;
     }

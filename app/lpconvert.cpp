@@ -40,10 +40,10 @@ using namespace Potassco::ProgramOptions;
 
 class LpConvert : public Potassco::Application {
 public:
-    [[nodiscard]] const char* getName() const override { return "lpconvert"; }
-    [[nodiscard]] const char* getVersion() const override { return "2.0.0"; }
-    [[nodiscard]] const char* getPositional(std::string_view) const override { return "input"; }
-    [[nodiscard]] const char* getUsage() const override {
+    [[nodiscard]] std::string_view getName() const override { return "lpconvert"; }
+    [[nodiscard]] std::string_view getVersion() const override { return "2.0.0"; }
+    [[nodiscard]] std::string_view getPositional(std::string_view) const override { return "input"; }
+    [[nodiscard]] std::string_view getUsage() const override {
         return "[options] [<file>]\n"
                "Convert program in <file> or standard input";
     }
@@ -63,7 +63,7 @@ public:
                   << "\nCopyright (C) Benjamin Kaufmann\n"
                      "License: The MIT License <https://opensource.org/licenses/MIT>\n";
     }
-    bool onUnhandledException(const std::exception_ptr&, const char* msg) noexcept override {
+    bool onUnhandledException(const std::exception_ptr&, std::string_view msg) noexcept override {
         std::cerr << msg << "\n";
         return false;
     }

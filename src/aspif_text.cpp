@@ -518,7 +518,7 @@ void AspifTextOutput::setAtomPred(std::string_view pred) {
     }
     auto [id, n] = Data::predicate(pred);
     POTASSCO_CHECK(n == 0 && id == pred && isAtomPrefix(id, false), std::errc::invalid_argument,
-                   "invalid atom predicate '%.*s'", static_cast<int>(pred.size()), pred.data());
+                   "invalid atom predicate '%" PRIsv "'", PRI_SV(pred));
     if (arity == 0u) {
         data_->auxPred = ConstString(id);
     }
@@ -577,10 +577,9 @@ void AspifTextOutput::outputAtom(Atom_t atom, std::string_view name) {
     }
     else {
         auto [id, arity] = Data::predicate(name);
-        POTASSCO_CHECK_PRE(arity >= 0, "invalid atom name <%u:%.*s>", atom, static_cast<int>(name.size()), name.data());
+        POTASSCO_CHECK_PRE(arity >= 0, "invalid atom name <%u:%" PRIsv ">", atom, PRI_SV(name));
         POTASSCO_CHECK(not data_->isReservedName(atom, name, static_cast<unsigned>(arity)),
-                       std::errc::operation_not_supported, "atom name <%u:%.*s> is reserved", atom,
-                       static_cast<int>(name.size()), name.data());
+                       std::errc::operation_not_supported, "atom name <%u:%" PRIsv "> is reserved", atom, PRI_SV(name));
         if (arity == 0) {
             name = id;
         }
@@ -757,7 +756,7 @@ void AspifTextOutput::Data::showAtom(std::ostream& os, std::string_view name, am
     }
     else if (arity != last.second || id != last.first) {
         temp.resize(static_cast<amc::vector<char>::size_type>(name.size()));
-        auto w = snprintf(temp.data(), temp.size(), "%.*s/%d", static_cast<int>(id.size()), id.data(), arity);
+        auto w = snprintf(temp.data(), temp.size(), "%" PRIsv "/%d", PRI_SV(id), arity);
         POTASSCO_ASSERT(w > 0 && static_cast<std::size_t>(w) > id.size());
         auto pred = std::string_view{temp.data(), temp.data() + static_cast<std::size_t>(w)};
         if (try_emplace(strings, pred, 0).second) {
