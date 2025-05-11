@@ -293,18 +293,14 @@ constexpr std::string toString(const T& x) {
     toChars(out, x);
     return out;
 }
-template <typename T, typename U>
-std::string toString(const T& x, const U& y) {
+template <typename T, typename... Args>
+std::string toString(const T& t, const Args&... args) {
     std::string res;
-    toChars(res, x).append(1, ',');
-    return toChars(res, y);
-}
-template <typename T, typename U, typename V>
-std::string toString(const T& x, const U& y, const V& z) {
-    std::string res;
-    toChars(res, x).append(1, ',');
-    toChars(res, y).append(1, ',');
-    return toChars(res, z);
+    toChars(res, t);
+    if constexpr (sizeof...(Args) > 0) {
+        std::ignore = (toChars(res.append(1, ','), args), ...);
+    }
+    return res;
 }
 
 } // namespace Potassco
