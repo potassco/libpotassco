@@ -313,7 +313,10 @@ TEST_CASE("Test ConstString", "[rule]") {
         }
         SECTION("self assign") {
             const void* old = s3.view().data();
-            s3              = s3; // NOLINT
+            POTASSCO_WARNING_PUSH()
+            POTASSCO_WARNING_IGNORE_CLANG("-Wself-assign-overloaded")
+            s3 = s3; // NOLINT
+            POTASSCO_WARNING_POP()
             REQUIRE(old == s3.view().data());
         }
     }
@@ -366,7 +369,10 @@ TEST_CASE("Test ConstString", "[rule]") {
             REQUIRE(s3 == std::string_view{});
         }
         SECTION("self assign") {
+            POTASSCO_WARNING_PUSH()
+            POTASSCO_WARNING_IGNORE_CLANG("-Wself-move")
             s4 = static_cast<ConstString&&>(s4); // avoid warning from std::move
+            POTASSCO_WARNING_POP()
             REQUIRE((const void*) s4.c_str() == old);
         }
     }

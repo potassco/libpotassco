@@ -45,24 +45,24 @@ using namespace std::literals;
 struct SmodelsConvert::SmData {
     using ScratchType = DynamicBuffer;
     template <std::integral T>
-    static void append(ScratchType& scratch, T in) {
+    static void append(ScratchType& buffer, T in) {
         char tmp[std::numeric_limits<T>::digits10 + 1];
         auto sz = std::to_chars(tmp, std::end(tmp), in).ptr - tmp;
-        scratch.append(tmp, static_cast<std::size_t>(sz));
+        buffer.append(tmp, static_cast<std::size_t>(sz));
     }
-    static void append(ScratchType& scratch, std::string_view n) { scratch.append(n.data(), n.size()); }
+    static void append(ScratchType& buffer, std::string_view n) { buffer.append(n.data(), n.size()); }
     template <typename... Args>
-    static std::string_view makePred(ScratchType& scratch, std::string_view name, Args... args) {
+    static std::string_view makePred(ScratchType& buffer, std::string_view name, Args... args) {
         static_assert(sizeof...(Args) > 0, "at least one arg expected");
-        scratch.clear();
-        scratch.append(name.data(), name.size());
-        scratch.push('(');
-        ((append(scratch, args), scratch.push(',')), ...);
-        scratch.back() = ')';
-        return scratch.view();
+        buffer.clear();
+        buffer.append(name.data(), name.size());
+        buffer.push('(');
+        ((append(buffer, args), buffer.push(',')), ...);
+        buffer.back() = ')';
+        return buffer.view();
     }
     struct Atom {
-        std::string_view     makePred(ScratchType& scratch) const { return SmData::makePred(scratch, "_atom"sv, smId); }
+        std::string_view     makePred(ScratchType& buffer) const { return SmData::makePred(buffer, "_atom"sv, smId); }
         [[nodiscard]] Atom_t sm() const { return smId; }
 
         uint32_t smId : 28 {0}; // corresponding smodels atom
@@ -71,8 +71,8 @@ struct SmodelsConvert::SmData {
         uint32_t extn : 2 {0};  // value if atom is external
     };
     struct Heuristic {
-        std::string_view makePred(ScratchType& scratch, std::string_view atomName) const {
-            return SmData::makePred(scratch, "_heuristic"sv, atomName, enum_name(type), bias, prio);
+        std::string_view makePred(ScratchType& buffer, std::string_view atomName) const {
+            return SmData::makePred(buffer, "_heuristic"sv, atomName, enum_name(type), bias, prio);
         }
         Atom_t      atom;
         DomModifier type;
@@ -82,7 +82,7 @@ struct SmodelsConvert::SmData {
     };
     using SymTab = std::unordered_map<Atom_t, ConstString>;
     struct OutTerm {
-        OutTerm(ScratchType& scratch, std::string_view n) : name(makePred(scratch, "_show_term", n)) {}
+        OutTerm(ScratchType& buffer, std::string_view n) : name(makePred(buffer, "_show_term", n)) {}
         void step() {
             if (auto prev = std::exchange(atom, 0u); prev) {
                 last = prev;
@@ -102,8 +102,8 @@ struct SmodelsConvert::SmData {
         explicit Output(SymTab::iterator it) : atom(it->first), type(type_name), name(&it->second) {}
         explicit Output(const OutTerm& term) : atom(term.atom), type(type_name), name(&term.name) {}
         Output(Atom_t a, int32_t s, int32_t t) : atom(a), type(type_edge), edge{s, t} {}
-        std::string_view makePred(ScratchType& scratch) const {
-            return type == type_name ? name->view() : SmData::makePred(scratch, "_edge"sv, edge.s, edge.t);
+        std::string_view makePred(ScratchType& buffer) const {
+            return type == type_name ? name->view() : SmData::makePred(buffer, "_edge"sv, edge.s, edge.t);
         }
         uint32_t atom : 31;
         uint32_t type : 1;
