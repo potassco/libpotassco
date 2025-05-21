@@ -60,7 +60,7 @@ endif()
 ########################################################################################################################
 ### Third party stuff                                                                                                ###
 ########################################################################################################################
-add_subdirectory(third_party/amc)
+add_subdirectory(third_party/amc EXCLUDE_FROM_ALL)
 if(NOT AMC_PEDANTIC)
     # NOTE: This should be part of the AMC cmake config.
     target_compile_definitions(amc INTERFACE AMC_NONSTD_FEATURES)
@@ -69,7 +69,7 @@ endif()
 if(LIB_POTASSCO_SETUP_CATCH2)
     set(CATCH_BUILD_STATIC_LIBRARY ON CACHE INTERNAL " " FORCE)
     set(CATCH_CONFIG_WINDOWS_CRTDBG ${LIB_POTASSCO_TESTS_ENABLE_DBG_HEAP} CACHE INTERNAL " " FORCE)
-    add_subdirectory(third_party/Catch2)
+    add_subdirectory(third_party/Catch2 EXCLUDE_FROM_ALL)
     include(CTest)
     include(Catch)
 endif()
