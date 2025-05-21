@@ -357,21 +357,35 @@ bool Application::applyOptions(std::span<const char* const> args) {
     OptionContext allOpts(std::string("<").append(getName()).append(">"));
     OptionGroup   basic("Basic Options");
     if (auto [message, level] = getHelpOption(); level > 0) {
-        Value* hv = level == 1 ? storeTo(help)->flag()
-                               : storeTo(help,
-                                         [maxV = level](std::string_view v, unsigned& out) {
-                                             return Potassco::stringTo(v, out) == std::errc{} && out > 0 && out <= maxV;
-                                         })
-                                     ->arg("<n>")
-                                     ->implicit("1");
-        basic.addOptions()("help", "-h", hv, message);
+        auto hv = level == 1 ? storeTo(help).flag()
+                             : storeTo(help,
+                                       [maxV = level](std::string_view v, unsigned& out) {
+                                           return stringTo(v, out) == std::errc{} && out > 0 && out <= maxV;
+                                       })
+                                   .arg("<n>")
+                                   .implicit("1");
+        basic.addOptions()("help", "-h", std::move(hv), message);
     }
-    basic.addOptions()                                                                                    //
-        ("version", "-v", flag(version), "Print version information and exit")                            //
-        ("verbose", "-V", storeTo(verbose_ = 0)->implicit("-1")->arg("<n>"), "Set verbosity level to %A") //
-        ("time-limit", storeTo(timeout_ = 0)->arg("<n>"), "Set time limit to %A seconds (0=no limit)")    //
-        ("fast-exit", "@1", flag(fastExit_ = false), "Force fast exit (do not call dtors)");              //
-    allOpts.add(basic);
+    verbose_ = 0;
+    if (auto [def, max] = getVerboseOption(); max > 0) {
+        auto opt = storeTo(verbose_, [maxV = max](std::string_view v, unsigned& out) {
+            if (v == "umax") {
+                out = maxV;
+                return true;
+            }
+            return stringTo(v, out) == std::errc{} && out <= maxV;
+        });
+        opt.arg("<n>").implicit("umax");
+        if (not def.empty()) {
+            opt.defaultsTo(def);
+        }
+        basic.addOptions()("verbose", "-V", std::move(opt), "Set verbosity level to %A");
+    }
+    basic.addOptions()                                                                                //
+        ("version", "-v", flag(version), "Print version information and exit")                        //
+        ("time-limit", storeTo(timeout_ = 0).arg("<n>"), "Set time limit to %A seconds (0=no limit)") //
+        ("fast-exit", "@1", flag(fastExit_ = false), "Force fast exit (do not call dtors)");          //
+    allOpts.add(std::move(basic));
     initOptions(allOpts);
     DefaultParseContext parseContext{allOpts};
     parseCommandArray(parseContext, args, [this](std::string_view value, std::string& opt) {

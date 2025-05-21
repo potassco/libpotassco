@@ -24,93 +24,159 @@
 //       see: www.boost.org/libs/program_options
 //
 #pragma once
-#include <potassco/program_opts/detail/refcountable.h>
 #include <potassco/program_opts/value.h>
 
 #include <cstdio>
 #include <functional>
 #include <iosfwd>
 #include <map>
-#include <memory>
 #include <ostream>
 #include <set>
 #include <span>
-#include <string_view>
 #include <vector>
 
 namespace Potassco::ProgramOptions {
 
-//! Represents one program option.
+//! Represents a program option.
 /*!
  * An Option consists of a description (long name, short name, description),
  * a (typed) value, and an optional default value.
- *
- * \note
- *   When printing an option, occurrences of %D, %I, and %A in its description are replaced
- *   with the option's default value, implicit value, and the argument name,
- *   respectively.
  */
-class Option : public Detail::RefCountable {
+class Option {
 public:
     /*!
-     * \pre name != ""
-     * \pre value != nullptr
+     * \pre not name.empty()
      * \param name        name (and unique key) of the option
      * \param description description of the option, used for printing help
-     * \param value       value object to be associated with this option
+     * \param value       value description of the option
+     * \param alias       optional single character alias (0 for none)
      */
-    Option(Str name, Str description, std::unique_ptr<Value> value);
-    Option(Str name, Str description, Value* value);
-    Option(Str name, char alias, Str description, Value* value);
-
+    Option(Str name, Str description, ValueDesc&& value, char alias = 0);
     ~Option();
+    Option(const Option&)            = delete;
+    Option& operator=(const Option&) = delete;
 
-    [[nodiscard]] std::string_view name() const { return name_; }
-    [[nodiscard]] char             alias() const { return value_->alias(); }
-    [[nodiscard]] Value*           value() const { return value_.get(); }
-    [[nodiscard]] std::string_view description() const { return description_; }
-    [[nodiscard]] std::string_view argName() const { return value_->arg(); }
-    [[nodiscard]] bool             assignDefault() const;
-    [[nodiscard]] std::size_t      maxColumn() const;
-    [[nodiscard]] DescriptionLevel descLevel() const { return value_->level(); }
+    [[nodiscard]] auto name() const -> std::string_view { return str_[str_name]; }
+    [[nodiscard]] auto id() const -> uint32_t { return id_; }
+    [[nodiscard]] char alias() const { return alias_; }
+    [[nodiscard]] auto description() const -> std::string_view { return str_[str_desc]; }
+    [[nodiscard]] auto argName() const -> std::string_view { return str_[str_arg]; }
+    [[nodiscard]] auto defaultValue() const -> std::string_view { return str_[str_def]; }
+    [[nodiscard]] auto implicitValue() const -> std::string_view { return str_[str_imp]; }
+    [[nodiscard]] auto maxColumn() const -> std::size_t;
+    [[nodiscard]] auto descLevel() const -> DescriptionLevel { return static_cast<DescriptionLevel>(level_); }
+    [[nodiscard]] bool negatable() const { return negatable_ != 0; }
+    [[nodiscard]] bool composing() const { return composing_ != 0; }
+    [[nodiscard]] bool implicit() const { return implicit_ != 0; }
+    [[nodiscard]] bool flag() const { return flag_ != 0; }
+    [[nodiscard]] bool defaulted() const { return defaulted_ != 0; }
+    //! Writes the option's description to out.
+    /*!
+     * Occurrences of %D, %I, and %A in the description are replaced
+     * with the option's default value, implicit value, and the argument name, respectively.
+     */
+    std::string& description(std::string& out) const;
+
+    //! Assigns the given value to the option.
+    [[nodiscard]] bool assign(std::string_view value);
+    //! Assigns the option's default value if it has one.
+    [[nodiscard]] bool assignDefault();
 
 private:
-    const char*            name_;        // name (and unique key) of option
-    const char*            description_; // description of the option (used for --help)
-    std::unique_ptr<Value> value_;       // the option's value manager
+    friend int  intrusiveRelease(Option* o) { return --o->refCount_; }
+    friend void intrusiveAddRef(Option* o) { ++o->refCount_; }
+    friend int  intrusiveCount(const Option* o) { return o->refCount_; }
+    enum StrType : uint32_t { str_name = 0u, str_desc = 1u, str_arg = 2u, str_imp = 3u, str_def = 4u };
+    bool assign(std::string_view value, bool def);
+    void init(StrType t, const Str& str);
+
+    const char*    str_[5]{};          // strings (one for each StrType).
+    ValueActionPtr action_;            // assign action
+    uint32_t       id_{0};             // optional numeric id
+    int32_t        refCount_{1};       // intrusive ref-count
+    char           alias_{0};          // optional single char alias
+    uint8_t        level_     : 3 {0}; // help level
+    uint8_t        implicit_  : 1 {0}; // implicit value?
+    uint8_t        flag_      : 1 {0}; // implicit and type bool?
+    uint8_t        composing_ : 1 {0}; // multiple values allowed?
+    uint8_t        negatable_ : 1 {0}; // negatable form allowed?
+    uint8_t        defaulted_ : 1 {0}; // default value assigned?
+    uint8_t        own_{0};            // bitset of owned strings
 };
 
-using SharedOptPtr = Detail::IntrusiveSharedPtr<Option>;
-
-class OptionInitHelper;
-class OptionContext;
 class OptionParser;
 class ParsedOptions;
 class OptionOutput;
 
 //! A list of options logically grouped under a caption.
 /*!
- * The class provides a logical grouping of options that
- * is mainly useful for printing help.
+ * The class provides a logical grouping of options mainly useful for printing help.
  */
 class OptionGroup {
 public:
-    using OptionList      = std::vector<SharedOptPtr>;
-    using option_iterator = OptionList::const_iterator; // NOLINT
+    using SharedOption = IntrusiveSharedPtr<Option>;
 
-    /*!
-     * Creates a new group of options under the given caption.
-     */
+    //! Creates a new group of options under the given caption.
     explicit OptionGroup(std::string_view caption = "", DescriptionLevel descLevel = desc_level_default);
 
     //! Returns the caption of this group.
-    [[nodiscard]] const std::string& caption() const { return caption_; }
+    [[nodiscard]] std::string_view caption() const { return caption_; }
 
-    [[nodiscard]] std::size_t      size() const { return options_.size(); }
-    [[nodiscard]] bool             empty() const { return options_.empty(); }
-    [[nodiscard]] option_iterator  begin() const { return options_.begin(); }
-    [[nodiscard]] option_iterator  end() const { return options_.end(); }
+    //! Returns whether the group does not contain any options.
+    [[nodiscard]] bool empty() const { return options_.empty(); }
+    //! Returns the number of options in this group.
+    [[nodiscard]] std::size_t size() const { return options_.size(); }
+    //! Returns the options in this group.
+    [[nodiscard]] auto options() const -> std::span<const SharedOption> { return std::span{options_}; }
+    //! Returns the description level of this group.
     [[nodiscard]] DescriptionLevel descLevel() const { return level_; }
+    //! Returns an option with the given name or nullptr if the group has no such option.
+    [[nodiscard]] Option* find(std::string_view name) const;
+    //! Returns an option with the given alias or nullptr if the group has no such option.
+    [[nodiscard]] Option* find(char alias) const;
+    //! Returns the ith option in this group.
+    [[nodiscard]] auto operator[](std::size_t i) const -> const SharedOption& {
+        assert(i < size());
+        return options_[i];
+    }
+
+    //! Helper class for adding options to a group.
+    class Init {
+    public:
+        //! Applies the given spec.
+        /*!
+         * Parses and applies a spec like `[!][+][*][-<alias>][@<level>]` such that:
+         *  - `!` is mapped to `value.negatable()`,
+         *  - `+` is mapped to `value.composing()`,
+         *  - `*` is mapped to `value.flag()`,
+         *  - `-<alias>` is mapped to `alias`, and
+         *  - `@<level>` is mapped `value.level(enum_cast<DescriptionLevel>(level))`
+         *
+         *  \return true if `spec` is valid, i.e., elements are either not present or valid.
+         */
+        static bool applySpec(std::string_view spec, ValueDesc& value, char& alias);
+
+        explicit Init(OptionGroup& owner);
+
+        //! Factory function for adding an option to the group given on construction.
+        /*!
+         * \param name  Name (and unique key) of the new option
+         * \param spec  Additional specification (see applySpec(std::string_view, ValueDesc&, char&))
+         * \param value Value description of the option
+         * \param desc  Description of the option
+         *
+         * \throw Error if `name` is empty or `spec` is not valid.
+         */
+        Init& operator()(Str name, std::string_view spec, ValueDesc value, Str desc);
+
+        /*!
+         * \overload Init::operator()(Str, std::string_view, ValueDesc, Str)
+         */
+        Init& operator()(Str name, ValueDesc value, Str desc);
+
+    private:
+        OptionGroup* owner_;
+    };
 
     //! Returns an object that can be used to add options.
     /*!
@@ -125,10 +191,11 @@ public:
      * ;                                        // <- note the semicolon!
      * \endcode
      */
-    OptionInitHelper addOptions();
+    Init addOptions();
 
     //! Adds the given option to this group.
-    void addOption(const SharedOptPtr& option);
+    void addOption(std::unique_ptr<Option> option);
+    void addOption(SharedOption option);
 
     void setDescriptionLevel(DescriptionLevel level) { level_ = level; }
 
@@ -139,47 +206,10 @@ public:
 
 private:
     friend class OptionContext;
+    using OptionList = std::vector<SharedOption>;
     std::string      caption_;
     OptionList       options_;
     DescriptionLevel level_;
-};
-
-class OptionInitHelper {
-public:
-    //! Applies the given spec.
-    /*!
-     * Parses and applies a spec like `[!][+][*][-<alias>][@<level>]` such that:
-     *  - `!` is mapped to `value.negatable()`,
-     *  - `+` is mapped to `value.composing()`,
-     *  - `*` is mapped to `value.flag()`,
-     *  - `-<alias>` is mapped to `value.alias(<alias>)`, and
-     *  - `@<level>` is mapped `value.level(enum_cast<DescriptionLevel>(level))`
-     *
-     *  \return true if `spec` is valid, i.e., elements are either not present or valid.
-     */
-    static bool applySpec(std::string_view spec, Value& value);
-
-    explicit OptionInitHelper(OptionGroup& owner);
-
-    //! Factory function for creating an option.
-    /*!
-     * \param name Name (and unique key) of the option
-     * \param spec Additional value specification (see OptionInitHelper::applySpec(std::string_view, Value&)
-     * \param val  Value of the option
-     * \param desc Description of the option
-     *
-     * \throw Error if `<name>` is empty or `<spec>` is not valid.
-     */
-    OptionInitHelper& operator()(Str name, std::string_view spec, Value* val, Str desc);
-
-    //! Factory function for creating an option.
-    /*!
-     * \overload OptionInitHelper::operator()(Str name, std::string_view spec, Value* val, Str desc)
-     */
-    OptionInitHelper& operator()(Str name, Value* val, Str desc);
-
-private:
-    OptionGroup* owner_;
 };
 
 //! A (logically grouped) list of unique options.
@@ -191,19 +221,12 @@ private:
  * An OptionContext defines the granularity of option parsing and option lookup.
  */
 class OptionContext {
-private:
-    using KeyType    = std::size_t;
-    using Name2Key   = std::map<std::string, KeyType, std::less<>>;
-    using GroupList  = std::vector<OptionGroup>;
-    using OptionList = OptionGroup::OptionList;
-
 public:
-    //! Type for identifying an option within a context
-    using option_iterator = OptionList::const_iterator; // NOLINT
+    using OptionList = OptionGroup::OptionList;
 
     explicit OptionContext(std::string_view caption = "", DescriptionLevel desc_default = desc_level_default);
 
-    [[nodiscard]] const std::string& caption() const;
+    [[nodiscard]] std::string_view caption() const;
 
     //! Adds the given group of options to this context.
     /*!
@@ -215,12 +238,14 @@ public:
      *        options in this context.
      */
     OptionContext& add(const OptionGroup& group);
+    OptionContext& add(OptionGroup&& group);
 
-    //! Adds an alias name for the option at the given position.
+    //! Adds an alias name for the option with the given index.
     /*!
      * \throw DuplicateOption if an option with the name aliasName already exists.
+     * \see index(std::string_view)
      */
-    OptionContext& addAlias(std::size_t pos, std::string_view aliasName);
+    OptionContext& addAlias(std::size_t idx, std::string_view aliasName);
 
     //! Adds all groups (and their options) from other to this context.
     /*!
@@ -231,9 +256,6 @@ public:
      * \see OptionContext& add(const OptionGroup&);
      */
     OptionContext& add(const OptionContext& other);
-
-    [[nodiscard]] option_iterator begin() const { return options_.begin(); }
-    [[nodiscard]] option_iterator end() const { return options_.end(); }
 
     //! Returns the number of options in this context.
     [[nodiscard]] std::size_t size() const { return options_.size(); }
@@ -254,24 +276,25 @@ public:
      * \throw UnknownOption if no option matches `name`.
      * \throw AmbiguousOption if more than one option matches `name`.
      */
-    [[nodiscard]] auto option(std::string_view name, FindType t = find_name) const -> SharedOptPtr;
+    [[nodiscard]] auto option(std::string_view name, FindType t = find_name) const -> Option&;
     [[nodiscard]] auto operator[](std::string_view name) const -> const Option&;
 
-    //! Returns the index of the option with the given name.
+    //! Returns the index of the option with the given name or prefix.
     /*!
      * \throw UnknownOption if no option matches `name`.
+     * \throw AmbiguousOption if more than one option matches `name`.
      */
-    [[nodiscard]] auto optionIndex(std::string_view name) const -> std::size_t;
+    [[nodiscard]] auto index(std::string_view name, FindType t = find_name) const -> std::size_t;
 
     //! Returns the option group with the given caption or throws `ContextError` if no such group exists.
-    [[nodiscard]] const OptionGroup& group(std::string_view caption) const;
+    [[nodiscard]] auto group(std::string_view caption) const -> const OptionGroup&;
     //! Sets the description level to be used when generating a description.
     /*!
      * Once set, functions generating descriptions will only consider groups
      * and options with description level <= std::min(level, desc_level_all).
      */
-    void                           setActiveDescLevel(DescriptionLevel level);
-    [[nodiscard]] DescriptionLevel getActiveDescLevel() const { return descLevel_; }
+    void               setActiveDescLevel(DescriptionLevel level);
+    [[nodiscard]] auto getActiveDescLevel() const -> DescriptionLevel { return descLevel_; }
 
     //! Writes a formatted description of options in this context.
     OptionOutput& description(OptionOutput& out) const;
@@ -289,9 +312,14 @@ public:
     void assignDefaults(const ParsedOptions& exclude) const;
 
 private:
+    using KeyType   = std::size_t;
+    using Name2Key  = std::map<std::string, KeyType, std::less<>>;
+    using GroupList = std::vector<OptionGroup>;
+
     [[nodiscard]] size_t findGroupKey(std::string_view name) const;
     [[nodiscard]] size_t findOption(std::string_view name, FindType t) const;
-    void                 insertOption(size_t groupId, const SharedOptPtr& o);
+    void                 addToIndex(const OptionGroup::SharedOption& opt);
+    OptionGroup&         addGroup(std::string_view name, DescriptionLevel level);
 
     Name2Key         index_;
     OptionList       options_;
@@ -323,8 +351,8 @@ public:
     virtual ~ParseContext();
     [[nodiscard]] auto name() const -> std::string_view { return name_; }
 
-    auto getOption(std::string_view name, FindType ft) -> SharedOptPtr;
-    void setValue(const SharedOptPtr& opt, std::string_view value);
+    auto getOption(std::string_view name, FindType ft) -> Option*;
+    void setValue(Option& opt, std::string_view value);
     void finish(const std::exception_ptr& error);
 
 protected:
@@ -335,9 +363,9 @@ protected:
     };
     [[nodiscard]] virtual auto state(const Option& opt) const -> OptState = 0;
 
-    virtual auto doGetOption(std::string_view name, FindType ft) -> SharedOptPtr = 0;
-    virtual bool doSetValue(const SharedOptPtr& opt, std::string_view value)     = 0;
-    virtual void doFinish(const std::exception_ptr& error)                       = 0;
+    virtual auto doGetOption(std::string_view name, FindType ft) -> Option* = 0;
+    virtual bool doSetValue(Option& opt, std::string_view value)            = 0;
+    virtual void doFinish(const std::exception_ptr& error)                  = 0;
 
 private:
     std::string_view name_;
@@ -358,8 +386,8 @@ public:
 private:
     [[nodiscard]] auto state(const Option& opt) const -> OptState override;
 
-    auto doGetOption(std::string_view name, FindType ft) -> SharedOptPtr override;
-    bool doSetValue(const SharedOptPtr& opt, std::string_view value) override;
+    auto doGetOption(std::string_view name, FindType ft) -> Option* override;
+    bool doSetValue(Option& opt, std::string_view value) override;
     void doFinish(const std::exception_ptr&) override;
 
     const OptionContext* ctx_;
@@ -377,8 +405,8 @@ public:
 
 protected:
     [[nodiscard]] ParseContext& ctx() const { return *ctx_; }
-    [[nodiscard]] SharedOptPtr  getOption(std::string_view name, FindType ft) const;
-    void                        applyValue(const SharedOptPtr& key, std::string_view value);
+    [[nodiscard]] Option&       getOption(std::string_view name, FindType ft) const;
+    void                        applyValue(Option& opt, std::string_view value);
 
 private:
     virtual void  doParse() = 0;
@@ -390,14 +418,8 @@ struct DefaultFormat {
     static std::size_t format(std::string&, const OptionContext&) { return 0; }
     //! Writes g.caption() to buffer.
     static std::size_t format(std::string& buffer, const OptionGroup& g);
-    //! Writes long name, short name, and argument name to buffer.
-    static std::size_t format(std::string& buffer, const Option& o, std::size_t maxW);
-    //! Writes description to buffer.
-    /*!
-     * Occurrences of %D, %I, and %A in desc are replaced with
-     * the value's default value, implicit value, and name, respectively.
-     */
-    static std::size_t format(std::string& buffer, std::string_view desc, const Value&, std::string_view valSep = ": ");
+    //! Writes short, long, and argument name followed by option description to buffer.
+    static std::size_t format(std::string& buffer, const Option& o, std::size_t colWidth);
 };
 
 //! Base class for printing options.
@@ -439,7 +461,6 @@ public:
     }
     bool printOption(const Option& opt, std::size_t maxW) override {
         writeBuffer(formatter_.format(buffer_, opt, maxW));
-        writeBuffer(formatter_.format(buffer_, opt.description(), *opt.value()));
         return true;
     }
 

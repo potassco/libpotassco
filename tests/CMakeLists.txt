@@ -8,8 +8,7 @@ add_executable(test_potassco_opts)
 target_sources(test_potassco_opts PRIVATE
     test_application.cpp
     test_options.cpp
-    test_string_convert.cpp
-    test_value.cpp)
+    test_string_convert.cpp)
 
 foreach(target test_potassco_lp test_potassco_opts)
     target_link_libraries(${target} PRIVATE libpotassco Catch2::Catch2WithMain potassco_default_warnings)

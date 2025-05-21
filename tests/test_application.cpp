@@ -41,11 +41,11 @@ struct MyApp : Application {
     void                           initOptions(OptionContext& root) override {
         OptionGroup g("Basic Options");
         g.addOptions()("foo", "-@@1", Po::storeTo(foo), "Option on level 1");
-        root.add(g);
+        root.add(std::move(g));
         OptionGroup g2("E1 Options");
         g2.setDescriptionLevel(Po::desc_level_e1);
-        g2.addOptions()("file", "-f", Po::storeTo(input)->composing(), "Input files");
-        root.add(g2);
+        g2.addOptions()("file", "-f+", Po::storeTo(input), "Input files");
+        root.add(std::move(g2));
     }
     void validateOptions(const OptionContext&, const ParsedOptions&) override {}
     void onHelp(const std::string& str, DescriptionLevel) override { messages["help"].append(str); }
@@ -148,7 +148,7 @@ TEST_CASE("Test application", "[app]") {
             return where.find(what) < where.size();
         };
         CAPTURE(help);
-        REQUIRE(contains(help, "-V,--verbose[=<n>]"));
+        REQUIRE(contains(help, "-V,--verbose[=<n>]   : Set verbosity level to <n>"));
         REQUIRE(contains(help, "--time-limit=<n>"));
         REQUIRE(contains(help, "Default command-line:\n"
                                "TestApp "));

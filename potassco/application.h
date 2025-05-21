@@ -26,7 +26,7 @@
 
 #include <span>
 #include <string>
-#include <utility>
+
 namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Application base class
@@ -38,6 +38,12 @@ public:
         HelpOpt(ProgramOptions::Str str, unsigned lev) : desc(str), max(lev) {}
         ProgramOptions::Str desc;
         unsigned            max;
+    };
+    //! Range and default value for the verbose option.
+    struct VerboseOpt {
+        VerboseOpt(ProgramOptions::Str defVal, unsigned maxLev = UINT32_MAX) : def(defVal), max(maxLev) {}
+        ProgramOptions::Str def; //!< Default value
+        unsigned            max; //!< Max supported value or 0 if option should not be added.
     };
 
     Application(Application&&) = delete;
@@ -56,6 +62,8 @@ public:
     [[nodiscard]] virtual std::string_view getUsage() const { return "[options]"; }
     //! Returns the application's help option and its description.
     [[nodiscard]] virtual HelpOpt getHelpOption() const { return {"Print help information and exit", 1}; }
+    //! Returns details about the application's verbose option.
+    [[nodiscard]] virtual VerboseOpt getVerboseOption() const { return {""}; }
     //! Returns the name of the option that should receive the given positional value or an empty view if not supported.
     [[nodiscard]] virtual std::string_view getPositional([[maybe_unused]] std::string_view value) const { return {}; }
     //@}

@@ -31,8 +31,10 @@
 #include <vector>
 
 namespace Potassco::ProgramOptions {
+
+//! Valid callables for action functions.
 template <typename C, typename T>
-concept ActionFunction = std::is_invocable_v<C, std::string_view, T> || std::is_invocable_v<C, T>;
+concept ActionFunction = std::is_invocable_v<C, const Option&, T> || std::is_invocable_v<C, T>;
 
 //! Parser adapter for Potassco::stringTo.
 struct DefaultParser {
@@ -58,29 +60,29 @@ struct ParseValues {
     std::vector<std::pair<std::string, V>> values;
 };
 
-//! Value type for storing a parsed value directly into a given variable.
+//! Value action type for storing a value directly into a given variable.
 template <typename T, typename P = DefaultParser>
-class Store : public Value {
+class Store : public ValueAction {
 public:
     Store(T& v, P p) : address_(std::addressof(v)), parser_(std::move(p)) {}
-    bool doParse(std::string_view, std::string_view value) override { return parser_(value, *address_); }
+    bool assign(const Option&, std::string_view value) override { return parser_(value, *address_); }
 
 private:
     T*                                address_;
     POTASSCO_ATTR_NO_UNIQUE_ADDRESS P parser_{};
 };
 
-//! Value type for calling a user-provided action function.
+//! Value action type for calling a user-provided (typed) action function after a value was parsed.
 template <typename T, ActionFunction<T> C, typename P = DefaultParser>
-class Action : public Value {
+class TypedAction : public ValueAction {
 public:
-    Action(C callable, P p) : action_(std::move(callable)), parser_(std::move(p)) {}
-    bool doParse([[maybe_unused]] std::string_view opt, std::string_view value) override {
+    TypedAction(C callable, P p) : action_(std::move(callable)), parser_(std::move(p)) {}
+    bool assign([[maybe_unused]] const Option& opt, std::string_view value) override {
         T out;
         if (not parser_(value, out)) {
             return false;
         }
-        if constexpr (std::is_invocable_v<C, std::string_view, T>) {
+        if constexpr (std::is_invocable_v<C, const Option&, T>) {
             action_(opt, out);
         }
         else {
@@ -94,18 +96,48 @@ private:
     POTASSCO_ATTR_NO_UNIQUE_ADDRESS P parser_{};
 };
 
-//! Value type for calling a user-provided option handler.
-template <typename Callable>
-class Custom : public Value {
+template <bool>
+struct CustomBase {};
+template <>
+struct CustomBase<true> {
+    int rc{1};
+};
+
+//! Value action type for calling a user-provided generic value handler.
+template <typename Callable, bool Shared = false>
+class Custom
+    : public ValueAction
+    , CustomBase<Shared> {
 public:
     explicit Custom(Callable func) : handler_(std::move(func)) {}
-    bool doParse([[maybe_unused]] std::string_view opt, std::string_view value) override {
-        if constexpr (std::is_invocable_v<Callable, std::string_view, std::string_view>) {
+    bool assign([[maybe_unused]] const Option& opt, std::string_view value) override {
+        if constexpr (std::is_invocable_v<Callable, const Option&, std::string_view>) {
             return handler_(opt, value);
         }
         else {
             return handler_(value);
         }
+    }
+    bool release() override {
+        if constexpr (Shared) {
+            return intrusiveRelease(this) == 0;
+        }
+        else {
+            return true;
+        }
+    }
+
+    friend void intrusiveAddRef(Custom* self) requires(Shared)
+    {
+        ++self->rc;
+    }
+    friend int intrusiveRelease(Custom* self) requires(Shared)
+    {
+        return --self->rc;
+    }
+    friend int intrusiveCount(const Custom* self) requires(Shared)
+    {
+        return self->rc;
     }
 
 private:
@@ -120,24 +152,24 @@ auto values(std::vector<std::pair<std::string, EnumT>> vec) -> ParseValues<EnumT
     return ParseValues<EnumT>{std::move(vec)};
 }
 /*!
- * Creates a value bound to the given variable.
- * Assignments to the created value are directly stored in the given variable.
+ * Creates a value description with an action bound to the given variable.
+ * Assignments via the created action are directly stored in the given variable.
  *
- * \param v The variable to which the new value object is bound.
+ * \param v The variable to which the action is bound.
  * \param parser The (optional) parser to use for converting from string to T.
  */
 template <typename T, typename P = DefaultParser>
-Value* storeTo(T& v, P&& parser = P()) {
-    return new Store{v, std::forward<P>(parser)};
+ValueDesc storeTo(T& v, P&& parser = P()) {
+    return value<Store<T, std::decay_t<P>>>(v, std::forward<P>(parser));
 }
 
 template <typename T>
-Value* storeTo(T& v, T init) {
+ValueDesc storeTo(T& v, T init) {
     return storeTo(v = std::move(init));
 }
 
 /*!
- * Creates an action value, i.e., a value for which an action function is called once it was parsed.
+ * Creates a value description with an action that calls the provided function after a value was parsed.
  *
  * \param action A callable to be invoked once a value of `T` has been parsed.
  * \param parser The parser to use for parsing the value.
@@ -145,8 +177,8 @@ Value* storeTo(T& v, T init) {
  * \see OptionGroup::addOptions()
  */
 template <typename T, ActionFunction<T> C, typename P = DefaultParser>
-Value* action(C&& action, P&& parser = P()) {
-    return new Action<T, C, P>{std::forward<C>(action), std::forward<P>(parser)};
+ValueDesc action(C&& action, P&& parser = P()) {
+    return value<TypedAction<T, std::decay_t<C>, std::decay_t<P>>>(std::forward<C>(action), std::forward<P>(parser));
 }
 
 //! Alternative flag action.
@@ -158,40 +190,46 @@ constexpr inline auto store_false = [](std::string_view v, bool& b) {
     return false;
 };
 
-//! Creates a flag value with an optional action function.
+//! Creates a flag description with an optional action function.
 /*!
  * \param b A boolean variable that should receive parsed values or a callable to invoke when a value is parsed.
  * \param pa An optional parser for converting a string into a boolean value.
  */
 template <typename F, typename P = DefaultParser>
-Value* flag(F&& b, P&& pa = P()) {
+ValueDesc flag(F&& b, P&& pa = P()) {
     static_assert(std::is_same_v<F, bool&> or ActionFunction<F, bool>,
                   "'b' must be a modifiable lvalue reference to bool or a callable");
     if constexpr (ActionFunction<F, bool>) {
-        return action<bool>(std::forward<F>(b), std::forward<P>(pa))->flag();
+        return action<bool>(std::forward<F>(b), std::forward<P>(pa)).flag();
     }
     else {
-        return storeTo(std::forward<F>(b), std::forward<P>(pa))->flag();
+        return storeTo(std::forward<F>(b), std::forward<P>(pa)).flag();
     }
 }
 template <typename P = DefaultParser>
-Value* flag(bool& b, bool init, P&& pa = P()) {
-    return storeTo(b = init, std::forward<P>(pa))->flag();
+ValueDesc flag(bool& b, bool init, P&& pa = P()) {
+    return storeTo(b = init, std::forward<P>(pa)).flag();
 }
 
 /*!
- * Creates a custom value, i.e., a value that is fully controlled by the caller.
+ * Creates a value description with a (generic) custom action.
  *
- * During parsing of options, the given callable is called with its option name and the parsed value.
+ * During parsing of options, the given callable is called with its option and the parsed value.
  * The return value of the callable determines whether the value is considered valid (true) or invalid (false).
  *
- * \param parser A callable to be invoked once a value is parsed.
+ * \param parser A callable to be invoked once a value for an option is found.
  *
  * \see OptionGroup::addOptions()
  */
+template <ActionFunction<std::string_view> C>
+ValueDesc parse(C&& parser) {
+    return value<Custom<std::decay_t<C>>>(std::forward<C>(parser));
+}
+
+//! Creates a shareable custom value action.
 template <typename C>
-Value* parse(C&& parser) {
-    return new Custom{std::forward<C>(parser)};
+auto makeCustom(C&& action) {
+    return makeShared<Custom<std::decay_t<C>, true>>(std::forward<C>(action));
 }
 
 } // namespace Potassco::ProgramOptions

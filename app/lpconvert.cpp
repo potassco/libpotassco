@@ -98,16 +98,16 @@ POTASSCO_SET_ENUM_ENTRIES(LpConvert::Format, {auto_, "auto"sv}, {text, "text"sv}
 
 void LpConvert::initOptions(OptionContext& root) {
     OptionGroup convert("Conversion Options");
-    convert.addOptions()                                                                                          //
-        ("-i@2,input", storeTo(input_, std::string()), "Input file")                                              //
-        ("-p,potassco", flag(potassco_, false), "Enable potassco extensions")                                     //
-        ("-f,filter", flag(filter_, false), "Hide converted potassco predicates")                                 //
-        ("-o,output", storeTo(output_, std::string())->arg("<file>"), "Write output to <file> (default: stdout)") //
-        ("format", storeTo(format_, Format::auto_), "Output format (text|smodels|aspif|aspif-v1)")                //
-        ("-t,text", flag([this](bool) { format_ = Format::text; }), "Convert to ground text format")              //
-        ("aux-pred", storeTo(pred_, std::string()), "Prefix/Predicate for atom numbers in text output")           //
+    convert.addOptions()                                                                                         //
+        ("-i@2,input", storeTo(input_, std::string()), "Input file")                                             //
+        ("-p,potassco", flag(potassco_, false), "Enable potassco extensions")                                    //
+        ("-f,filter", flag(filter_, false), "Hide converted potassco predicates")                                //
+        ("-o,output", storeTo(output_, std::string()).arg("<file>"), "Write output to <file> (default: stdout)") //
+        ("format", storeTo(format_, Format::auto_), "Output format (text|smodels|aspif|aspif-v1)")               //
+        ("-t,text", flag([this](bool) { format_ = Format::text; }), "Convert to ground text format")             //
+        ("aux-pred", storeTo(pred_, std::string()), "Prefix/Predicate for atom numbers in text output")          //
         ;
-    root.add(convert);
+    root.add(std::move(convert));
 }
 void LpConvert::run() try {
     std::ifstream iFile;

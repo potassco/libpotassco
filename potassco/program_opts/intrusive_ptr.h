@@ -27,18 +27,7 @@
 
 #include <utility>
 
-namespace Potassco::ProgramOptions::Detail {
-
-class RefCountable {
-public:
-    constexpr RefCountable() noexcept = default;
-    constexpr int               addRef() noexcept { return ++refCount_; }
-    constexpr int               release() noexcept { return --refCount_; }
-    [[nodiscard]] constexpr int refCount() const noexcept { return refCount_; }
-
-private:
-    int refCount_{1};
-};
+namespace Potassco::ProgramOptions {
 
 template <typename T>
 class IntrusiveSharedPtr {
@@ -55,8 +44,8 @@ public:
     constexpr T&                 operator*() const noexcept { return *ptr_; }
     constexpr T*                 operator->() const noexcept { return ptr_; }
     [[nodiscard]] constexpr T*   get() const noexcept { return ptr_; }
-    [[nodiscard]] constexpr bool unique() const noexcept { return ptr_ == nullptr || ptr_->refCount() == 1; }
-    [[nodiscard]] constexpr int  count() const noexcept { return ptr_ ? ptr_->refCount() : 0; }
+    [[nodiscard]] constexpr bool unique() const noexcept { return ptr_ == nullptr || intrusiveCount(ptr_) == 1; }
+    [[nodiscard]] constexpr int  count() const noexcept { return ptr_ ? intrusiveCount(ptr_) : 0; }
     constexpr explicit           operator bool() const noexcept { return ptr_ != nullptr; }
 
     constexpr void reset() noexcept { release(); }
@@ -65,16 +54,20 @@ public:
 private:
     constexpr void addRef() const noexcept {
         if (ptr_) {
-            ptr_->addRef();
+            intrusiveAddRef(ptr_);
         }
     }
     constexpr void release() noexcept {
-        if (auto* prev = std::exchange(ptr_, nullptr); prev && prev->release() == 0) {
+        if (auto* prev = std::exchange(ptr_, nullptr); prev && intrusiveRelease(prev) == 0) {
             delete prev;
         }
     }
 
     T* ptr_;
 };
+template <typename T, typename... Args>
+auto makeShared(Args&&... args) {
+    return IntrusiveSharedPtr<T>(new T(std::forward<Args>(args)...));
+}
 
-} // namespace Potassco::ProgramOptions::Detail
+} // namespace Potassco::ProgramOptions

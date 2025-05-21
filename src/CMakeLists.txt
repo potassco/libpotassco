@@ -1,12 +1,11 @@
 set(header_path ${LIB_POTASSCO_SOURCE_DIR}/potassco)
 set(opts_header_path ${header_path}/program_opts)
 
-set(detail_header
-    ${opts_header_path}/detail/refcountable.h)
 set(opts_header
     ${opts_header_path}/errors.h
-    ${opts_header_path}/string_convert.h
+    ${opts_header_path}/intrusive_ptr.h
     ${opts_header_path}/program_options.h
+    ${opts_header_path}/string_convert.h
     ${opts_header_path}/typed_value.h
     ${opts_header_path}/value.h)
 set(header
@@ -27,7 +26,6 @@ set(header
 set(ide_header_group "Header Files")
 source_group("${ide_header_group}" FILES ${header})
 source_group("${ide_header_group}\\program_opts" FILES ${opts_header})
-source_group("${ide_header_group}\\program_opts\\detail" FILES ${detail_header})
 set(src
     application.cpp
     aspif.cpp
@@ -42,7 +40,7 @@ set(src
     string_convert.cpp
     theory_data.cpp)
 
-add_library(libpotassco ${detail_header} ${opts_header} ${header} ${src})
+add_library(libpotassco ${opts_header} ${header} ${src})
 set_target_properties(libpotassco PROPERTIES VERSION ${PROJECT_VERSION})
 if(MSVC)
     target_compile_definitions(libpotassco PRIVATE _SCL_SECURE_NO_WARNINGS)
@@ -64,6 +62,5 @@ set_target_properties(libpotassco PROPERTIES
 if(LIB_POTASSCO_INSTALL_LIB)
     install(FILES ${header} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${include_dest}/potassco")
     install(FILES ${opts_header} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${include_dest}/potassco/program_opts")
-    install(FILES ${detail_header} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${include_dest}/potassco/program_opts/detail")
     install(TARGETS libpotassco EXPORT PotasscoTargets DESTINATION "${CMAKE_INSTALL_LIBDIR}/${library_dest}")
 endif()
