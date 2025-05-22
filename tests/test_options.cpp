@@ -93,22 +93,44 @@ TEST_CASE("Test Str", "[options]") {
     SECTION("literal is detected") {
         Str x("Hallo");
         REQUIRE(x.isLit());
-        REQUIRE(x.c_str() == "Hallo"s);
+        REQUIRE(x.str() == "Hallo"s);
+        Str empty;
+        REQUIRE(empty.isLit());
+        REQUIRE(empty.empty());
+
+        constexpr Str str("fixed");
+        STATIC_REQUIRE(str.isLit());
+        STATIC_REQUIRE(str.str() == "fixed"sv);
     }
     SECTION("non literal is detected") {
-        std::string s("Hallo");
-        Str         x(s.c_str());
+        std::string      aString("Hallo");
+        std::string_view aView(aString);
+        const char*      aPointer = aString.c_str();
+        Str              x(aString);
+        Str              y(aView);
+        Str              z(aPointer);
         REQUIRE_FALSE(x.isLit());
-        REQUIRE(x.c_str() == s);
+        REQUIRE_FALSE(y.isLit());
+        REQUIRE_FALSE(z.isLit());
+        REQUIRE(x.str() == aString);
+        REQUIRE(y.str() == aString);
+        REQUIRE(z.str() == aString);
+        REQUIRE(x.size() == 5);
+        REQUIRE(y.size() == 5);
+        REQUIRE(z.size() == 5);
     }
     SECTION("remove prefix") {
         std::string s("Hallo");
         Str         lit("Hallo");
-        Str         dyn(s.c_str());
+        Str         dyn(s);
+        REQUIRE(lit.size() == 5);
+        REQUIRE(dyn.size() == 5);
         lit.removePrefix(2);
         dyn.removePrefix(4);
-        REQUIRE(lit.c_str() == "llo"s);
-        REQUIRE(dyn.c_str() == "o"s);
+        REQUIRE(lit.str() == "llo"s);
+        REQUIRE(dyn.str() == "o"s);
+        REQUIRE(lit.size() == 3);
+        REQUIRE(dyn.size() == 1);
     }
 }
 
@@ -257,7 +279,7 @@ TEST_CASE("Test value desc", "[options]") {
         }
         SECTION("can be runtime string") {
             std::string d("defaultValue");
-            Po::Option  o("foo", "", Po::storeTo(x).defaultsTo(d.c_str()).arg("<n>"));
+            Po::Option  o("foo", "", Po::storeTo(x).defaultsTo(d).arg("<n>"));
             d.clear();
             REQUIRE(o.defaultValue() == "defaultValue"s);
         }
@@ -279,7 +301,7 @@ TEST_CASE("Test value desc", "[options]") {
         SECTION("can be runtime string") {
             std::string imp("1234");
             int         x;
-            Po::Option  o("foo", "", Po::storeTo(x).implicit(imp.c_str()));
+            Po::Option  o("foo", "", Po::storeTo(x).implicit(imp));
             imp.clear();
             REQUIRE(o.implicitValue() == "1234"s);
             REQUIRE(o.implicit());
@@ -343,7 +365,7 @@ TEST_CASE("Test option supports runtime string", "[options]") {
     SECTION("option name") {
         std::string tmp("number");
         int         x;
-        Po::Option  o(tmp.c_str(), "some num", Po::storeTo(x));
+        Po::Option  o(tmp, "some num", Po::storeTo(x));
         REQUIRE(o.name() == "number");
         REQUIRE(o.description() == "some num");
 
@@ -354,7 +376,7 @@ TEST_CASE("Test option supports runtime string", "[options]") {
     SECTION("option description") {
         std::string desc("Some option description coming from elsewhere");
         int         x;
-        Po::Option  o("number", desc.c_str(), Po::storeTo(x));
+        Po::Option  o("number", desc, Po::storeTo(x));
         REQUIRE(o.name() == "number");
         REQUIRE(o.description() == desc);
         REQUIRE((void*) o.description().data() != (void*) desc.c_str());
@@ -365,7 +387,7 @@ TEST_CASE("Test option supports runtime string", "[options]") {
     SECTION("option argument") {
         std::string arg("<foo,bar>");
         int         x;
-        Po::Option  o("number", "", Po::storeTo(x).arg(arg.c_str()));
+        Po::Option  o("number", "", Po::storeTo(x).arg(arg));
         REQUIRE((void*) o.argName().data() != (void*) arg.c_str());
         arg.clear();
         REQUIRE(o.argName() == "<foo,bar>"s);

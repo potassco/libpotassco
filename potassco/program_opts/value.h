@@ -29,6 +29,7 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 
 namespace Potassco::ProgramOptions {
@@ -45,18 +46,32 @@ enum DescriptionLevel {
 //! Helper class for distinguishing between (static) string literals and possibly temporary strings that must be copied.
 class Str {
 public:
+    constexpr Str() = default;
     template <auto N>
-    consteval Str(const char (&s)[N]) : str_{s}
-                                      , lit_{true} {}
-    Str(const volatile char* s) : str_{const_cast<const char*>(s)} { assert(str_); }
-    [[nodiscard]] const char* c_str() const { return str_; }
-    [[nodiscard]] bool        isLit() const { return lit_; }
-    [[nodiscard]] bool        empty() const { return *str_ == 0; }
-    void                      removePrefix(std::size_t n) { str_ = str_ + n; }
+    consteval Str(const char (&s)[N]) requires(N > 0)
+        : str_{s}
+        , fsz_{((N - 1) << 1) | 1} {
+        if (s[N - 1] != 0) {
+            fsz_ = (N << 1);
+        }
+    }
+    Str(std::string_view s) : str_{s.data()}, fsz_(s.size() << 1) {}
+    Str(const std::string& s) : Str(std::string_view{s}) {}
+    Str(const volatile char* s) : Str(std::string_view{const_cast<const char*>(s)}) {}
+
+    [[nodiscard]] constexpr auto str() const -> std::string_view { return {str_, size()}; }
+    [[nodiscard]] constexpr auto isLit() const -> bool { return (fsz_ & 1) == 1; }
+    [[nodiscard]] constexpr auto empty() const -> bool { return size() == 0; }
+    [[nodiscard]] constexpr auto size() const -> std::size_t { return fsz_ >> 1; }
+
+    void removePrefix(std::size_t n) {
+        str_  = str_ + n;
+        fsz_ -= (n * 2);
+    }
 
 private:
-    const char* str_{};
-    bool        lit_{false};
+    const char* str_{""};
+    std::size_t fsz_{1};
 };
 
 class Option;

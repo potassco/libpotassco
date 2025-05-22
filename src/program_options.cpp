@@ -113,9 +113,9 @@ Option::Option(Str name, Str description, ValueDesc&& value, char alias)
     init(str_imp, not value.implicitValue().empty() || not flag_ ? value.implicitValue() : Str("1"));
 }
 void Option::init(StrType t, const Str& str) {
-    if (str_[t] = str.isLit() ? str.c_str() : nullptr; not str_[t]) { // string could be temporary - create copy
-        auto tmp = std::make_unique<char[]>(std::strlen(str.c_str()) + 1);
-        std::strcpy(tmp.get(), str.c_str());
+    if (str_[t] = str.isLit() ? str.str().data() : nullptr; not str_[t]) { // string could be temporary - create copy
+        auto tmp = std::make_unique<char[]>(str.size() + 1);               // value initialized, i.e., null-terminated
+        std::ranges::copy(str.str(), tmp.get());
         str_[t] = tmp.release();
         store_set_bit(own_, t);
     }
@@ -266,22 +266,21 @@ auto OptionGroup::Init::operator()(Str name, std::string_view spec, ValueDesc va
     if (name.empty()) {
         throw Error("Invalid empty option name");
     }
-    if (std::strchr(name.c_str(), ',') != nullptr) {
-        throw Error("Invalid comma in name "s.append(quote(name.c_str())));
+    if (name.str().find(',') != std::string_view::npos) {
+        throw Error("Invalid comma in name "s.append(quote(name.str())));
     }
     char alias = 0;
     if (not applySpec(spec, value, alias)) {
-        throw Error("Invalid option spec "s.append(quote(spec)).append(" for option ").append(quote(name.c_str())));
+        throw Error("Invalid option spec "s.append(quote(spec)).append(" for option ").append(quote(name.str())));
     }
     owner_->addOption(std::make_unique<Option>(name, desc, std::move(value), alias));
     return *this;
 }
 auto OptionGroup::Init::operator()(Str nameSpec, ValueDesc value, Str desc) -> Init& {
     std::string_view spec{};
-    if (const auto* sep = std::strchr(nameSpec.c_str(), ','); sep) {
-        auto sz = static_cast<std::size_t>(sep - nameSpec.c_str());
-        spec    = {nameSpec.c_str(), sz};
-        nameSpec.removePrefix(sz + 1);
+    if (auto pos = nameSpec.str().find(','); pos != std::string_view::npos) {
+        spec = nameSpec.str().substr(0, pos);
+        nameSpec.removePrefix(pos + 1);
     }
     return this->operator()(nameSpec, spec, std::move(value), desc);
 }

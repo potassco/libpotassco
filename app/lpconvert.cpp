@@ -48,7 +48,7 @@ public:
                "Convert program in <file> or standard input";
     }
     void initOptions(OptionContext& root) override;
-    void validateOptions(const OptionContext& ctx, const ParsedOptions& parsed) override {
+    void validateOptions(const OptionContext&, const ParsedOptions& parsed) override {
         if (parsed.contains("text") && parsed.contains("format")) {
             throw Potassco::ProgramOptions::Error("options 'text' and 'format' are mutually exclusive");
         }
