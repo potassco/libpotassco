@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <cstring>
 #include <istream>
+#include <numeric>
 #include <utility>
 namespace Potassco {
 #define POTASSCO_UNSUPPORTED(what) POTASSCO_FAIL(Errc::domain_error, what " not supported")
@@ -299,52 +300,59 @@ void DynamicBuffer::append(const void* what, std::size_t n) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // DynamicBitset
 /////////////////////////////////////////////////////////////////////////////////////////
-unsigned DynamicBitset::count() const noexcept {
-    unsigned c = 0;
-    for (auto xs : span()) { c += xs.count(); }
-    return c;
-}
-bool DynamicBitset::empty() const noexcept { return buffer_.size() == 0; }
 void DynamicBitset::reserve(unsigned numBits) {
     if (numBits) {
-        buffer_.reserve((1u + pos(numBits - 1).first) * sizeof(SetType));
+        auto r = (1u + idx(numBits).word) * sizeof(SetType);
+        buffer_.reserve(r);
     }
 }
-bool DynamicBitset::add(IndexType bit) {
-    auto [w, p] = pos(bit);
-    auto s      = span();
-    if (w >= s.size()) {
-        auto add = (w - s.size()) + 1;
-        buffer_.reserve((s.size() + add) * sizeof(SetType));
-        while (add--) { new (buffer_.alloc(sizeof(SetType)).data()) SetType(); }
-        s = span();
-    }
-    return s[w].add(p);
+auto DynamicBitset::count() const noexcept -> unsigned {
+    return std::accumulate(data(), data() + words(), 0u, [](unsigned n, uint64_t w) { return bit_count(w) + n; });
 }
-bool DynamicBitset::remove(IndexType bit) {
-    auto [w, p] = pos(bit);
-    auto s      = span();
-    auto res    = w < s.size() && s[w].remove(p);
-    if (res && (w + 1) == s.size() && s[w].count() == 0) {
-        auto pop = 1u;
-        while (w-- && s[w].count() == 0) { ++pop; }
-        buffer_.pop(pop * sizeof(SetType));
-        return true;
-    }
-    return res;
+auto DynamicBitset::smallest() const noexcept -> unsigned {
+    return not empty() ? static_cast<unsigned>(countr_zero(*data())) : 0u;
 }
-auto DynamicBitset::compare(const DynamicBitset& other) const -> std::strong_ordering {
-    auto lhs = span();
-    auto rhs = other.span();
-    if (auto x = lhs.size() <=> rhs.size(); x != std::strong_ordering::equal) {
+auto DynamicBitset::largest() const noexcept -> unsigned {
+    if (auto w = words(); w == 0) {
+        return 0u;
+    }
+    else {
+        return ((w - 1) * 64u) + (63u - static_cast<unsigned>(countl_zero(data()[w - 1])));
+    }
+}
+auto DynamicBitset::compare(const DynamicBitset& rhs) const -> std::strong_ordering {
+    auto n = words();
+    if (auto x = n <=> rhs.words(); x != std::strong_ordering::equal) {
         return x;
     }
-    for (auto n = lhs.size(); n--;) {
-        if (auto x = lhs[n] <=> rhs[n]; x != std::strong_ordering::equal) {
-            return x;
+    for (const auto *x = data(), *y = rhs.data(); n--;) {
+        if (auto cmp = x[n] <=> y[n]; cmp != std::strong_ordering::equal) {
+            return cmp;
         }
     }
     return std::strong_ordering::equal;
+}
+bool DynamicBitset::add(IndexType bit) {
+    auto [word, pos] = idx(bit);
+    if (word < words()) {
+        return test_bit(data()[word], pos) || store_set_bit(data()[word], pos);
+    }
+    auto missing = (word - words()) + 1u;
+    auto mem     = buffer_.alloc(missing * sizeof(SetType));
+    std::uninitialized_fill_n(reinterpret_cast<SetType*>(mem.data()), missing, SetType{0});
+    store_set_bit(data()[word], pos);
+    return true;
+}
+bool DynamicBitset::remove(IndexType bit) {
+    if (auto [word, pos] = idx(bit); word < words() && test_bit(data()[word], pos)) {
+        if (store_clear_bit(data()[word], pos) == 0 && word + 1u == words()) {
+            auto pop = 1u;
+            for (const auto* d = data(); word-- && d[word] == 0; ++pop) {}
+            buffer_.pop(sizeof(SetType) * pop);
+        }
+        return true;
+    }
+    return false;
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // ConstString

@@ -350,23 +350,28 @@ static_assert(Bitset<uint32_t>::fromRep(15u).count() == 4u);
 
 class DynamicBitset {
 public:
-    using IndexType             = unsigned;
+    using IndexType             = uint32_t;
     using trivially_relocatable = std::true_type; // NOLINT
 
     //! Creates an empty set.
     DynamicBitset() noexcept = default;
     //! Reserves space for at least `numBits`.
-    void reserve(unsigned numBits);
+    void reserve(uint32_t numBits);
     //! Returns whether the set contains the given bit.
     [[nodiscard]] bool contains(IndexType bit) const {
-        auto [w, p] = pos(bit);
-        auto s      = span();
-        return w < s.size() && s[w].contains(p);
+        auto [w, p] = idx(bit);
+        return w < words() && test_bit(data()[w], p);
     }
-    //! Returns the number of elements in the set, i.e., the number of bits set.
-    [[nodiscard]] unsigned count() const noexcept;
     //! Returns whether the set is empty.
-    [[nodiscard]] bool empty() const noexcept;
+    [[nodiscard]] bool empty() const noexcept { return buffer_.size() == 0; }
+    //! Returns the number of elements in the set, i.e., the number of bits set.
+    [[nodiscard]] auto count() const noexcept -> unsigned;
+    //! Returns the smallest element in the set or 0 if empty.
+    [[nodiscard]] auto smallest() const noexcept -> unsigned;
+    //! Returns the largest element in the set or 0 if empty.
+    [[nodiscard]] auto largest() const noexcept -> unsigned;
+    //! Returns the number of active words.
+    [[nodiscard]] auto words() const noexcept -> uint32_t { return buffer_.size() / sizeof(SetType); }
     //! Adds the given bit to the set and returns true if it was not already in the set.
     bool add(IndexType bit);
     //! Removes the given bit from the set and returns true if it was in the set.
@@ -380,16 +385,15 @@ public:
     friend auto operator<=>(const DynamicBitset& lhs, const DynamicBitset& rhs) noexcept { return lhs.compare(rhs); }
 
 private:
-    using SetType = Bitset<uint64_t>;
-    [[nodiscard]] static constexpr auto pos(IndexType bit) -> std::pair<unsigned, unsigned> {
-        return {bit / 64u, bit & 63u};
-    }
-    [[nodiscard]] auto compare(const DynamicBitset& other) const -> std::strong_ordering;
+    using SetType = uint64_t;
+    struct Index {
+        uint32_t word : 26;
+        uint32_t bit  : 6;
+    };
+    [[nodiscard]] static constexpr auto idx(IndexType bit) -> Index { return {bit / 64u, bit & 63u}; }
+    [[nodiscard]] auto                  compare(const DynamicBitset& rhs) const -> std::strong_ordering;
     [[nodiscard]] auto data() const noexcept -> SetType* { return reinterpret_cast<SetType*>(buffer_.data()); }
-    [[nodiscard]] auto span() const noexcept -> std::span<SetType> {
-        return {data(), buffer_.size() / sizeof(SetType)};
-    }
-    DynamicBuffer buffer_;
+    DynamicBuffer      buffer_;
 };
 
 class RuleBuilder;
