@@ -560,15 +560,19 @@ TEST_CASE("Test Basic", "[rule]") {
         CHECK(bitset <= bitset);
 
         bitset.add(63);
-        DynamicBitset other;
         CHECK(bitset.count() == 1);
+        CHECK(bitset.contains(63));
+        CHECK_FALSE(bitset.contains(64));
+        DynamicBitset other;
         CHECK(other < bitset);
         bitset.add(64);
         CHECK(bitset.count() == 2);
+        CHECK(bitset.contains(64));
         other.add(64);
         CHECK(other < bitset);
         other.add(65);
         CHECK(other > bitset);
+        CHECK(other.contains(65));
         other.add(128);
         CHECK(other > bitset);
         CHECK(other.count() == 3);

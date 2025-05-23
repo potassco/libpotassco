@@ -24,6 +24,7 @@
 #include <potassco/platform.h>
 
 #include <bit>
+#include <cassert>
 #include <climits>
 #include <concepts>
 #if !defined(__cpp_lib_int_pow2) || __cpp_lib_int_pow2 < 202002L
@@ -54,6 +55,9 @@ using std::rotr;
 //! Returns a value of T with bit `n` set.
 template <std::unsigned_integral T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr T nth_bit(unsigned n) {
+    if (not std::is_constant_evaluated()) {
+        assert(n < (sizeof(T) * CHAR_BIT));
+    }
     return static_cast<T>(1) << n;
 }
 static_assert(nth_bit<unsigned>(0) == 1u && nth_bit<unsigned>(3) == 0b00001000u);

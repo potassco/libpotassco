@@ -319,7 +319,7 @@ bool DynamicBitset::add(IndexType bit) {
         while (add--) { new (buffer_.alloc(sizeof(SetType)).data()) SetType(); }
         s = span();
     }
-    return s[w].add(bit);
+    return s[w].add(p);
 }
 bool DynamicBitset::remove(IndexType bit) {
     auto [w, p] = pos(bit);
