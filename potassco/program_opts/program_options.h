@@ -150,7 +150,7 @@ public:
          *  - `+` is mapped to `value.composing()`,
          *  - `*` is mapped to `value.flag()`,
          *  - `-<alias>` is mapped to `alias`, and
-         *  - `@<level>` is mapped `value.level(enum_cast<DescriptionLevel>(level))`
+         *  - `@<level>` is mapped to `value.level(enum_cast<DescriptionLevel>(level))`
          *
          *  \return true if `spec` is valid, i.e., elements are either not present or valid.
          */
@@ -171,6 +171,8 @@ public:
 
         /*!
          * \overload Init::operator()(Str, std::string_view, ValueDesc, Str)
+         * \note `name` can be either a plain name (e.g., `foo`) or a spec and a name separated by a comma (e.g.,
+         *       `-f!,foo`).
          */
         Init& operator()(Str name, ValueDesc value, Str desc);
 

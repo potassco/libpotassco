@@ -356,6 +356,7 @@ bool Application::applyOptions(std::span<const char* const> args) {
     bool          version = false;
     OptionContext allOpts(std::string("<").append(getName()).append(">"));
     OptionGroup   basic("Basic Options");
+    auto          init = basic.addOptions();
     if (auto [message, level] = getHelpOption(); level > 0) {
         auto hv = level == 1 ? storeTo(help).flag()
                              : storeTo(help,
@@ -364,7 +365,7 @@ bool Application::applyOptions(std::span<const char* const> args) {
                                        })
                                    .arg("<n>")
                                    .implicit("1");
-        basic.addOptions()("help", "-h", std::move(hv), message);
+        init("-h,help", std::move(hv), message);
     }
     verbose_ = 0;
     if (auto [def, max] = getVerboseOption(); max > 0) {
@@ -379,12 +380,11 @@ bool Application::applyOptions(std::span<const char* const> args) {
         if (not def.empty()) {
             opt.defaultsTo(def);
         }
-        basic.addOptions()("verbose", "-V", std::move(opt), "Set verbosity level to %A");
+        init("-V,verbose", std::move(opt), "Set verbosity level to %A");
     }
-    basic.addOptions()                                                                                //
-        ("version", "-v", flag(version), "Print version information and exit")                        //
+    init("-v,version", flag(version), "Print version information and exit")                           //
         ("time-limit", storeTo(timeout_ = 0).arg("<n>"), "Set time limit to %A seconds (0=no limit)") //
-        ("fast-exit", "@1", flag(fastExit_ = false), "Force fast exit (do not call dtors)");          //
+        ("@1,fast-exit", flag(fastExit_ = false), "Force fast exit (do not call dtors)");             //
     allOpts.add(std::move(basic));
     initOptions(allOpts);
     DefaultParseContext parseContext{allOpts};

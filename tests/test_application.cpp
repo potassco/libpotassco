@@ -40,11 +40,11 @@ struct MyApp : Application {
     void                           setup() override {}
     void                           initOptions(OptionContext& root) override {
         OptionGroup g("Basic Options");
-        g.addOptions()("foo", "-@@1", Po::storeTo(foo), "Option on level 1");
+        g.addOptions()("-@@1,foo", Po::storeTo(foo), "Option on level 1");
         root.add(std::move(g));
         OptionGroup g2("E1 Options");
         g2.setDescriptionLevel(Po::desc_level_e1);
-        g2.addOptions()("file", "-f+", Po::storeTo(input), "Input files");
+        g2.addOptions()("-f+,file", Po::storeTo(input), "Input files");
         root.add(std::move(g2));
     }
     void validateOptions(const OptionContext&, const ParsedOptions&) override {}

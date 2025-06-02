@@ -554,6 +554,9 @@ TEST_CASE("Test Basic", "[rule]") {
     SECTION("dynamic bitset") {
         DynamicBitset bitset;
         CHECK(bitset.count() == 0);
+        CHECK(bitset.words() == 0);
+        CHECK(bitset.smallest() == 0);
+        CHECK(bitset.largest() == 0);
         CHECK(bitset == bitset);
         CHECK_FALSE(bitset < bitset);
         CHECK_FALSE(bitset > bitset);
@@ -561,19 +564,31 @@ TEST_CASE("Test Basic", "[rule]") {
 
         bitset.add(63);
         CHECK(bitset.count() == 1);
+        CHECK(bitset.words() == 1);
+        CHECK(bitset.smallest() == 63);
+        CHECK(bitset.largest() == 63);
         CHECK(bitset.contains(63));
         CHECK_FALSE(bitset.contains(64));
         DynamicBitset other;
         CHECK(other < bitset);
         bitset.add(64);
         CHECK(bitset.count() == 2);
+        CHECK(bitset.smallest() == 63);
         CHECK(bitset.contains(64));
+        bitset.add(12);
+        CHECK(bitset.smallest() == 12);
+        CHECK(bitset.largest() == 64);
+        bitset.remove(12);
+
         other.add(64);
         CHECK(other < bitset);
         other.add(65);
         CHECK(other > bitset);
         CHECK(other.contains(65));
+        CHECK(other.largest() == 65);
+        CHECK(other.words() == 2);
         other.add(128);
+        CHECK(other.largest() == 128);
         CHECK(other > bitset);
         CHECK(other.count() == 3);
         other.remove(65);
@@ -582,10 +597,35 @@ TEST_CASE("Test Basic", "[rule]") {
         other.remove(128);
         CHECK(other == bitset);
         other.add(4096);
+        CHECK(other.largest() == 4096);
         other.add(100000);
+        CHECK(other.largest() == 100000);
         CHECK(other.count() == 4);
         other.remove(100000);
         CHECK(other.count() == 3);
+        CHECK(other.words() == 65);
+        CHECK(other.largest() == 4096);
+
+        other.add(0);
+        other.add(1);
+        other.add(65);
+        other.add(128);
+        other.add(129);
+        other.add(130);
+        CHECK(other.count() == 9);
+        other.apply(~static_cast<uint64_t>(3u));
+        CHECK_FALSE(other.contains(0));
+        CHECK_FALSE(other.contains(1));
+        CHECK_FALSE(other.contains(64));
+        CHECK_FALSE(other.contains(65));
+        CHECK_FALSE(other.contains(128));
+        CHECK_FALSE(other.contains(129));
+
+        CHECK(other.contains(63));
+        CHECK(other.contains(130));
+        CHECK(other.count() == 2);
+        CHECK(other.largest() == 130);
+        CHECK(other.words() == 3);
     }
 }
 TEST_CASE("Test RuleBuilder", "[rule]") {

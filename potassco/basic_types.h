@@ -303,76 +303,38 @@ private:
 };
 inline void swap(DynamicBuffer& lhs, DynamicBuffer& rhs) noexcept { lhs.swap(rhs); }
 
-template <std::unsigned_integral T, typename ElemType = unsigned>
-requires requires(ElemType e) {
-    { +e } -> std::convertible_to<unsigned>;
-}
-class Bitset {
-public:
-    using StorageType = T;
-    //! Maximal number of elements in the set (i.e., maximal number of bits)
-    static constexpr auto max_count = sizeof(T) * CHAR_BIT;
-
-    //! Creates an empty set, i.e., all bits are zero.
-    constexpr Bitset() noexcept = default;
-    //! Creates a set with the given elements, i.e., bits at the given positions are set.
-    constexpr Bitset(std::initializer_list<ElemType> elems) {
-        for (StorageType zero{}; auto e : elems) { set_ |= Potassco::set_bit(zero, +e); }
-    }
-    //! Constructs a bitset with all bits in `r` set.
-    static constexpr Bitset fromRep(StorageType r) noexcept { return Bitset(r); }
-    //! Returns whether the set contains the given element.
-    [[nodiscard]] constexpr bool contains(ElemType e) const { return Potassco::test_bit(set_, +e); }
-    //! Returns the number of elements in the set, i.e., the number of bits set.
-    [[nodiscard]] constexpr unsigned count() const noexcept { return Potassco::bit_count(set_); }
-    //! Adds the given element to the set and returns true if it was not already in the set.
-    constexpr bool add(ElemType e) { return not contains(e) && Potassco::store_set_bit(set_, +e); }
-    //! Removes the given element from the set and returns true if it was in the set.
-    constexpr bool remove(ElemType e) { return contains(e) && Potassco::store_clear_bit(set_, +e) >= 0u; }
-    //! Removes all elements (bits) >= max.
-    constexpr void removeMax(ElemType max) { set_ &= Potassco::bit_max<StorageType>(+max); }
-    //! Removes all elements from the set.
-    constexpr void clear() noexcept { set_ = {}; }
-
-    [[nodiscard]] constexpr StorageType rep() const noexcept { return set_; }
-
-    friend constexpr bool operator==(Bitset lhs, Bitset rhs) noexcept  = default;
-    friend constexpr auto operator<=>(Bitset lhs, Bitset rhs) noexcept = default;
-
-private:
-    constexpr explicit Bitset(StorageType r) : set_(r) {}
-    StorageType set_{0};
-};
-static_assert(Bitset<uint32_t>::max_count == 32);
-static_assert(Bitset<uint32_t>{}.rep() == 0u);
-static_assert(Bitset<uint32_t>::fromRep(8u).contains(3));
-static_assert(Bitset<uint32_t>::fromRep(15u).count() == 4u);
-
 class DynamicBitset {
 public:
-    using IndexType             = unsigned;
+    using IndexType             = uint32_t;
     using trivially_relocatable = std::true_type; // NOLINT
 
     //! Creates an empty set.
     DynamicBitset() noexcept = default;
     //! Reserves space for at least `numBits`.
-    void reserve(unsigned numBits);
+    void reserve(uint32_t numBits);
     //! Returns whether the set contains the given bit.
     [[nodiscard]] bool contains(IndexType bit) const {
-        auto [w, p] = pos(bit);
-        auto s      = span();
-        return w < s.size() && s[w].contains(p);
+        auto [w, p] = idx(bit);
+        return w < words() && test_bit(data()[w], p);
     }
-    //! Returns the number of elements in the set, i.e., the number of bits set.
-    [[nodiscard]] unsigned count() const noexcept;
     //! Returns whether the set is empty.
-    [[nodiscard]] bool empty() const noexcept;
+    [[nodiscard]] bool empty() const noexcept { return buffer_.size() == 0; }
+    //! Returns the number of elements in the set, i.e., the number of bits set.
+    [[nodiscard]] auto count() const noexcept -> unsigned;
+    //! Returns the smallest element in the set or 0 if empty.
+    [[nodiscard]] auto smallest() const noexcept -> unsigned;
+    //! Returns the largest element in the set or 0 if empty.
+    [[nodiscard]] auto largest() const noexcept -> unsigned;
+    //! Returns the number of active words.
+    [[nodiscard]] auto words() const noexcept -> uint32_t { return buffer_.size() / sizeof(SetType); }
     //! Adds the given bit to the set and returns true if it was not already in the set.
     bool add(IndexType bit);
     //! Removes the given bit from the set and returns true if it was in the set.
     bool remove(IndexType bit);
     //! Removes all elements from the set.
     void clear() noexcept { buffer_.clear(); }
+    //! Bitwise-ANDs all the bits in this bitset with the given mask.
+    void apply(uint64_t mask);
 
     friend bool operator==(const DynamicBitset& lhs, const DynamicBitset& rhs) noexcept {
         return lhs.compare(rhs) == std::strong_ordering::equal;
@@ -380,15 +342,16 @@ public:
     friend auto operator<=>(const DynamicBitset& lhs, const DynamicBitset& rhs) noexcept { return lhs.compare(rhs); }
 
 private:
-    using SetType = Bitset<uint64_t>;
-    [[nodiscard]] static constexpr auto pos(IndexType bit) -> std::pair<unsigned, unsigned> {
-        return {bit / 64u, bit & 63u};
-    }
-    [[nodiscard]] auto compare(const DynamicBitset& other) const -> std::strong_ordering;
+    using SetType = uint64_t;
+    struct Index {
+        uint32_t word : 26;
+        uint32_t bit  : 6;
+    };
+    [[nodiscard]] static constexpr auto idx(IndexType bit) -> Index { return {bit / 64u, bit & 63u}; }
+    [[nodiscard]] auto                  compare(const DynamicBitset& rhs) const -> std::strong_ordering;
     [[nodiscard]] auto data() const noexcept -> SetType* { return reinterpret_cast<SetType*>(buffer_.data()); }
-    [[nodiscard]] auto span() const noexcept -> std::span<SetType> {
-        return {data(), buffer_.size() / sizeof(SetType)};
-    }
+    void               compact();
+
     DynamicBuffer buffer_;
 };
 

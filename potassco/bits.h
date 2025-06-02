@@ -54,7 +54,7 @@ using std::rotr;
 ///@{
 //! Returns a value of T with bit `n` set.
 template <std::unsigned_integral T>
-[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T nth_bit(unsigned n) {
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T nth_bit(std::common_type_t<unsigned, T> n) {
     if (not std::is_constant_evaluated()) {
         assert(n < (sizeof(T) * CHAR_BIT));
     }
@@ -63,41 +63,41 @@ template <std::unsigned_integral T>
 static_assert(nth_bit<unsigned>(0) == 1u && nth_bit<unsigned>(3) == 0b00001000u);
 //! Returns whether bit `n` is set in `x`.
 template <std::unsigned_integral T>
-[[nodiscard]] POTASSCO_FORCE_INLINE constexpr bool test_bit(T x, unsigned n) noexcept {
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr bool test_bit(T x, std::common_type_t<unsigned, T> n) noexcept {
     return (x & nth_bit<T>(n)) != 0;
 }
 static_assert(test_bit(7u, 0) && not test_bit(8u, 4) && test_bit(nth_bit<unsigned>(2), 2));
 //! Returns a copy of `x` with bit `n` set.
 template <std::unsigned_integral T>
-[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T set_bit(T x, unsigned n) noexcept {
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T set_bit(T x, std::common_type_t<unsigned, T> n) noexcept {
     return x | nth_bit<T>(n);
 }
 static_assert(set_bit(6u, 0) == 7u && set_bit(8u, 1) == 10u);
 //! Effect: x = set_bit(x, n)
 template <std::unsigned_integral T>
-POTASSCO_FORCE_INLINE constexpr T& store_set_bit(T& x, unsigned n) noexcept {
-    return (x |= nth_bit<T>(n));
+POTASSCO_FORCE_INLINE constexpr T& store_set_bit(T& x, std::common_type_t<unsigned, T> n) noexcept {
+    return x |= nth_bit<T>(n);
 }
 //! Returns a copy of `x` with bit `n` cleared.
 template <std::unsigned_integral T>
-[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T clear_bit(T x, unsigned n) noexcept {
-    return x & ~nth_bit<T>(n);
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T clear_bit(T x, std::common_type_t<unsigned, T> n) noexcept {
+    return x & static_cast<T>(~nth_bit<T>(n));
 }
 static_assert(clear_bit(7u, 0) == 6u && clear_bit(8u, 3) == 0u);
 //! Effect: x = clear_bit(x, n)
 template <std::unsigned_integral T>
-POTASSCO_FORCE_INLINE constexpr T& store_clear_bit(T& x, unsigned n) noexcept {
-    return x &= ~nth_bit<T>(n);
+POTASSCO_FORCE_INLINE constexpr T& store_clear_bit(T& x, std::common_type_t<unsigned, T> n) noexcept {
+    return x &= static_cast<T>(~nth_bit<T>(n));
 }
 //! Returns a copy of `x` with bit `n` toggled.
 template <std::unsigned_integral T>
-[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T toggle_bit(T x, unsigned n) noexcept {
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T toggle_bit(T x, std::common_type_t<unsigned, T> n) noexcept {
     return x ^ nth_bit<T>(n);
 }
 static_assert(toggle_bit(6u, 0) == 7u && toggle_bit(7u, 1) == 5u);
 //! Effect: x = toggle_bit(x, n)
 template <std::unsigned_integral T>
-POTASSCO_FORCE_INLINE constexpr T& store_toggle_bit(T& x, unsigned n) noexcept {
+POTASSCO_FORCE_INLINE constexpr T& store_toggle_bit(T& x, std::common_type_t<unsigned, T> n) noexcept {
     return x ^= nth_bit<T>(n);
 }
 ///@}
@@ -131,13 +131,13 @@ POTASSCO_FORCE_INLINE constexpr T& store_set_mask(T& x, std::type_identity_t<T> 
 //! Returns a copy of `x` with all set bits in the mask `m` cleared.
 template <std::unsigned_integral T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr T clear_mask(T x, std::type_identity_t<T> m) noexcept {
-    return x & ~m;
+    return x & static_cast<T>(~m);
 }
 static_assert(clear_mask(7u, 3u) == 4u && clear_mask(19u, 17u) == 2u);
 //! Effect: x = clear_mask(x, m)
 template <std::unsigned_integral T>
 POTASSCO_FORCE_INLINE constexpr T& store_clear_mask(T& x, std::type_identity_t<T> m) noexcept {
-    return x &= ~m;
+    return x &= static_cast<T>(~m);
 }
 //! Returns a copy of `x` with all bits in the mask `m` toggled.
 template <std::unsigned_integral T>
@@ -152,7 +152,7 @@ POTASSCO_FORCE_INLINE constexpr T& store_toggle_mask(T& x, std::type_identity_t<
 ///@}
 //! Returns a value of T with the first `numBits` set.
 template <std::unsigned_integral T>
-[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T bit_max(unsigned numBits) {
+[[nodiscard]] POTASSCO_FORCE_INLINE constexpr T bit_max(std::common_type_t<unsigned, T> numBits) {
     return numBits < (sizeof(T) * CHAR_BIT) ? nth_bit<T>(numBits) - 1 : ~static_cast<T>(0);
 }
 static_assert(bit_max<unsigned>(0) == 0u && bit_max<unsigned>(3) == 7u && bit_max<uint32_t>(32) == UINT32_MAX);
@@ -184,6 +184,52 @@ POTASSCO_FORCE_INLINE constexpr unsigned bit_count(T x) noexcept {
     return static_cast<unsigned>(std::popcount(x));
 }
 static_assert(bit_count(0u) == 0u && bit_count(1u) == 1u && bit_count(127u) == 7u);
+
+template <std::unsigned_integral T, typename ElemType = unsigned>
+requires requires(ElemType e) {
+    { +e } -> std::convertible_to<unsigned>;
+}
+class Bitset {
+public:
+    using StorageType = T;
+    //! Maximal number of elements in the set (i.e., maximal number of bits)
+    static constexpr auto max_count = sizeof(T) * CHAR_BIT;
+
+    //! Creates an empty set, i.e., all bits are zero.
+    constexpr Bitset() noexcept = default;
+    //! Creates a set with the given elements, i.e., bits at the given positions are set.
+    constexpr Bitset(std::initializer_list<ElemType> elems) {
+        for (StorageType zero{}; auto e : elems) { set_ |= Potassco::set_bit(zero, bit(e)); }
+    }
+    //! Constructs a bitset with all bits in `r` set.
+    static constexpr Bitset fromRep(StorageType r) noexcept { return Bitset(r); }
+    //! Returns whether the set contains the given element.
+    [[nodiscard]] constexpr bool contains(ElemType e) const { return Potassco::test_bit(set_, bit(e)); }
+    //! Returns the number of elements in the set, i.e., the number of bits set.
+    [[nodiscard]] constexpr unsigned count() const noexcept { return Potassco::bit_count(set_); }
+    //! Adds the given element to the set and returns true if it was not already in the set.
+    constexpr bool add(ElemType e) { return not contains(e) && Potassco::store_set_bit(set_, bit(e)); }
+    //! Removes the given element from the set and returns true if it was in the set.
+    constexpr bool remove(ElemType e) { return contains(e) && Potassco::store_clear_bit(set_, bit(e)) >= 0u; }
+    //! Removes all elements (bits) >= max.
+    constexpr void removeMax(ElemType max) { set_ &= Potassco::bit_max<StorageType>(+max); }
+    //! Removes all elements from the set.
+    constexpr void clear() noexcept { set_ = {}; }
+
+    [[nodiscard]] constexpr StorageType rep() const noexcept { return set_; }
+
+    friend constexpr bool operator==(Bitset lhs, Bitset rhs) noexcept  = default;
+    friend constexpr auto operator<=>(Bitset lhs, Bitset rhs) noexcept = default;
+
+private:
+    POTASSCO_FORCE_INLINE static constexpr unsigned bit(ElemType e) { return static_cast<unsigned>(+e); }
+    constexpr explicit Bitset(StorageType r) : set_(r) {}
+    StorageType set_{0};
+};
+static_assert(Bitset<uint32_t>::max_count == 32);
+static_assert(Bitset<uint32_t>{}.rep() == 0u);
+static_assert(Bitset<uint32_t>::fromRep(8u).contains(3));
+static_assert(Bitset<uint32_t>::fromRep(15u).count() == 4u);
 ///@}
 
 } // namespace Potassco

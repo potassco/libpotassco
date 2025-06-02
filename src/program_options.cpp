@@ -230,7 +230,7 @@ void OptionGroup::format(OptionOutput& out, size_t maxW, DescriptionLevel level)
 ///////////////////////////////////////////////////////////////////////////////
 bool OptionGroup::Init::applySpec(std::string_view spec, ValueDesc& value, char& alias) {
     alias = 0;
-    for (uint32_t seen = 0; not spec.empty();) {
+    for (std::size_t seen = 0; not spec.empty();) {
         auto p = "+!*-@"sv.find(spec.front());
         if (p == std::string_view::npos || test_bit(seen, p)) {
             break;
@@ -276,13 +276,13 @@ auto OptionGroup::Init::operator()(Str name, std::string_view spec, ValueDesc va
     owner_->addOption(std::make_unique<Option>(name, desc, std::move(value), alias));
     return *this;
 }
-auto OptionGroup::Init::operator()(Str nameSpec, ValueDesc value, Str desc) -> Init& {
+auto OptionGroup::Init::operator()(Str name, ValueDesc value, Str desc) -> Init& {
     std::string_view spec{};
-    if (auto pos = nameSpec.str().find(','); pos != std::string_view::npos) {
-        spec = nameSpec.str().substr(0, pos);
-        nameSpec.removePrefix(pos + 1);
+    if (auto pos = name.str().find(','); pos != std::string_view::npos) {
+        spec = name.str().substr(0, pos);
+        name.removePrefix(pos + 1);
     }
-    return this->operator()(nameSpec, spec, std::move(value), desc);
+    return this->operator()(name, spec, std::move(value), desc);
 }
 ///////////////////////////////////////////////////////////////////////////////
 // class OptionContext

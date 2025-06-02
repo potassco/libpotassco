@@ -485,7 +485,9 @@ TEST_CASE("Test parsed options", "[options]") {
         Po::OptionGroup g2;
         bool            b1;
         int             int3;
-        g2.addOptions()("!,flag", Po::flag(b1), "A switch")("int3", Po::storeTo(int3), "Yet another int");
+        g2.addOptions()                          //
+            ("!,flag", Po::flag(b1), "A switch") //
+            ("int3", Po::storeTo(int3), "Yet another int");
         ctx.add(g2);
         REQUIRE_NOTHROW(Po::parseCommandString(po, "--int1=2 --flag --int3=3"));
         REQUIRE((i1 == 2 && b1 == true && int3 == 3));
@@ -685,11 +687,13 @@ TEST_CASE("Test errors", "[options]") {
     Po::OptionContext ctx;
     bool              b;
     SECTION("option name must not be empty") { REQUIRE_THROWS_AS(x("", Po::flag(b), ""), Po::Error); }
-    SECTION("alias must be a single character") { REQUIRE_THROWS_AS(x("foo", "-fo", Po::flag(b), ""), Po::Error); }
+    SECTION("alias must be a single character") { REQUIRE_THROWS_AS(x("-fo,foo", Po::flag(b), ""), Po::Error); }
     SECTION("level must be a number") { REQUIRE_THROWS_AS(x("foo", "@x", Po::flag(b), ""), Po::Error); }
     SECTION("level must be in range") { REQUIRE_THROWS_AS(x("foo", "@8", Po::flag(b), ""), Po::Error); }
     SECTION("multiple occurrences are not allowed") {
-        g.addOptions()("help", Po::flag(b), "")("rand", Po::flag(b), "");
+        g.addOptions()                //
+            ("help", Po::flag(b), "") //
+            ("rand", Po::flag(b), "");
         ctx.add(g);
         Po::DefaultParseContext pc{ctx};
         pc.setValue(*pc.getOption("help", OptionContext::find_name), "1");
@@ -700,8 +704,10 @@ TEST_CASE("Test errors", "[options]") {
         REQUIRE_THROWS_AS(Po::parseCommandString(po, "--help"), Po::UnknownOption);
     }
     SECTION("options must not be ambiguous") {
-        g.addOptions()("help", Po::flag(b), "")("help-a", Po::flag(b), "")("help-b", Po::flag(b), "")("help-c",
-                                                                                                      Po::flag(b), "");
+        g.addOptions()("help", Po::flag(b), "") //
+            ("help-a", Po::flag(b), "")         //
+            ("help-b", Po::flag(b), "")         //
+            ("help-c", Po::flag(b), "");
         ctx.add(g);
         REQUIRE_THROWS_AS(ctx.option("he", Po::OptionContext::find_prefix), Po::AmbiguousOption);
     }
@@ -818,10 +824,10 @@ TEST_CASE("Test gringo example", "[options]") {
     };
     GringoOpts opts;
     gringo.addOptions() //
-        ("text", "-t", parse([&](std::string_view) {
-                           opts.outputFormat = "text";
-                           return true;
-                       }).flag(),
+        ("-t,text", parse([&](std::string_view) {
+                        opts.outputFormat = "text";
+                        return true;
+                    }).flag(),
          "Print plain text format") //
         ("-c+,const", parse([&](std::string_view v) {
                           opts.defines.emplace_back(v);

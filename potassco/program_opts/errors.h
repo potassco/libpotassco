@@ -51,7 +51,7 @@ private:
 //! Used for signaling errors in OptionContext.
 class ContextError : public Error {
 public:
-    enum Type { duplicate_option, unknown_option, ambiguous_option, unknown_group };
+    enum Type : int { duplicate_option, unknown_option, ambiguous_option, unknown_group };
     ContextError(std::string_view ctx, Type t, std::string_view key, std::string_view desc = {});
     [[nodiscard]] Type               type() const { return type_; }
     [[nodiscard]] const std::string& key() const { return key_; }
