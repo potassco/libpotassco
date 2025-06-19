@@ -8,19 +8,17 @@ option(LIB_POTASSCO_BUILD_APP         "whether or not to build lpconvert tool"  
 option(LIB_POTASSCO_INSTALL_LIB       "whether or not to install libpotassco"     OFF)
 option(LIB_POTASSCO_INSTALL_VERSIONED "whether to use a versioned install layout" OFF)
 
-if (LIB_POTASSCO_INSTALL_VERSIONED)
-	set(include_dest  "potassco-${LIB_POTASSCO_VERSION}")
-	set(library_dest  "potassco-${LIB_POTASSCO_VERSION}")
-	set(cmake_dest    "potassco-${LIB_POTASSCO_VERSION}/cmake")
-else()
-	set(include_dest  ".")
-	set(library_dest  ".")
-	set(cmake_dest    "cmake/Potassco")
-endif()
-
 if (LIB_POTASSCO_INSTALL_LIB AND NOT CMAKE_INSTALL_LIBDIR)
 	message(STATUS "LIBDIR no set - using lib")
 	set(CMAKE_INSTALL_LIBDIR lib)
+endif()
+
+set(potassco_include_dest  "${CMAKE_INSTALL_INCLUDEDIR}")
+set(potassco_library_dest  "${CMAKE_INSTALL_LIBDIR}")
+
+if (LIB_POTASSCO_INSTALL_VERSIONED)
+	string(APPEND potassco_include_dest "/potassco-${LIB_POTASSCO_VERSION}")
+	string(APPEND potassco_library_dest "/potassco-${LIB_POTASSCO_VERSION}")
 endif()
 
 if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -69,17 +67,21 @@ endif()
 
 # export
 if(LIB_POTASSCO_INSTALL_LIB)
+	set(cmake_dest "${CMAKE_INSTALL_LIBDIR}/cmake/Potassco")
+	if (LIB_POTASSCO_INSTALL_VERSIONED)
+		string(APPEND cmake_dest "-${LIB_POTASSCO_VERSION}")
+	endif()
 	include(CMakePackageConfigHelpers)
 	configure_package_config_file(
 		${PROJECT_SOURCE_DIR}/cmake/PotasscoConfig.cmake.in
 		${CMAKE_CURRENT_BINARY_DIR}/PotasscoConfig.cmake
-		INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/${cmake_dest})
+		INSTALL_DESTINATION ${cmake_dest})
 	write_basic_package_version_file(
 		${CMAKE_CURRENT_BINARY_DIR}/PotasscoConfigVersion.cmake
 		COMPATIBILITY SameMajorVersion)
 	install(FILES
 		${CMAKE_CURRENT_BINARY_DIR}/PotasscoConfig.cmake
 		${CMAKE_CURRENT_BINARY_DIR}/PotasscoConfigVersion.cmake
-		DESTINATION ${CMAKE_INSTALL_LIBDIR}/${cmake_dest})
-	install(EXPORT PotasscoTargets DESTINATION "${CMAKE_INSTALL_LIBDIR}/${cmake_dest}")
+		DESTINATION ${cmake_dest})
+	install(EXPORT PotasscoTargets DESTINATION "${cmake_dest}")
 endif()
