@@ -13,7 +13,7 @@ that mostly provides functions and types for
 Furthermore, it comes with the tool `lpconvert` that converts either between aspif and smodels format
 or to a human-readable text format.
 
-libpotassco is part of the potassco project. For further information please visit:
+libpotassco is part of the potassco project. For further information, please visit:
 
   https://potassco.org/
 
@@ -24,8 +24,8 @@ version 3.16 or later.
 
 The following options can be used to configure the build:
   
-    LIB_POTASSCO_BUILD_APP  : whether or not to build the lpconvert tool
-    LIB_POTASSCO_BUILD_TESTS: whether or not to build unit tests
+    LIB_POTASSCO_BUILD_APP  : whether to build the lpconvert tool
+    LIB_POTASSCO_BUILD_TESTS: whether to build unit tests
 
 For example, to build libpotassco in release mode in directory `<dir>`:
 
@@ -35,7 +35,7 @@ For example, to build libpotassco in release mode in directory `<dir>`:
 The following options can be used to configure the installation:
     
     CMAKE_INSTALL_PREFIX    : install path prefix
-    LIB_POTASSCO_INSTALL_LIB: whether or not to install libpotassco
+    LIB_POTASSCO_INSTALL_LIB: whether to install libpotassco
 
 For example, to install lpconvert and libpotassco under `/home/<usr>`:
 

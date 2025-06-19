@@ -51,7 +51,7 @@ endif()
 target_link_libraries(libpotassco PRIVATE amc::amc potassco_default_warnings)
 target_include_directories(libpotassco PUBLIC
     $<BUILD_INTERFACE:${LIB_POTASSCO_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/${include_dest}>)
+    $<INSTALL_INTERFACE:${potassco_include_dest}>)
 
 # properties
 set_target_properties(libpotassco PROPERTIES
@@ -60,7 +60,8 @@ set_target_properties(libpotassco PROPERTIES
 
 # installation
 if(LIB_POTASSCO_INSTALL_LIB)
-    install(FILES ${header} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${include_dest}/potassco")
-    install(FILES ${opts_header} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${include_dest}/potassco/program_opts")
-    install(TARGETS libpotassco EXPORT PotasscoTargets DESTINATION "${CMAKE_INSTALL_LIBDIR}/${library_dest}")
+    install(FILES ${header} DESTINATION "${potassco_include_dest}/potassco")
+    install(FILES ${opts_header} DESTINATION "${potassco_include_dest}/potassco/program_opts")
+    install(TARGETS libpotassco EXPORT PotasscoTargets DESTINATION "${potassco_library_dest}")
+    install(TARGETS potassco_default_warnings EXPORT PotasscoTargets DESTINATION "${potassco_library_dest}")
 endif()
