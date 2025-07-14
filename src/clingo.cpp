@@ -24,14 +24,10 @@
 
 namespace Potassco {
 AbstractAssignment::~AbstractAssignment() = default;
-AbstractSolver::~AbstractSolver()         = default;
 AbstractPropagator::~AbstractPropagator() = default;
 AbstractHeuristic::~AbstractHeuristic()   = default;
 AbstractStatistics::~AbstractStatistics() = default;
-AbstractPropagator::Init::~Init()         = default;
-auto AbstractPropagator::Init::addWatch(Lit_t lit) -> void { addWatch(lit, UINT32_MAX); }
-auto AbstractPropagator::Init::removeWatch(Lit_t lit) -> void { removeWatch(lit, UINT32_MAX); }
-
+AbstractPropagator::Control::~Control()   = default;
 auto AbstractAssignment::isTotal() const -> bool { return unassigned() == 0u; }
 auto AbstractAssignment::isFixed(Lit_t lit) const -> bool { return value(lit) != TruthValue::free && level(lit) == 0; }
 auto AbstractAssignment::isTrue(Lit_t lit) const -> bool { return value(lit) == TruthValue::true_; }

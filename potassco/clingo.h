@@ -42,10 +42,15 @@ enum class ClauseType : unsigned {
 };
 POTASSCO_ENABLE_BIT_OPS(ClauseType);
 
-//! Represents an assignment of a particular solver.
+//! Represents an assignment of a solver.
+/*!
+ * An assignment is always associated with a solver.
+ */
 class AbstractAssignment {
 public:
     virtual ~AbstractAssignment();
+    //! Returns the id of the solver this assignment is associated with.
+    [[nodiscard]] virtual Id_t solverId() const = 0;
     //! Returns the number of variables in the assignment.
     [[nodiscard]] virtual uint32_t size() const = 0;
     //! Returns the number of unassigned variables in the assignment.
@@ -96,65 +101,6 @@ public:
     [[nodiscard]] bool isFalse(Lit_t lit) const;
 };
 
-//! Represents one particular solver instance.
-class AbstractSolver {
-public:
-    virtual ~AbstractSolver();
-    //! Returns the id of the solver associated with this object.
-    [[nodiscard]] virtual Id_t id() const = 0;
-    //! Returns the current assignment of the solver.
-    [[nodiscard]] virtual const AbstractAssignment& assignment() const = 0;
-
-    //! Adds the given clause to the solver if possible.
-    /*!
-     * If the function is called during propagation, the return value
-     * indicates whether propagation may continue (true) or shall be
-     * aborted (false).
-     *
-     * \param clause The literals that make up the clause.
-     * \param prop   Properties to be associated with the new clause.
-     *
-     * \note If the given clause contains a volatile variable, i.e., a variable
-     * that was created with `Solver::addVariable(),` it is also considered volatile.
-     *
-     */
-    [[nodiscard]] virtual bool addClause(LitSpan clause, ClauseType prop) = 0;
-    bool                       addClause(LitSpan clause) { return addClause(clause, ClauseType::learnt); }
-
-    //! Adds a new volatile variable to this solver instance.
-    /*!
-     * The new variable is volatile, i.e., only valid within the current solving step
-     * and only added to this one particular solver instance.
-     *
-     * \return The positive literal of the new variable.
-     */
-    [[nodiscard]] virtual Lit_t addVariable() = 0;
-    //! Propagates any newly implied literals.
-    virtual bool propagate() = 0;
-
-    /*!
-     * \name Propagate control
-     * \brief Functions that must only be called in the context of a propagator.
-     *
-     * @{ */
-
-    //! Returns whether the active propagator watches `lit` in this solver instance.
-    [[nodiscard]] virtual bool hasWatch(Lit_t lit) const = 0;
-
-    //! Adds the active propagator to the list of propagators to be notified when the given literal is assigned in this
-    //! solver instance.
-    /*!
-     * \post `hasWatch(lit)` returns true.
-     */
-    virtual void addWatch(Lit_t lit) = 0;
-    //! Removes the active propagator from the list of propagators watching `lit` in the given solver.
-    /*!
-     * \post `hasWatch(lit)` returns false.
-     */
-    virtual void removeWatch(Lit_t lit) = 0;
-    //@}
-};
-
 //! Supported check modes for propagators.
 enum class PropagatorCheckMode {
     no       = 0u, //!< Never call AbstractPropagator::check().
@@ -175,19 +121,67 @@ public:
     //! Type for representing a set of literals that have recently changed.
     using ChangeList = LitSpan;
 
+    //! Interface for controlling propagation and/or initialization.
+    /*!
+     * \note Control functions called during propagation only affect the active solver instance. This
+     * applies to watches, clauses, and variables. Furthermore, any variables added are volatile. That is,
+     * they are only valid within the current solving step and are removed again before the next step is started.
+     */
+    class Control {
+    public:
+        virtual ~Control();
+
+        //! Adds the given clause if possible.
+        /*!
+         * \note If the function is called during propagation, the return value indicates whether
+         *       propagation may continue (true) or shall be aborted (false).
+         *
+         * \param clause The literals that make up the clause.
+         * \param type   Type of the new clause.
+         * \return       Whether the clause was successfully added.
+         */
+        [[nodiscard]] virtual bool addClause(LitSpan clause, ClauseType type) = 0;
+        [[nodiscard]] bool         addClause(LitSpan clause) { return addClause(clause, ClauseType::learnt); }
+        //! Creates a new variable and returns the positive <b>solver literal</b> of the new variable.
+        /*!
+         * If `freeze` is true, the new variable is frozen, i.e., it is not subject to variable elimination.
+         * \note Variables added during propagation are volatile, i.e., they are only valid within the current solving
+         *       step.
+         */
+        [[nodiscard]] virtual Lit_t addVariable(bool freeze) = 0;
+        [[nodiscard]] Lit_t         addVariable() { return addVariable(true); }
+
+        //! Propagates any newly implied literals.
+        virtual bool propagate() = 0;
+
+        //! Returns whether `lit` is a watched literal.
+        [[nodiscard]] virtual bool hasWatch(Lit_t lit) const = 0;
+        //! Adds the active propagator to the list of propagators to be notified when the given literal is assigned.
+        /*!
+         * \post `hasWatch(lit)` returns true.
+         */
+        virtual void addWatch(Lit_t lit) = 0;
+        //! Removes the active propagator from the list of propagators watching `lit`.
+        /*!
+         * \post `hasWatch(lit)` returns false.
+         */
+        virtual void removeWatch(Lit_t lit) = 0;
+    };
+
     //! Interface for initializing a propagator.
-    class Init {
+    /*!
+     * \note Control functions called on an `Init` object affect all current and future solver instances. This
+     * applies to watches, clauses, and variables. Furthermore, all watched literals are automatically frozen.
+     */
+    class Init : public Control {
     public:
         using CheckMode = PropagatorCheckMode;
         using UndoMode  = PropagatorUndoMode;
-        virtual ~Init();
         //! Returns the check mode of the propagator.
         [[nodiscard]] virtual auto checkMode() const -> CheckMode = 0;
         //! Returns the undo mode of the propagator.
         [[nodiscard]] virtual auto undoMode() const -> UndoMode = 0;
-        //! Returns the current (top-level) assignment.
-        [[nodiscard]] virtual auto assignment() const -> const AbstractAssignment& = 0;
-        //! Returns the number of solvers that will be active during solving.
+        //! Returns the number of solvers active during solving.
         [[nodiscard]] virtual auto numSolver() const -> uint32_t = 0;
         //! Maps the given program literal to a solver literal.
         [[nodiscard]] virtual auto solverLiteral(Lit_t lit) const -> Lit_t = 0;
@@ -203,32 +197,14 @@ public:
          */
         virtual void setUndoMode(UndoMode m) = 0;
 
-        //! Adds a watch for the given <b>solver literal</b> to all current and future solvers.
-        void addWatch(Lit_t lit);
-        //! Adds a watch for the given <b>solver literal</b> to the solver with the given id.
-        virtual void addWatch(Lit_t lit, uint32_t solverId) = 0;
-        //! Removes the watch for the given <b>solver literal</b> from all solvers.
-        void removeWatch(Lit_t lit);
-        //! Removes the watch for the given <b>solver literal</b> from the solver with the given id.
-        virtual void removeWatch(Lit_t lit, uint32_t solverId) = 0;
         //! Freezes the variable of the given <b>solver literal</b>.
         /*
          * Solver variables that are not frozen are subject to simplification and might be removed in a preprocessing
          * step after propagator initialization. A propagator should freeze all literals over which it might add clauses
          * during propagation.
-         * \note Watched literals are automatically frozen.
          */
-        virtual void freezeLiteral(Lit_t lit) = 0;
-        //! Creates a new <b>solver literal</b>.
-        /*!
-         * If `freeze` is true, `freezeLiteral()` is implicitly called on the new literal.
-         */
-        virtual Lit_t addLiteral(bool freeze) = 0;
-        //! Adds a clause over the given <b>solver literals</b>.
-        /*!
-         * \return false if the program became unsatisfiable
-         */
-        virtual bool addClause(LitSpan clause) = 0;
+        virtual void freezeVariable(Lit_t lit) = 0;
+
         //! Adds a weight constraint over the given <b>solver literals</b>.
         /*!
          * Adds a constraint of form `con <=> { l=w | (l, w) in lits } ?= bound`, where:
@@ -242,40 +218,66 @@ public:
         virtual bool addWeightConstraint(Lit_t con, WeightLitSpan lits, Weight_t bound, int32_t type, bool eq) = 0;
         //! Adds a weak constraint over the given <b>solver literals</b>.
         virtual void addMinimize(Weight_t prio, WeightLit lit) = 0;
-        //! Propagates the consequences of the underlying problem excluding any registered propagators.
-        /*!
-         * \return false if the program becomes unsatisfiable.
-         */
-        virtual bool propagate() = 0;
     };
 
     virtual ~AbstractPropagator();
     //! Called before solving to initialize the propagator.
-    virtual void init(Init& init) = 0;
+    /*!
+     * \note This function is called once for each solving step before any other function of this interface is called.
+     * \note
+     *   - Variables added during initialization are permanently added to the problem.
+     *   - Watches added/removed during initialization are added to/removed from all current and future solvers.
+     *     Furthermore, all watched literals are automatically frozen.
+     */
+    virtual void init(const AbstractAssignment& assignment, Init& init) = 0;
+    //! Called before solving to initialize a particular solving thread.
+    /*!
+     * \note This function is called once after `init()` for each active solver before any other solver-specific
+     *       function is called.
+     *
+     * \param assignment The current assignment of the solver to be initialized.
+     * \param ctrl A control object that can be used to change the state of the solver.
+     */
+    virtual void attach(const AbstractAssignment& assignment, Control& ctrl) = 0;
     //! Shall propagate the newly assigned literals given in `changes`.
-    virtual void propagate(AbstractSolver& solver, LitSpan changes) = 0;
-    //! May update the internal state of the newly unassigned literals given in `undo`.
-    virtual void undo(const AbstractSolver& solver, LitSpan undo) = 0;
+    /*!
+     * \note If `ctrl.addClause()` or `ctrl.propagate()` is called during propagation and returns false,
+     *       propagation shall be aborted.
+     * \param assignment The current assignment of the solver.
+     * \param ctrl A control object that can be used to change the state of the solver.
+     * \param changes The literals that have been assigned since the last call to this function.
+     * \pre `assignment.isTrue(x)` is true for all literals `x` in `changes`.
+     */
+    virtual void propagate(const AbstractAssignment& assignment, Control& ctrl, LitSpan changes) = 0;
     //! Similar to propagate but called on an assignment without a list of changes.
-    virtual void check(AbstractSolver& solver) = 0;
+    /*!
+     * \param assignment The current assignment of the solver.
+     * \param ctrl A control object that can be used to change the state of the solver.
+     */
+    virtual void check(const AbstractAssignment& assignment, Control& ctrl) = 0;
+    //! May update the internal state of the newly unassigned literals given in `undo`.
+    /*!
+     * \param assignment The current assignment of the solver.
+     * \param undo The literals that will be unassigned.
+     */
+    virtual void undo(const AbstractAssignment& assignment, LitSpan undo) = 0;
 };
 
 //! Base class for implementing heuristics.
 class AbstractHeuristic {
 public:
     virtual ~AbstractHeuristic();
-    //! Shall return the literal that the solver with the given id should decide on next.
+    //! Shall return the next decision literal for the active solver.
     /*!
-     * \param solverId The id of an active solver.
-     * \param assignment The current assignment of the solver with the given id.
+     * \param assignment The current assignment of the solver.
      * \param fallback A literal that the active solver selected as its next decision literal.
-     * \pre fallback is a valid decision literal, i.e., it is not yet assigned.
+     * \pre fallback is a valid (unassigned) decision literal.
      * \return A literal to decide on next.
      *
      * \note If the function returns 0 or a literal that is already assigned, the returned lit
      *       is implicitly replaced with fallback.
      */
-    virtual Lit_t decide(Id_t solverId, const AbstractAssignment& assignment, Lit_t fallback) = 0;
+    virtual Lit_t decide(const AbstractAssignment& assignment, Lit_t fallback) = 0;
 };
 
 //! Supported (solver) statistics types.
