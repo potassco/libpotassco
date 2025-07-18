@@ -142,6 +142,20 @@ public:
          */
         [[nodiscard]] virtual bool addClause(LitSpan clause, ClauseType type) = 0;
         [[nodiscard]] bool         addClause(LitSpan clause) { return addClause(clause, ClauseType::learnt); }
+        //! Adds a weight constraint over the given <b>solver literals</b>.
+        /*!
+         * \note If the function is called during propagation, the return value indicates whether
+         *       propagation may continue (true) or shall be aborted (false).
+         *
+         * Adds a constraint of form `con <=> { l=w | (l, w) in lits } >= bound`, where:
+         *  - <=> is a left implication if `type` < 0,
+         *  - <=> is a right implication if `type` > 0,
+         *  - <=> is an equivalence if `type` = 0.
+         *
+         * \return Whether the constraint was successfully added.
+         */
+        [[nodiscard]] virtual bool addWeightConstraint(Lit_t con, WeightLitSpan lits, Weight_t bound, int32_t type) = 0;
+
         //! Creates a new variable and returns the positive <b>solver literal</b> of the new variable.
         /*!
          * If `freeze` is true, the new variable is frozen, i.e., it is not subject to variable elimination.
@@ -205,17 +219,6 @@ public:
          */
         virtual void freezeVariable(Lit_t lit) = 0;
 
-        //! Adds a weight constraint over the given <b>solver literals</b>.
-        /*!
-         * Adds a constraint of form `con <=> { l=w | (l, w) in lits } ?= bound`, where:
-         *  - <=> is a left implication if `type` < 0,
-         *  - <=> is a right implication if `type` > 0,
-         *  - <=> is an equivalence if `type` = 0, and
-         *  - ?= is `>=` if `eq` is false and `==`, otherwise.
-         *
-         * \return false if the program became unsatisfiable
-         */
-        virtual bool addWeightConstraint(Lit_t con, WeightLitSpan lits, Weight_t bound, int32_t type, bool eq) = 0;
         //! Adds a weak constraint over the given <b>solver literals</b>.
         virtual void addMinimize(Weight_t prio, WeightLit lit) = 0;
     };
