@@ -27,6 +27,7 @@
 #include <potassco/aspif_text.h>
 #include <potassco/convert.h>
 #include <potassco/error.h>
+#include <potassco/reify.h>
 #include <potassco/smodels.h>
 
 #include <potassco/program_opts/errors.h>
@@ -83,18 +84,20 @@ public:
         fail(EXIT_FAILURE, error, info);
     }
 
-    enum class Format : unsigned { auto_, text, smodels, aspif_v1, aspif };
+    enum class Format : uint8_t { auto_, text, smodels, aspif_v1, aspif, reify };
 
 private:
-    std::string input_;
-    std::string output_;
-    std::string pred_;
-    Format      format_{Format::auto_};
-    bool        potassco_ = false;
-    bool        filter_   = false;
+    std::string                input_;
+    std::string                output_;
+    std::string                pred_;
+    Format                     format_{Format::auto_};
+    Potassco::Reifier::Options reifyOpts_;
+    bool                       potassco_ = false;
+    bool                       filter_   = false;
 };
+
 POTASSCO_SET_ENUM_ENTRIES(LpConvert::Format, {auto_, "auto"sv}, {text, "text"sv}, {smodels, "smodels"sv},
-                          {aspif_v1, "aspif-v1"sv}, {aspif, "aspif"sv});
+                          {aspif_v1, "aspif-v1"sv}, {aspif, "aspif"sv}, {reify, "reify"sv});
 
 void LpConvert::initOptions(OptionContext& root) {
     OptionGroup convert("Conversion Options");
@@ -103,9 +106,12 @@ void LpConvert::initOptions(OptionContext& root) {
         ("-p,potassco", flag(potassco_, false), "Enable potassco extensions")                                    //
         ("-f,filter", flag(filter_, false), "Hide converted potassco predicates")                                //
         ("-o,output", storeTo(output_, std::string()).arg("<file>"), "Write output to <file> (default: stdout)") //
-        ("format", storeTo(format_, Format::auto_), "Output format (text|smodels|aspif|aspif-v1)")               //
+        ("format", storeTo(format_, Format::auto_), "Output format (text|smodels|aspif|aspif-v1|reify)")         //
         ("-t,text", flag([this](bool) { format_ = Format::text; }), "Convert to ground text format")             //
+        ("-r,reify", flag([this](bool) { format_ = Format::reify; }), "Convert program to reified facts")        //
         ("aux-pred", storeTo(pred_, std::string()), "Prefix/Predicate for atom numbers in text output")          //
+        ("reify-sccs", flag(reifyOpts_.calculateSccs, false), "Calculate SCCs for reified output")               //
+        ("reify-steps", flag(reifyOpts_.reifyStep, false), "Add step numbers to reified output")                 //
         ;
     root.add(std::move(convert));
 }
@@ -160,6 +166,7 @@ void LpConvert::run() try {
         case Format::aspif_v1: out1 = std::make_unique<Potassco::AspifOutput>(os, 1); break;
         case Format::auto_   : [[fallthrough]];
         case Format::aspif   : out1 = std::make_unique<Potassco::AspifOutput>(os, 2); break;
+        case Format::reify   : out1 = std::make_unique<Potassco::Reifier>(os, reifyOpts_); break;
     }
     in.peek() == 'a' ? Potassco::readAspif(in, *out1) : Potassco::readSmodels(in, *out1, opts);
 }
