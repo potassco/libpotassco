@@ -274,6 +274,17 @@ TEST_CASE("String conversion", "[string]") {
         CHECK((r.ptr && *r.ptr == next));
     }
 
+    SECTION("double parsing supports zero and negative numbers") {
+        double d = 2.0;
+        auto   r = fromChars("0", d);
+        REQUIRE((Parse::ok(r) && d == 0.0));
+        d = 20.0;
+        r = fromChars("0.000", d);
+        REQUIRE((Parse::ok(r) && d == 0.0));
+        r = fromChars("-12.32", d);
+        REQUIRE((Parse::ok(r) && d == -12.32));
+    }
+
     SECTION("vectors can be converted") {
         using Vec = std::vector<int>;
         Vec         x;

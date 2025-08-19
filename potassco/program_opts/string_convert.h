@@ -84,7 +84,7 @@ std::from_chars_result fromChars(std::string_view in, T& out) {
     }
     else {
         std::intmax_t temp;
-        if (res = Detail::parseSigned(in, temp, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+        if (res = Detail::parseSigned(in, temp, std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max());
             Parse::ok(res)) {
             out = static_cast<T>(temp);
         }
@@ -102,7 +102,7 @@ std::from_chars_result fromChars(std::string_view in, T& out) {
 template <std::floating_point T>
 std::from_chars_result fromChars(std::string_view in, T& out) {
     double temp;
-    auto   r = Detail::parseFloat(in, temp, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+    auto   r = Detail::parseFloat(in, temp, std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max());
     if (Parse::ok(r)) {
         out = static_cast<T>(temp);
     }
