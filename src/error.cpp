@@ -18,11 +18,34 @@
 #define NOMINMAX
 #include <Windows.h>
 #endif
-static inline void flockfile(FILE* file) { _lock_file(file); }
-static inline void funlockfile(FILE* file) { _unlock_file(file); }
-static bool        isTerminal(FILE* file) { return _isatty(_fileno(file)); }
+static void flockfile(FILE* file) { _lock_file(file); }
+static void funlockfile(FILE* file) { _unlock_file(file); }
+static bool isTerminal(FILE* file) { return _isatty(_fileno(file)); }
+static bool isCygPty(FILE* file) {
+#if defined(WINDOWS_LEAN_AND_MEAN)
+    auto h = (HANDLE) _get_osfhandle(_fileno(file));
+    auto t = GetFileType(h);
+    if (t == FILE_TYPE_PIPE) {
+        union Info {
+            FILE_NAME_INFO x;
+            WCHAR          b[MAX_PATH + 1 + sizeof(FILE_NAME_INFO)];
+        } info;
+        if (not GetFileInformationByHandleEx(h, FileNameInfo, &info.x, sizeof(Info))) {
+            return false;
+        }
+        info.x.FileName[info.x.FileNameLength] = 0;
+        auto name                              = info.x.FileName;
+        return (wcsstr(name, L"\\msys-") == name || wcsstr(name, L"\\cygwin-") == name) &&
+               wcsstr(name, L"-pty") != nullptr;
+    }
+    return t == FILE_TYPE_CHAR;
+#else
+    return false;
+#endif
+}
 #else
 static bool isTerminal(FILE* file) { return isatty(fileno(file)); }
+static bool isCygPty(FILE*) { return false; }
 #endif
 
 #include <cfloat>
@@ -32,7 +55,7 @@ static bool isTerminal(FILE* file) { return isatty(fileno(file)); }
 #include <span>
 #include <utility>
 
-auto enableTerminalColors([[maybe_unused]] FILE* file) -> std::errc {
+static auto enableTerminalColors([[maybe_unused]] FILE* file) -> std::errc {
     auto ec = std::errc::inappropriate_io_control_operation;
     if (isTerminal(file)) {
 #if !defined(_WIN32) || defined(__linux__)
@@ -50,6 +73,9 @@ auto enableTerminalColors([[maybe_unused]] FILE* file) -> std::errc {
 #else
         ec = std::errc::function_not_supported;
 #endif
+    }
+    else if (isCygPty(file)) {
+        ec = {};
     }
     return ec;
 }
