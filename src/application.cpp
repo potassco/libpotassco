@@ -115,7 +115,8 @@ Application::Application()
     , verbose_(0)
     , fastExit_(false)
     , blocked_(0)
-    , pending_(0) {}
+    , pending_(0)
+    , color_(false) {}
 Application::~Application() { resetInstance(*this); }
 void Application::initInstance(Application& app) { g_instance = &app; }
 void Application::resetInstance(const Application& app) {
@@ -265,6 +266,7 @@ void Application::stop(int code) {
         Application::exit(code);
     }
 }
+void Application::enableColoredMessages(bool col) { color_ = col; }
 
 void Application::shutdown() {}
 
@@ -320,6 +322,14 @@ void Application::processSignal(int sigNum) {
 
 bool Application::onSignal(int x) { exit(128 + x); }
 
+static std::string_view color(Application::MessageType t) {
+    switch (t) {
+        default                          : return ""sv;
+        case Application::message_error  : return "\033[1;31m"sv;
+        case Application::message_warning: return "\033[1;93m"sv;
+        case Application::message_info   : return "\033[1;36m"sv;
+    }
+}
 static std::string_view prefix(Application::MessageType t) {
     switch (t) {
         default                          : return "<?>"sv;
@@ -330,21 +340,44 @@ static std::string_view prefix(Application::MessageType t) {
 }
 
 void Application::write(std::ostream& os, MessageType type, std::string_view msg) const {
-    os << prefix(type) << "(" << getName() << "): " << msg;
+    std::string_view post;
+    std::string_view col;
+    if (color_) {
+        col  = color(type);
+        post = not col.empty() ? "\033[0m" : ""sv;
+    }
+    os << col << prefix(type) << "(" << getName() << "): " << post << msg;
 }
 std::size_t Application::formatMessage(std::span<char> buffer, MessageType t, const char* fmt, ...) const {
     auto pre  = prefix(t);
     auto name = getName();
-    auto r1   = snprintf(buffer.data(), buffer.size(), "%" PRIsv "(%" PRIsv "): ", PRI_SV(pre), PRI_SV(name));
-    if (r1 <= 0 || static_cast<std::size_t>(r1) >= buffer.size()) {
-        return r1 <= 0 ? static_cast<std::size_t>(0) : buffer.size() - 1;
+    auto col  = color_ ? color(t) : ""sv;
+    auto post = not col.empty() ? "\033[0m"sv : ""sv;
+    if (not col.empty() && pre.size() + name.size() + col.size() + post.size() + 4u >= buffer.size()) {
+        col  = {};
+        post = {};
     }
+    auto r1 = snprintf(buffer.data(), buffer.size(),
+                       "%" PRIsv "%" PRIsv "(%" PRIsv "): "
+                       "%" PRIsv,
+                       PRI_SV(col), PRI_SV(pre), PRI_SV(name), PRI_SV(post));
+    if (r1 <= 0 || static_cast<std::size_t>(r1) >= buffer.size()) {
+        return 0;
+    }
+    auto written   = static_cast<std::size_t>(r1);
+    auto msgBuffer = buffer.subspan(written, buffer.size() - (written + post.size()));
+    assert(not msgBuffer.empty());
     va_list args;
     va_start(args, fmt);
-    auto rest = buffer.subspan(static_cast<std::size_t>(r1));
-    auto r2   = std::vsnprintf(rest.data(), rest.size(), fmt, args);
+    auto r2 = std::vsnprintf(msgBuffer.data(), msgBuffer.size(), fmt, args);
     va_end(args);
-    return r2 <= 0 ? static_cast<std::size_t>(0) : std::min(buffer.size() - 1, static_cast<std::size_t>(r1 + r2));
+    if (r2 <= 0) {
+        return 0;
+    }
+    written += std::min(static_cast<std::size_t>(r2), msgBuffer.size() - 1);
+    assert(written < buffer.size());
+    assert(buffer[written] == 0);
+    return written;
 }
 
 // Process command-line options.

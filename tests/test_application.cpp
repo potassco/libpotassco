@@ -65,16 +65,40 @@ struct MyApp : Application {
 
 TEST_CASE("Test application formatting", "[app]") {
     MyApp app;
+    using namespace std::literals;
     SECTION("message") {
         char buffer[80];
         std::ignore = app.formatMessage(buffer, Application::message_error, "An error");
-        CHECK(std::strcmp(buffer, "*** ERROR: (TestApp): An error") == 0);
+        CHECK(buffer == "*** ERROR: (TestApp): An error"sv);
 
         std::ignore = app.formatMessage(buffer, Application::message_warning, "A warning");
-        CHECK(std::strcmp(buffer, "*** Warn : (TestApp): A warning") == 0);
+        CHECK(buffer == "*** Warn : (TestApp): A warning"sv);
 
         std::ignore = app.formatMessage(buffer, Application::message_info, "Some info");
-        CHECK(std::strcmp(buffer, "*** Info : (TestApp): Some info") == 0);
+        CHECK(buffer == "*** Info : (TestApp): Some info"sv);
+        SECTION("truncate") {
+            auto b       = std::span(buffer).subspan(0, 25);
+            auto written = app.formatMessage(b, Application::message_error, "An error");
+            CHECK(written == 24);
+            CHECK(buffer == "*** ERROR: (TestApp): An"sv);
+        }
+        SECTION("color") {
+            app.enableColoredMessages();
+            std::ignore = app.formatMessage(buffer, Application::message_error, "An error");
+            CHECK(buffer == "\033[1;31m*** ERROR: (TestApp): \033[0mAn error"sv);
+            SECTION("truncate-drop-color") {
+                auto b       = std::span(buffer).subspan(0, 33);
+                auto written = app.formatMessage(b, Application::message_error, "An error");
+                CHECK(written == 30);
+                CHECK(buffer == "*** ERROR: (TestApp): An error"sv);
+            }
+            SECTION("truncate-msg") {
+                auto b       = std::span(buffer).subspan(0, 36);
+                auto written = app.formatMessage(b, Application::message_error, "An error");
+                CHECK(written == 35);
+                CHECK(buffer == "\033[1;31m*** ERROR: (TestApp): \033[0mAn"sv);
+            }
+        }
     }
     SECTION("stream") {
         std::stringstream s;
@@ -82,6 +106,13 @@ TEST_CASE("Test application formatting", "[app]") {
         REQUIRE(s.str() == "*** ERROR: (TestApp): An error\n"
                            "*** Warn : (TestApp): A warning\n"
                            "*** Info : (TestApp): Some info\n");
+        SECTION("color") {
+            app.enableColoredMessages();
+            s.str("");
+            s << app.error("An error\n") << app.warn("A warning") << "\n";
+            REQUIRE(s.str() == "\033[1;31m*** ERROR: (TestApp): \033[0mAn error\n"
+                               "\033[1;93m*** Warn : (TestApp): \033[0mA warning\n");
+        }
     }
     SECTION("fail and stop") {
         SECTION("noop if not running") {

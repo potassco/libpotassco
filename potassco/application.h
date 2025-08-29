@@ -127,6 +127,9 @@ public:
         return Prefix{.app = this, .msg = msg, .type = message_info};
     }
 
+    //! Enables formatting of messages with ansi colors.
+    void enableColoredMessages(bool enable = true);
+
     //@}
 protected:
     /*!
@@ -196,6 +199,7 @@ private:
     bool     fastExit_; // force fast exit?
     int      blocked_;  // temporarily block signals?
     int      pending_;  // pending signal or 0 if no pending signal
+    bool     color_;    // format messages with ansi colors?
 };
 
 } // namespace Potassco

@@ -4,12 +4,55 @@
 #include <fpu_control.h>
 #endif
 
+#if __has_include(<io.h>)
+#include <io.h>
+#endif
+
+#if __has_include(<unistd.h>)
+#include <unistd.h>
+#endif
+
+#if defined(_MSC_VER) || defined(__MINGW32__)
+#if defined(_WIN32) && __has_include(<Windows.h>)
+#define WINDOWS_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#endif
+static inline void flockfile(FILE* file) { _lock_file(file); }
+static inline void funlockfile(FILE* file) { _unlock_file(file); }
+static bool        isTerminal(FILE* file) { return _isatty(_fileno(file)); }
+#else
+static bool isTerminal(FILE* file) { return isatty(fileno(file)); }
+#endif
+
 #include <cfloat>
 #include <charconv>
 #include <cstdarg>
 #include <cstdio>
 #include <span>
 #include <utility>
+
+auto enableTerminalColors([[maybe_unused]] FILE* file) -> std::errc {
+    auto ec = std::errc::inappropriate_io_control_operation;
+    if (isTerminal(file)) {
+#if !defined(_WIN32) || defined(__linux__)
+        ec = {};
+#elif defined(ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+        if (file == stdout || file == stderr) {
+            auto  hOut   = GetStdHandle(file == stdout ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
+            DWORD dwMode = 0;
+            ec           = std::errc::function_not_supported;
+            if (hOut != INVALID_HANDLE_VALUE && GetConsoleMode(hOut, &dwMode) &&
+                SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)) {
+                ec = {};
+            }
+        }
+#else
+        ec = std::errc::function_not_supported;
+#endif
+    }
+    return ec;
+}
 
 #if FLT_EVAL_METHOD == 2 || FLT_EVAL_METHOD < 0
 #if defined(_MSC_VER) || defined(_WIN32)
@@ -47,8 +90,12 @@ using namespace std::literals;
 
 static constexpr auto c_file = std::string_view{__FILE__};
 
-unsigned initFpuPrecision() { return setFpuPrecision(nullptr); }
-void     restoreFpuPrecision(unsigned r) { setFpuPrecision(&r); }
+unsigned  initFpuPrecision() { return setFpuPrecision(nullptr); }
+void      restoreFpuPrecision(unsigned r) { setFpuPrecision(&r); }
+bool      isTerminal(FILE* file) { return ::isTerminal(file); }
+std::errc enableAnsiColorSupport(FILE* file) { return enableTerminalColors(file); }
+void      lockFile(FILE* file) { flockfile(file); }
+void      unlockFile(FILE* file) { funlockfile(file); }
 
 const char* ExpressionInfo::relativeFileName(const std::source_location& loc) {
     auto res = loc.file_name();

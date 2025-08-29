@@ -169,5 +169,8 @@ catch (const std::exception& e) {
 
 int main(int argc, char** argv) {
     LpConvert app;
+    if (Potassco::enableAnsiColorSupport(stderr) == std::errc{}) {
+        app.enableColoredMessages();
+    }
     return app.main(argc, argv);
 }

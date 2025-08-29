@@ -29,6 +29,7 @@
 #include <cstdlib>
 #include <source_location>
 #include <string_view>
+#include <system_error>
 
 #define POTASSCO_STRING2(x)    #x
 #define POTASSCO_STRING(x)     POTASSCO_STRING2(x)
@@ -161,6 +162,18 @@ extern AbortHandler setAbortHandler(AbortHandler handler);
 unsigned initFpuPrecision();
 //! Restores x87 floating-point unit to a previous configuration `r` returned from initFpuPrecision().
 void restoreFpuPrecision(unsigned r);
+
+//! Enables ANSI color support for the given file (if possible).
+/*!
+ * \return
+ *   - std::errc{} if color support was successfully enabled,
+ *   - std::errc::inappropriate_io_control_operation if the given file is not a terminal,
+ *   - std::errc::function_not_supported if the platform does not support ANSI colors.
+ */
+auto enableAnsiColorSupport(FILE* file) -> std::errc;
+bool isTerminal(FILE* file);
+void lockFile(FILE* file);
+void unlockFile(FILE* file);
 
 } // namespace Potassco
 
