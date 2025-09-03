@@ -19,9 +19,13 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 #include <potassco/application.h>
+#include <potassco/error.h>
 #include <potassco/program_opts/typed_value.h>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <atomic>
 #include <csignal>
@@ -195,9 +199,96 @@ TEST_CASE("Test application", "[app]") {
     }
     SECTION("arg error") {
         args[0] = "-h3";
-        REQUIRE(app.main(std::span(args).subspan(0, 1)) == EXIT_FAILURE);
-        REQUIRE(app.messages["error"] == "*** ERROR: (TestApp): In context '<TestApp>': '3' invalid value for: 'help'\n"
-                                         "*** Info : (TestApp): Try '--help' for usage information");
+        SECTION("default") {
+            REQUIRE(app.main(std::span(args).subspan(0, 1)) == EXIT_FAILURE);
+            REQUIRE(app.messages["error"] ==
+                    "*** ERROR: (TestApp): In context '<TestApp>': '3' invalid value for: 'help'\n"
+                    "*** Info : (TestApp): Try '--help' for usage information");
+        }
+        SECTION("colored") {
+            app.enableColoredMessages(true);
+            REQUIRE(app.main(std::span(args).subspan(0, 1)) == EXIT_FAILURE);
+            REQUIRE(app.messages["error"] ==
+                    "\033[1;31m*** ERROR: (TestApp): \033[0mIn context '\033[01m<TestApp>\033[0m': '\033[01m3\033[0m' "
+                    "invalid value for: '\033[01mhelp\033[0m'\n"
+                    "\033[1;36m*** Info : (TestApp): \033[0mTry '\033[01m--help\033[0m' for usage information");
+        }
+    }
+    SECTION("other errors") {
+        std::map<std::string, std::string> def{
+            {"<col_err>", ""}, {"<col_warn>", ""}, {"<col_info>", ""}, {"<col_em>", ""}, {"</col>", ""},
+        };
+        std::map<std::string, std::string> col{
+            {"<col_err>", R"(\x1B\[1;31m)"}, {"<col_warn>", R"(\x1B\[1;93m)"}, {"<col_info>", R"(\x1B\[1;36m)"},
+            {"<col_em>", R"(\x1B\[01m)"},    {"</col>", R"(\x1B\[0m)"},
+        };
+        auto replace = [](std::string& str, const std::map<std::string, std::string>& r) {
+            for (const auto& [k, v] : r) {
+                for (auto p = str.find(k, 0); p != std::string::npos;) {
+                    str.replace(p, k.length(), v);
+                    p += v.length();
+                    p  = str.find(k, p);
+                }
+            }
+            return str;
+        };
+        SECTION("potassco") {
+            app.doRun = []() -> int { POTASSCO_CHECK(true == false, std::errc::address_in_use, "kaputt"); };
+            std::string expected =
+                R"(<col_err>\*\*\* ERROR: \(TestApp\): </col>kaputt: [^\n]+\n<col_info>\*\*\* Info : \(TestApp\): </col>.*: check '<col_em>true == false</col>' failed.)";
+            auto* what = GENERATE("default", "colored");
+            CAPTURE(what);
+            if (what == std::string_view{"colored"}) {
+                app.enableColoredMessages(true);
+                expected = replace(expected, col);
+            }
+            else {
+                expected = replace(expected, def);
+            }
+            REQUIRE(app.main({}) == EXIT_FAILURE);
+            REQUIRE_THAT(app.messages["error"], Catch::Matchers::RegexMatcher(expected, Catch::CaseSensitive::Yes));
+        }
+        SECTION("precondition") {
+            app.doRun = []() -> int { POTASSCO_CHECK_PRE('x' == 'y', "kaputt"); };
+            std::string expected =
+                R"(<col_err>\*\*\* ERROR: \(TestApp\): </col>.*<col_warn>Precondition </col>'<col_em>'x' == 'y'</col>' <col_warn>failed\.</col>\n<col_info>\*\*\* Info : \(TestApp\): </col>message: kaputt)";
+            auto* what = GENERATE("default", "colored");
+            CAPTURE(what);
+            if (what == std::string_view{"colored"}) {
+                app.enableColoredMessages(true);
+                expected = replace(expected, col);
+            }
+            else {
+                expected = replace(expected, def);
+            }
+            REQUIRE(app.main({}) == EXIT_FAILURE);
+            REQUIRE_THAT(app.messages["error"], Catch::Matchers::RegexMatcher(expected, Catch::CaseSensitive::Yes));
+        }
+        SECTION("bad_alloc") {
+            app.doRun            = []() -> int { throw std::bad_alloc{}; };
+            auto*       what     = GENERATE("default", "colored");
+            std::string expected = "*** ERROR: (TestApp): ";
+            expected.append(std::bad_alloc{}.what());
+            CAPTURE(what);
+            REQUIRE(app.main({}) == EXIT_FAILURE);
+            REQUIRE(app.messages["error"] == expected);
+        }
+        SECTION("other") {
+            app.doRun        = []() -> int { throw std::runtime_error("line1\nline2"); };
+            auto*       what = GENERATE("default", "colored");
+            std::string expected =
+                R"(<col_err>\*\*\* ERROR: \(TestApp\): </col>line1\n<col_info>\*\*\* Info : \(TestApp\): </col>line2)";
+            CAPTURE(what);
+            if (what == std::string_view{"colored"}) {
+                app.enableColoredMessages(true);
+                expected = replace(expected, col);
+            }
+            else {
+                expected = replace(expected, def);
+            }
+            REQUIRE(app.main({}) == EXIT_FAILURE);
+            REQUIRE_THAT(app.messages["error"], Catch::Matchers::RegexMatcher(expected, Catch::CaseSensitive::Yes));
+        }
     }
     SECTION("argv overload") {
         SECTION("skips first") {

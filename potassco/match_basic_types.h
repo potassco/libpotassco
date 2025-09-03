@@ -229,7 +229,7 @@ auto try_emplace(StringMap<ValueType>& map, std::string_view key,
     // Create a "borrowed" key for lookup. If `key` is not in map, `try_emplace()` will copy-construct a key from `k`,
     // thereby materializing a full string. Otoh, if `map` already contains an element with the given key, we avoid an
     // unnecessary allocation.
-    // NOTE: Once we have C++26 with and its heterogeneous version of `try_emplace()`, this workaround can be removed.
+    // NOTE: Once we have C++26 and the heterogeneous version of `try_emplace()`, this workaround can be removed.
     ConstString k{ConstString::Borrow_t{}, key};
     return map.try_emplace(k, std::forward<Args>(args)...);
 }

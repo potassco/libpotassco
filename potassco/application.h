@@ -165,6 +165,7 @@ protected:
 
     Application();
     virtual ~Application();
+    [[nodiscard]] bool hasColoredMessages() const { return color_; }
 
     void setVerbose(unsigned v);
     void setAlarm(unsigned sec);
@@ -185,13 +186,14 @@ private:
         p.app->write(os, p.type, p.msg);
         return os;
     }
-    void              write(std::ostream& os, MessageType type, std::string_view msg) const;
-    bool              applyOptions(std::span<const char* const> args);
-    void              handleException();
-    static void       initInstance(Application& app);
-    static void       resetInstance(const Application& app);
-    static void       sigHandler(int sig);
-    [[noreturn]] void exit(int exitCode);
+    void               write(std::ostream& os, MessageType type, std::string_view msg) const;
+    bool               applyOptions(std::span<const char* const> args);
+    void               handleException();
+    static void        initInstance(Application& app);
+    static void        resetInstance(const Application& app);
+    static void        sigHandler(int sig);
+    [[noreturn]] void  exit(int exitCode);
+    [[nodiscard]] auto appendMessage(std::span<char>, MessageType type, std::string_view msg) const -> std::size_t;
 
     int      exitCode_; // application's exit code
     unsigned timeout_;  // active time limit or 0 for no limit

@@ -196,11 +196,81 @@ int Application::main(int argc, char** argv) {
 }
 
 Application* Application::getInstance() { return g_instance; }
-void         Application::handleException() {
+
+static constexpr auto col_reset = "\033[0m"sv;
+static constexpr auto col_em    = "\033[01m"sv;
+
+static std::string_view color(Application::MessageType t) {
+    switch (t) {
+        default                          : return ""sv;
+        case Application::message_error  : return "\033[1;31m"sv;
+        case Application::message_warning: return "\033[1;93m"sv;
+        case Application::message_info   : return "\033[1;36m"sv;
+    }
+}
+
+static const char* colorizeCheck(const char* in, std::string& tmp, std::string_view col) {
+    static constexpr auto post_key = "' failed.";
+    assert(*in == '\'');
+    if (const char* y = std::strstr(in, post_key); y) {
+        ++in;
+        tmp.append(1, '\'')
+            .append(col_em)
+            .append(in, static_cast<std::size_t>(y - in))
+            .append(col_reset)
+            .append("' "sv)
+            .append(col)
+            .append(post_key + 2)
+            .append(col.empty() ? ""sv : col_reset);
+        return y + std::strlen(post_key);
+    }
+    return in + 1;
+}
+
+static std::string_view colorize(const char* in, std::string& tmp) {
+    static constexpr auto pre_key   = "Precondition '"sv;
+    static constexpr auto check_key = "check '"sv;
+    const char*           next      = std::strchr(in, '\'');
+    if (not next) {
+        return in; // NOLINT
+    }
+    tmp.assign(in, static_cast<std::size_t>(next - in));
+    auto reset = std::string_view{};
+    while (*next) {
+        if (auto c = *next++; c != '\'') {
+            tmp.push_back(c);
+        }
+        else if (reset.empty()) {
+            tmp.append(1, c);
+            if (tmp.ends_with(pre_key)) {
+                tmp.erase(tmp.size() - pre_key.size());
+                tmp.append(color(Application::message_warning))
+                    .append(pre_key.substr(0, pre_key.size() - 1))
+                    .append(col_reset);
+                next = colorizeCheck(next - 1, tmp, color(Application::message_warning));
+            }
+            else if (tmp.ends_with(check_key)) {
+                tmp.pop_back();
+                next = colorizeCheck(next - 1, tmp, {});
+            }
+            else {
+                tmp.append(col_em);
+                reset = col_reset;
+            }
+        }
+        else {
+            tmp.append(std::exchange(reset, {})).append(1, c);
+        }
+    }
+    tmp.append(reset);
+    return tmp;
+}
+void Application::handleException() {
     char mem[1024];
     auto buffer  = std::span<char>(mem);
     auto current = std::current_exception();
     int  code    = EXIT_FAILURE;
+    bool color   = color_;
     try {
         throw;
     }
@@ -209,10 +279,10 @@ void         Application::handleException() {
         std::ignore = formatMessage(buffer, message_info, "Try '--help' for usage information");
     }
     catch (const RuntimeError& e) {
-        auto m = e.message();
-        auto d = e.details();
-        buffer = buffer.subspan(formatMessage(buffer, message_error, "%" PRIsv "\n", PRI_SV(m)));
-        formatMessage(buffer, message_error, "%" PRIsv, PRI_SV(d));
+        auto m      = e.message();
+        auto d      = e.details();
+        buffer      = buffer.subspan(formatMessage(buffer, message_error, "%" PRIsv, PRI_SV(m)));
+        std::ignore = appendMessage(buffer, message_info, d);
     }
     catch (const Error& e) {
         snprintf(buffer.data(), buffer.size(), "%s", e.what());
@@ -221,14 +291,24 @@ void         Application::handleException() {
         code = EXIT_SUCCESS;
     }
     catch (const std::exception& e) {
-        std::ignore = formatMessage(buffer, message_error, "%s", e.what());
+        auto message = std::string_view{e.what()};
+        auto info    = std::string_view{};
+        if (message.starts_with(std::bad_alloc{}.what())) {
+            color = false;
+        }
+        if (auto p = message.find('\n'); p != std::string_view::npos) {
+            info    = message.substr(p + 1);
+            message = message.substr(0, p);
+        }
+        buffer      = buffer.subspan(formatMessage(buffer, message_error, "%" PRIsv, PRI_SV(message)));
+        std::ignore = appendMessage(buffer, message_info, info);
     }
     catch (...) {
         std::ignore = formatMessage(buffer, message_error, "Unknown exception");
         fastExit_   = true;
     }
     exitCode_ = exitCode_ == EXIT_SUCCESS ? code : exitCode_;
-    if (code != EXIT_SUCCESS && onUnhandledException(current, mem)) {
+    if (std::string tmp; code != EXIT_SUCCESS && onUnhandledException(current, color ? colorize(mem, tmp) : mem)) {
         fastExit_ = true;
     }
     if (fastExit_) {
@@ -237,18 +317,24 @@ void         Application::handleException() {
 }
 void Application::setExitCode(int n) { exitCode_ = n; }
 int  Application::getExitCode() const { return exitCode_; }
+auto Application::appendMessage(std::span<char> buffer, MessageType type, std::string_view msg) const -> std::size_t {
+    std::size_t written = 0;
+    while (not msg.empty() && buffer.size() > 1) {
+        auto line = msg.substr(0, std::min(msg.find('\n'), msg.size()));
+        buffer[0] = '\n';
+        auto res  = 1 + formatMessage(buffer.subspan(1), type, "%" PRIsv, PRI_SV(line));
+        msg.remove_prefix(std::min(msg.size(), line.size() + 1));
+        buffer   = buffer.subspan(res);
+        written += res;
+    }
+    return written;
+}
 void Application::fail(int code, std::string_view message, std::string_view info) {
     if (this == getInstance()) {
-        char  mem[1024];
-        auto* pos  = std::begin(mem);
-        auto* end  = std::end(mem);
-        pos       += formatMessage(mem, message_error, "%" PRIsv, PRI_SV(message));
-        while (not info.empty() && (end - pos) > 1) {
-            auto line  = info.substr(0, std::min(info.find('\n'), info.size()));
-            *pos++     = '\n';
-            pos       += formatMessage({pos, end}, message_info, "%" PRIsv, PRI_SV(line));
-            info.remove_prefix(std::min(info.size(), line.size() + 1));
-        }
+        char mem[1024];
+        auto buffer = std::span<char>{mem};
+        buffer      = buffer.subspan(formatMessage(buffer, message_error, "%" PRIsv, PRI_SV(message)));
+        std::ignore = appendMessage(buffer, message_info, info);
         if (not fastExit_) {
             setExitCode(code);
             throw Error(mem);
@@ -322,14 +408,6 @@ void Application::processSignal(int sigNum) {
 
 bool Application::onSignal(int x) { exit(128 + x); }
 
-static std::string_view color(Application::MessageType t) {
-    switch (t) {
-        default                          : return ""sv;
-        case Application::message_error  : return "\033[1;31m"sv;
-        case Application::message_warning: return "\033[1;93m"sv;
-        case Application::message_info   : return "\033[1;36m"sv;
-    }
-}
 static std::string_view prefix(Application::MessageType t) {
     switch (t) {
         default                          : return "<?>"sv;
@@ -344,7 +422,7 @@ void Application::write(std::ostream& os, MessageType type, std::string_view msg
     std::string_view col;
     if (color_) {
         col  = color(type);
-        post = not col.empty() ? "\033[0m" : ""sv;
+        post = not col.empty() ? col_reset : ""sv;
     }
     os << col << prefix(type) << "(" << getName() << "): " << post << msg;
 }
@@ -352,7 +430,7 @@ std::size_t Application::formatMessage(std::span<char> buffer, MessageType t, co
     auto pre  = prefix(t);
     auto name = getName();
     auto col  = color_ ? color(t) : ""sv;
-    auto post = not col.empty() ? "\033[0m"sv : ""sv;
+    auto post = not col.empty() ? col_reset : ""sv;
     if (not col.empty() && pre.size() + name.size() + col.size() + post.size() + 4u >= buffer.size()) {
         col  = {};
         post = {};
