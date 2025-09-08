@@ -99,20 +99,6 @@ public:
     static Application* getInstance();
 
     enum MessageType { message_error, message_warning, message_info };
-    //! Writes a (null-terminated) message of the given type to the provided buffer.
-    /*!
-     * The message format is: '***' <type-prefix> (<app-name>): <formatted-message>
-     *
-     * \param[out] buffer Buffer for storing the formatted message.
-     * \param type Type of message.
-     * \param fmt  A printf-style format string.
-     * \param ...  Arguments matching the format string.
-     * \return The number of bytes written not counting the null-terminator. If the message exceeds the given buffer,
-     *         the output is truncated but still null-terminated. If buffer.size() is 0, the function has no effect and
-     *         returns 0.
-     */
-    std::size_t formatMessage(std::span<char> buffer, MessageType type, const char* fmt, ...) const
-        POTASSCO_ATTRIBUTE_FORMAT(4, 5); // NOLINT
 
     //! Returns an io-manipulator that writes the given messages formatted as `message_error` to a stream.
     [[nodiscard]] auto error(std::string_view msg = {}) const {
@@ -127,7 +113,28 @@ public:
         return Prefix{.app = this, .msg = msg, .type = message_info};
     }
 
+    //! Writes a message of the given type to the provided buffer.
+    /*!
+     * The message format is: [<type-col>]'***' <type-prefix> (<app-name>): [<reset><bold>] <message>[<reset>], where
+     *  the optional color codes are only added if colored messages are enabled.
+     *
+     * \param[out] buf Buffer for storing the formatted message.
+     * \param type Type of message.
+     * \param message The message to write.
+     */
+    template <typename BufT>
+    void writeMessage(BufT& buf, MessageType type, std::string_view message) const {
+        write(Sink{buf}, type, message, false);
+    }
+
     //! Enables formatting of messages with ansi colors.
+    /*!
+     * If enabled, messages are formatted with ansi color codes:
+     *  - Errors are prefixed in bold red (1;31)
+     *  - Warnings are prefixed in bold high-intensity yellow (1;93),
+     *  - Infos are highlighted in bold cyan (1;36), and
+     *  - any provided message is highlighted in bold (1).
+     */
     void enableColoredMessages(bool enable = true);
 
     //@}
@@ -175,25 +182,39 @@ protected:
     void processSignal(int sigNum);
 
 private:
-    struct Error;
     struct Stop;
     struct Prefix {
         const Application* app;
         std::string_view   msg;
         MessageType        type;
     };
+    struct Sink {
+        Sink(void* o, void (*f)(void*, std::string_view)) : obj(o), writeFun(f) {}
+        explicit Sink(std::ostream& os)
+            : Sink(&os, +[](void* o, std::string_view s) { (*static_cast<std::ostream*>(o)) << s; }) {}
+        template <typename S>
+        requires requires(S& s, std::string_view sv) { s.append(sv); }
+        explicit Sink(S& buf) : Sink(&buf, +[](void* o, std::string_view s) { static_cast<S*>(o)->append(s); }) {}
+        void* obj{nullptr};
+        void (*writeFun)(void*, std::string_view){nullptr};
+        Sink& write(std::string_view s) {
+            writeFun(obj, s);
+            return *this;
+        }
+    };
     friend std::ostream& operator<<(std::ostream& os, const Prefix& p) {
-        p.app->write(os, p.type, p.msg);
+        p.app->write(Sink{os}, p.type, p.msg);
         return os;
     }
-    void               write(std::ostream& os, MessageType type, std::string_view msg) const;
-    bool               applyOptions(std::span<const char* const> args);
-    void               handleException();
-    static void        initInstance(Application& app);
-    static void        resetInstance(const Application& app);
-    static void        sigHandler(int sig);
-    [[noreturn]] void  exit(int exitCode);
-    [[nodiscard]] auto appendMessage(std::span<char>, MessageType type, std::string_view msg) const -> std::size_t;
+    void              write(Sink s, MessageType type, std::string_view msg, bool internal = false) const;
+    static Sink&      colorize(Sink& sink, std::string_view msg, std::string_view color, bool internal);
+    bool              applyOptions(std::span<const char* const> args);
+    void              handleException();
+    bool              unhandledException(const std::exception_ptr& e, std::string_view error, std::string_view info);
+    static void       initInstance(Application& app);
+    static void       resetInstance(const Application& app);
+    static void       sigHandler(int sig);
+    [[noreturn]] void exit(int exitCode);
 
     int      exitCode_; // application's exit code
     unsigned timeout_;  // active time limit or 0 for no limit

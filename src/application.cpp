@@ -25,6 +25,7 @@
 //
 #include <potassco/application.h>
 
+#include <potassco/basic_types.h>
 #include <potassco/error.h>
 #include <potassco/program_opts/errors.h>
 #include <potassco/program_opts/typed_value.h>
@@ -32,7 +33,6 @@
 #include <atomic>
 #include <climits>
 #include <csignal>
-#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -102,9 +102,6 @@ static int fetchDec(T& x) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Application
 /////////////////////////////////////////////////////////////////////////////////////////
-struct Application::Error final : std::runtime_error {
-    explicit Error(const char* msg) : std::runtime_error(msg) {}
-};
 struct Application::Stop final : std::exception {};
 
 static Application* g_instance; // running instance (only valid during run()).
@@ -198,148 +195,75 @@ int Application::main(int argc, char** argv) {
 Application* Application::getInstance() { return g_instance; }
 
 static constexpr auto col_reset = "\033[0m"sv;
-static constexpr auto col_em    = "\033[01m"sv;
+static constexpr auto col_em    = "\033[1m"sv;
+static constexpr auto col_err   = "\033[1;31m"sv;
+static constexpr auto col_warn  = "\033[1;93m"sv;
+static constexpr auto col_info  = "\033[1;36m"sv;
 
 static std::string_view color(Application::MessageType t) {
     switch (t) {
         default                          : return ""sv;
-        case Application::message_error  : return "\033[1;31m"sv;
-        case Application::message_warning: return "\033[1;93m"sv;
-        case Application::message_info   : return "\033[1;36m"sv;
+        case Application::message_error  : return col_err;
+        case Application::message_warning: return col_warn;
+        case Application::message_info   : return col_info;
     }
-}
-
-static const char* colorizeCheck(const char* in, std::string& tmp, std::string_view col) {
-    static constexpr auto post_key = "' failed.";
-    assert(*in == '\'');
-    if (const char* y = std::strstr(in, post_key); y) {
-        ++in;
-        tmp.append(1, '\'')
-            .append(col_em)
-            .append(in, static_cast<std::size_t>(y - in))
-            .append(col_reset)
-            .append("' "sv)
-            .append(col)
-            .append(post_key + 2)
-            .append(col.empty() ? ""sv : col_reset);
-        return y + std::strlen(post_key);
-    }
-    return in + 1;
-}
-
-static std::string_view colorize(const char* in, std::string& tmp) {
-    static constexpr auto pre_key   = "Precondition '"sv;
-    static constexpr auto check_key = "check '"sv;
-    const char*           next      = std::strchr(in, '\'');
-    if (not next) {
-        return in; // NOLINT
-    }
-    tmp.assign(in, static_cast<std::size_t>(next - in));
-    auto reset = std::string_view{};
-    while (*next) {
-        if (auto c = *next++; c != '\'') {
-            tmp.push_back(c);
-        }
-        else if (reset.empty()) {
-            tmp.append(1, c);
-            if (tmp.ends_with(pre_key)) {
-                tmp.erase(tmp.size() - pre_key.size());
-                tmp.append(color(Application::message_warning))
-                    .append(pre_key.substr(0, pre_key.size() - 1))
-                    .append(col_reset);
-                next = colorizeCheck(next - 1, tmp, color(Application::message_warning));
-            }
-            else if (tmp.ends_with(check_key)) {
-                tmp.pop_back();
-                next = colorizeCheck(next - 1, tmp, {});
-            }
-            else {
-                tmp.append(col_em);
-                reset = col_reset;
-            }
-        }
-        else {
-            tmp.append(std::exchange(reset, {})).append(1, c);
-        }
-    }
-    tmp.append(reset);
-    return tmp;
 }
 void Application::handleException() {
-    char mem[1024];
-    auto buffer  = std::span<char>(mem);
-    auto current = std::current_exception();
-    int  code    = EXIT_FAILURE;
-    bool color   = color_;
+    auto             current = std::current_exception();
+    int              code    = EXIT_FAILURE;
+    std::string_view error;
+    std::string_view info;
     try {
         throw;
     }
     catch (const ProgramOptions::Error& e) {
-        buffer      = buffer.subspan(formatMessage(buffer, message_error, "%s\n", e.what()));
-        std::ignore = formatMessage(buffer, message_info, "Try '--help' for usage information");
+        error = e.what();
+        info  = "Try '--help' for usage information";
     }
     catch (const RuntimeError& e) {
-        auto m      = e.message();
-        auto d      = e.details();
-        buffer      = buffer.subspan(formatMessage(buffer, message_error, "%" PRIsv, PRI_SV(m)));
-        std::ignore = appendMessage(buffer, message_info, d);
-    }
-    catch (const Error& e) {
-        snprintf(buffer.data(), buffer.size(), "%s", e.what());
+        error = e.message();
+        info  = e.details();
     }
     catch (const Stop&) {
         code = EXIT_SUCCESS;
     }
     catch (const std::exception& e) {
-        auto message = std::string_view{e.what()};
-        auto info    = std::string_view{};
-        if (message.starts_with(std::bad_alloc{}.what())) {
-            color = false;
+        error = std::string_view{e.what()};
+        if (auto p = error.find('\n'); p != std::string_view::npos) {
+            info  = error.substr(p + 1);
+            error = error.substr(0, p);
         }
-        if (auto p = message.find('\n'); p != std::string_view::npos) {
-            info    = message.substr(p + 1);
-            message = message.substr(0, p);
-        }
-        buffer      = buffer.subspan(formatMessage(buffer, message_error, "%" PRIsv, PRI_SV(message)));
-        std::ignore = appendMessage(buffer, message_info, info);
     }
     catch (...) {
-        std::ignore = formatMessage(buffer, message_error, "Unknown exception");
-        fastExit_   = true;
+        error     = "Unknown exception";
+        fastExit_ = true;
     }
     exitCode_ = exitCode_ == EXIT_SUCCESS ? code : exitCode_;
-    if (std::string tmp; code != EXIT_SUCCESS && onUnhandledException(current, color ? colorize(mem, tmp) : mem)) {
+    if (code != EXIT_SUCCESS && unhandledException(current, error, info)) {
         fastExit_ = true;
     }
     if (fastExit_) {
         exit(exitCode_);
     }
 }
+bool Application::unhandledException(const std::exception_ptr& e, std::string_view error, std::string_view info) {
+    char          local[1024];
+    DynamicBuffer buffer(local);
+    write(Sink{buffer}, message_error, error, true);
+    if (not info.empty()) {
+        write(Sink{buffer.append("\n"sv)}, message_info, info, true);
+    }
+    return onUnhandledException(e, buffer.view());
+}
 void Application::setExitCode(int n) { exitCode_ = n; }
 int  Application::getExitCode() const { return exitCode_; }
-auto Application::appendMessage(std::span<char> buffer, MessageType type, std::string_view msg) const -> std::size_t {
-    std::size_t written = 0;
-    while (not msg.empty() && buffer.size() > 1) {
-        auto line = msg.substr(0, std::min(msg.find('\n'), msg.size()));
-        buffer[0] = '\n';
-        auto res  = 1 + formatMessage(buffer.subspan(1), type, "%" PRIsv, PRI_SV(line));
-        msg.remove_prefix(std::min(msg.size(), line.size() + 1));
-        buffer   = buffer.subspan(res);
-        written += res;
-    }
-    return written;
-}
 void Application::fail(int code, std::string_view message, std::string_view info) {
     if (this == getInstance()) {
-        char mem[1024];
-        auto buffer = std::span<char>{mem};
-        buffer      = buffer.subspan(formatMessage(buffer, message_error, "%" PRIsv, PRI_SV(message)));
-        std::ignore = appendMessage(buffer, message_info, info);
         if (not fastExit_) {
             setExitCode(code);
-            throw Error(mem);
+            throw std::runtime_error(std::string{message}.append(not info.empty(), '\n').append(info));
         }
-        std::ignore = onUnhandledException(nullptr, mem);
+        std::ignore = unhandledException(nullptr, message, info);
         Application::exit(code);
     }
 }
@@ -417,45 +341,64 @@ static std::string_view prefix(Application::MessageType t) {
     }
 }
 
-void Application::write(std::ostream& os, MessageType type, std::string_view msg) const {
-    std::string_view post;
-    std::string_view col;
-    if (color_) {
-        col  = color(type);
-        post = not col.empty() ? col_reset : ""sv;
+auto Application::colorize(Sink& sink, std::string_view msg, std::string_view color, bool internal) -> Sink& {
+    if (color.empty() || msg.empty()) {
+        return sink.write(msg);
     }
-    os << col << prefix(type) << "(" << getName() << "): " << post << msg;
+    if (not internal) {
+        return sink.write(color).write(msg).write(col_reset);
+    }
+    static constexpr auto pre_key      = "Precondition "sv;
+    static constexpr auto check_key    = "check "sv;
+    static constexpr auto post_key     = "' failed."sv;
+    auto                  isExpression = [](std::string_view in, std::size_t p, std::string_view key) {
+        if (p >= key.size() && in.substr(p - key.size()).starts_with(key)) {
+            return in.find(post_key, p + 1);
+        }
+        return std::string_view::npos;
+    };
+    while (not msg.empty()) {
+        auto p = msg.find('\'');
+        if (auto e = msg.find('\'', p + (p != std::string_view::npos));
+            p == std::string_view::npos || e == std::string_view::npos) {
+            sink.write(msg);
+            msg = {};
+        }
+        else if (auto exp = isExpression(msg, p, pre_key); exp != std::string_view::npos) {
+            sink.write(msg.substr(0, p - pre_key.size())).write(col_warn).write(pre_key).write(col_reset).write("'"sv);
+            ++p;
+            sink.write(color).write(msg.substr(p, exp - p)).write(col_reset).write("' "sv);
+            sink.write(col_warn).write(post_key.substr(2)).write(col_reset);
+            msg = msg.substr(exp + post_key.size());
+        }
+        else {
+            exp = isExpression(msg, p, check_key);
+            e   = exp != std::string_view::npos ? exp : e;
+            ++p;
+            sink.write(msg.substr(0, p)).write(color).write(msg.substr(p, e - p)).write(col_reset);
+            sink.write("'"sv);
+            msg = msg.substr(e + 1);
+        }
+    }
+    return sink;
 }
-std::size_t Application::formatMessage(std::span<char> buffer, MessageType t, const char* fmt, ...) const {
-    auto pre  = prefix(t);
-    auto name = getName();
-    auto col  = color_ ? color(t) : ""sv;
-    auto post = not col.empty() ? col_reset : ""sv;
-    if (not col.empty() && pre.size() + name.size() + col.size() + post.size() + 4u >= buffer.size()) {
-        col  = {};
-        post = {};
+
+void Application::write(Sink s, MessageType type, std::string_view msg, bool internal) const {
+    std::string_view col[2];
+    std::string_view post;
+    std::string_view sep{};
+    if (color_) {
+        col[0] = color(type);
+        col[1] = not msg.empty() ? col_em : ""sv;
+        post   = not col[0].empty() ? col_reset : ""sv;
     }
-    auto r1 = snprintf(buffer.data(), buffer.size(),
-                       "%" PRIsv "%" PRIsv "(%" PRIsv "): "
-                       "%" PRIsv,
-                       PRI_SV(col), PRI_SV(pre), PRI_SV(name), PRI_SV(post));
-    if (r1 <= 0 || static_cast<std::size_t>(r1) >= buffer.size()) {
-        return 0;
-    }
-    auto written   = static_cast<std::size_t>(r1);
-    auto msgBuffer = buffer.subspan(written, buffer.size() - (written + post.size()));
-    assert(not msgBuffer.empty());
-    va_list args;
-    va_start(args, fmt);
-    auto r2 = std::vsnprintf(msgBuffer.data(), msgBuffer.size(), fmt, args);
-    va_end(args);
-    if (r2 <= 0) {
-        return 0;
-    }
-    written += std::min(static_cast<std::size_t>(r2), msgBuffer.size() - 1);
-    assert(written < buffer.size());
-    assert(buffer[written] == 0);
-    return written;
+    do {
+        auto line = internal ? msg.substr(0, std::min(msg.find('\n'), msg.size())) : msg;
+        s.write(sep).write(col[0]).write(prefix(type)).write("("sv).write(getName()).write("): "sv).write(post);
+        colorize(s, line, col[1], internal);
+        sep = "\n"sv;
+        msg.remove_prefix(std::min(line.size() + 1, msg.size()));
+    } while (not msg.empty());
 }
 
 // Process command-line options.

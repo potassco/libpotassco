@@ -19,13 +19,12 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 #include <potassco/application.h>
+#include <potassco/basic_types.h>
 #include <potassco/error.h>
 #include <potassco/program_opts/typed_value.h>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
-#include <catch2/matchers/catch_matchers.hpp>
-#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <atomic>
 #include <csignal>
@@ -70,40 +69,6 @@ struct MyApp : Application {
 TEST_CASE("Test application formatting", "[app]") {
     MyApp app;
     using namespace std::literals;
-    SECTION("message") {
-        char buffer[80];
-        std::ignore = app.formatMessage(buffer, Application::message_error, "An error");
-        CHECK(buffer == "*** ERROR: (TestApp): An error"sv);
-
-        std::ignore = app.formatMessage(buffer, Application::message_warning, "A warning");
-        CHECK(buffer == "*** Warn : (TestApp): A warning"sv);
-
-        std::ignore = app.formatMessage(buffer, Application::message_info, "Some info");
-        CHECK(buffer == "*** Info : (TestApp): Some info"sv);
-        SECTION("truncate") {
-            auto b       = std::span(buffer).subspan(0, 25);
-            auto written = app.formatMessage(b, Application::message_error, "An error");
-            CHECK(written == 24);
-            CHECK(buffer == "*** ERROR: (TestApp): An"sv);
-        }
-        SECTION("color") {
-            app.enableColoredMessages();
-            std::ignore = app.formatMessage(buffer, Application::message_error, "An error");
-            CHECK(buffer == "\033[1;31m*** ERROR: (TestApp): \033[0mAn error"sv);
-            SECTION("truncate-drop-color") {
-                auto b       = std::span(buffer).subspan(0, 33);
-                auto written = app.formatMessage(b, Application::message_error, "An error");
-                CHECK(written == 30);
-                CHECK(buffer == "*** ERROR: (TestApp): An error"sv);
-            }
-            SECTION("truncate-msg") {
-                auto b       = std::span(buffer).subspan(0, 36);
-                auto written = app.formatMessage(b, Application::message_error, "An error");
-                CHECK(written == 35);
-                CHECK(buffer == "\033[1;31m*** ERROR: (TestApp): \033[0mAn"sv);
-            }
-        }
-    }
     SECTION("stream") {
         std::stringstream s;
         s << app.error("An error") << "\n" << app.warn("A warning") << "\n" << app.info("Some info") << "\n";
@@ -113,10 +78,32 @@ TEST_CASE("Test application formatting", "[app]") {
         SECTION("color") {
             app.enableColoredMessages();
             s.str("");
-            s << app.error("An error\n") << app.warn("A warning") << "\n";
-            REQUIRE(s.str() == "\033[1;31m*** ERROR: (TestApp): \033[0mAn error\n"
-                               "\033[1;93m*** Warn : (TestApp): \033[0mA warning\n");
+            s << app.error("An error") << '\n' << app.warn("A warning") << "\n";
+            REQUIRE(s.str() == "\033[1;31m*** ERROR: (TestApp): \033[0m\033[1mAn error\033[0m\n"
+                               "\033[1;93m*** Warn : (TestApp): \033[0m\033[1mA warning\033[0m\n");
         }
+    }
+    SECTION("sink") {
+        std::string s;
+        app.enableColoredMessages();
+        app.writeMessage(s, Application::message_error, "An error");
+        CHECK(s == "\033[1;31m*** ERROR: (TestApp): \033[0m\033[1mAn error\033[0m"sv);
+        DynamicBuffer db;
+        app.writeMessage(db, Application::message_info, "Some info");
+        CHECK(db.view() == "\033[1;36m*** Info : (TestApp): \033[0m\033[1mSome info\033[0m"sv);
+
+        struct SpanAdapter {
+            std::span<char> buf;
+            void            append(std::string_view s) {
+                auto n = std::min(buf.size(), s.size());
+                std::copy_n(std::data(s), n, buf.data());
+                buf = buf.subspan(n);
+            }
+        } span;
+        db.clear();
+        span.buf = db.alloc(30);
+        app.writeMessage(span, Application::message_info, "Some info");
+        CHECK(db.view() == "\033[1;36m*** Info : (TestApp): \033"sv);
     }
     SECTION("fail and stop") {
         SECTION("noop if not running") {
@@ -158,6 +145,47 @@ TEST_CASE("Test application formatting", "[app]") {
             REQUIRE(app.main({}) == expected.first);
             REQUIRE(app.getExitCode() == expected.first);
             REQUIRE(app.messages["error"] == expected.second);
+        }
+    }
+    SECTION("other errors") {
+        auto emph = [](std::string_view m, bool yes) {
+            return std::string(yes ? "\033[1m" : "").append(m).append(yes ? "\033[0m" : "");
+        };
+        auto warn = [](std::string_view m, bool yes) {
+            return std::string(yes ? "\033[1;93m" : "").append(m).append(yes ? "\033[0m" : "");
+        };
+        std::stringstream expected;
+        auto*             what    = GENERATE("default", "colored");
+        auto              colored = what == std::string_view{"colored"};
+        app.enableColoredMessages(colored);
+        CAPTURE(what);
+        SECTION("potassco") {
+            auto e    = POTASSCO_CAPTURE_EXPRESSION(true == false);
+            app.doRun = [&]() -> int { Potassco::failThrow(Errc::overflow_error, e, "kaputt"); };
+            expected << app.error() << "kaputt: " << std::strerror(static_cast<int>(Errc::overflow_error)) << '\n'
+                     << app.info() << e.location.function_name() << ':' << e.location.line() << ": check '"
+                     << emph("true == false", colored) << "' failed.";
+
+            REQUIRE(app.main({}) == EXIT_FAILURE);
+            REQUIRE(app.messages["error"] == expected.str());
+        }
+        SECTION("precondition") {
+            auto e    = POTASSCO_CAPTURE_EXPRESSION('x' == 'y');
+            app.doRun = [&]() -> int { Potassco::failThrow(Errc::precondition_fail, e, "kaputt"); };
+            expected << app.error() << e.location.function_name() << ':' << e.location.line() << ": "
+                     << warn("Precondition ", colored) << "'" << emph("'x' == 'y'", colored) << "' "
+                     << warn("failed.", colored) << '\n'
+                     << app.info() << "message: kaputt";
+
+            REQUIRE(app.main({}) == EXIT_FAILURE);
+            REQUIRE(app.messages["error"] == expected.str());
+        }
+        SECTION("other") {
+            app.doRun = []() -> int { throw std::runtime_error("line1\nline2"); };
+            expected << app.error() << "line1\n" << app.info() << "line2";
+
+            REQUIRE(app.main({}) == EXIT_FAILURE);
+            REQUIRE(app.messages["error"] == expected.str());
         }
     }
 }
@@ -209,85 +237,9 @@ TEST_CASE("Test application", "[app]") {
             app.enableColoredMessages(true);
             REQUIRE(app.main(std::span(args).subspan(0, 1)) == EXIT_FAILURE);
             REQUIRE(app.messages["error"] ==
-                    "\033[1;31m*** ERROR: (TestApp): \033[0mIn context '\033[01m<TestApp>\033[0m': '\033[01m3\033[0m' "
-                    "invalid value for: '\033[01mhelp\033[0m'\n"
-                    "\033[1;36m*** Info : (TestApp): \033[0mTry '\033[01m--help\033[0m' for usage information");
-        }
-    }
-    SECTION("other errors") {
-        std::map<std::string, std::string> def{
-            {"<col_err>", ""}, {"<col_warn>", ""}, {"<col_info>", ""}, {"<col_em>", ""}, {"</col>", ""},
-        };
-        std::map<std::string, std::string> col{
-            {"<col_err>", R"(\x1B\[1;31m)"}, {"<col_warn>", R"(\x1B\[1;93m)"}, {"<col_info>", R"(\x1B\[1;36m)"},
-            {"<col_em>", R"(\x1B\[01m)"},    {"</col>", R"(\x1B\[0m)"},
-        };
-        auto replace = [](std::string& str, const std::map<std::string, std::string>& r) {
-            for (const auto& [k, v] : r) {
-                for (auto p = str.find(k, 0); p != std::string::npos;) {
-                    str.replace(p, k.length(), v);
-                    p += v.length();
-                    p  = str.find(k, p);
-                }
-            }
-            return str;
-        };
-        SECTION("potassco") {
-            app.doRun = []() -> int { POTASSCO_CHECK(true == false, std::errc::address_in_use, "kaputt"); };
-            std::string expected =
-                R"(<col_err>\*\*\* ERROR: \(TestApp\): </col>kaputt: [^\n]+\n<col_info>\*\*\* Info : \(TestApp\): </col>.*: check '<col_em>true == false</col>' failed.)";
-            auto* what = GENERATE("default", "colored");
-            CAPTURE(what);
-            if (what == std::string_view{"colored"}) {
-                app.enableColoredMessages(true);
-                expected = replace(expected, col);
-            }
-            else {
-                expected = replace(expected, def);
-            }
-            REQUIRE(app.main({}) == EXIT_FAILURE);
-            REQUIRE_THAT(app.messages["error"], Catch::Matchers::RegexMatcher(expected, Catch::CaseSensitive::Yes));
-        }
-        SECTION("precondition") {
-            app.doRun = []() -> int { POTASSCO_CHECK_PRE('x' == 'y', "kaputt"); };
-            std::string expected =
-                R"(<col_err>\*\*\* ERROR: \(TestApp\): </col>.*<col_warn>Precondition </col>'<col_em>'x' == 'y'</col>' <col_warn>failed\.</col>\n<col_info>\*\*\* Info : \(TestApp\): </col>message: kaputt)";
-            auto* what = GENERATE("default", "colored");
-            CAPTURE(what);
-            if (what == std::string_view{"colored"}) {
-                app.enableColoredMessages(true);
-                expected = replace(expected, col);
-            }
-            else {
-                expected = replace(expected, def);
-            }
-            REQUIRE(app.main({}) == EXIT_FAILURE);
-            REQUIRE_THAT(app.messages["error"], Catch::Matchers::RegexMatcher(expected, Catch::CaseSensitive::Yes));
-        }
-        SECTION("bad_alloc") {
-            app.doRun            = []() -> int { throw std::bad_alloc{}; };
-            auto*       what     = GENERATE("default", "colored");
-            std::string expected = "*** ERROR: (TestApp): ";
-            expected.append(std::bad_alloc{}.what());
-            CAPTURE(what);
-            REQUIRE(app.main({}) == EXIT_FAILURE);
-            REQUIRE(app.messages["error"] == expected);
-        }
-        SECTION("other") {
-            app.doRun        = []() -> int { throw std::runtime_error("line1\nline2"); };
-            auto*       what = GENERATE("default", "colored");
-            std::string expected =
-                R"(<col_err>\*\*\* ERROR: \(TestApp\): </col>line1\n<col_info>\*\*\* Info : \(TestApp\): </col>line2)";
-            CAPTURE(what);
-            if (what == std::string_view{"colored"}) {
-                app.enableColoredMessages(true);
-                expected = replace(expected, col);
-            }
-            else {
-                expected = replace(expected, def);
-            }
-            REQUIRE(app.main({}) == EXIT_FAILURE);
-            REQUIRE_THAT(app.messages["error"], Catch::Matchers::RegexMatcher(expected, Catch::CaseSensitive::Yes));
+                    "\033[1;31m*** ERROR: (TestApp): \033[0mIn context '\033[1m<TestApp>\033[0m': '\033[1m3\033[0m' "
+                    "invalid value for: '\033[1mhelp\033[0m'\n"
+                    "\033[1;36m*** Info : (TestApp): \033[0mTry '\033[1m--help\033[0m' for usage information");
         }
     }
     SECTION("argv overload") {
