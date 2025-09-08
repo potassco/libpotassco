@@ -36,7 +36,6 @@ POTASSCO_WARNING_END_RELAXED
 #include <memory>
 #include <string_view>
 #include <unordered_map>
-
 namespace Potassco {
 using namespace std::literals;
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -46,17 +45,14 @@ struct SmodelsConvert::SmData {
     using ScratchType = DynamicBuffer;
     template <std::integral T>
     static void append(ScratchType& buffer, T in) {
-        char tmp[std::numeric_limits<T>::digits10 + 1];
-        auto sz = std::to_chars(tmp, std::end(tmp), in).ptr - tmp;
-        buffer.append(tmp, static_cast<std::size_t>(sz));
+        toChars(buffer, in);
     }
-    static void append(ScratchType& buffer, std::string_view n) { buffer.append(n.data(), n.size()); }
+    static void append(ScratchType& buffer, std::string_view n) { buffer.append(n); }
     template <typename... Args>
     static std::string_view makePred(ScratchType& buffer, std::string_view name, Args... args) {
         static_assert(sizeof...(Args) > 0, "at least one arg expected");
         buffer.clear();
-        buffer.append(name.data(), name.size());
-        buffer.push('(');
+        buffer.append(name).append("("sv);
         ((append(buffer, args), buffer.push(',')), ...);
         buffer.back() = ')';
         return buffer.view();

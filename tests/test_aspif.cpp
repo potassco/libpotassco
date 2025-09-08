@@ -147,6 +147,29 @@ TEST_CASE("Test DynamicBuffer", "[rule]") {
         REQUIRE(r.size() == 0);
         REQUIRE(r.data() != nullptr);
     }
+    SECTION("supports borrow") {
+        char          buffer[5];
+        DynamicBuffer r(std::span{buffer});
+        REQUIRE(r.capacity() == 5);
+        REQUIRE(r.size() == 0);
+        REQUIRE(r.data() == buffer);
+        std::memset(r.alloc(4).data(), 'A', 4);
+        std::string exp;
+        exp.append(4, 'A');
+        REQUIRE(r.view() == exp);
+        REQUIRE(r.size() == 4);
+        REQUIRE(r.data() == buffer);
+        std::memset(r.alloc(1).data(), 'B', 1);
+        exp.push_back('B');
+        REQUIRE(r.view() == exp);
+        REQUIRE(r.size() == 5);
+        REQUIRE(r.data() == buffer);
+        std::memset(r.alloc(1).data(), 'C', 1);
+        exp.push_back('C');
+        REQUIRE(r.view() == exp);
+        REQUIRE(r.size() == 6);
+        REQUIRE(r.data() != buffer);
+    }
     SECTION("grows geometrically") {
         DynamicBuffer r;
         auto          fillAvail = [](DynamicBuffer& reg, char f) {
@@ -261,6 +284,26 @@ TEST_CASE("Test DynamicBuffer", "[rule]") {
             CHECK(raw == m2.data());
             CHECK(exp == m2.data());
             CHECK(m1.data() == nullptr);
+        }
+    }
+    SECTION("formatTo") {
+        char          buffer[5];
+        DynamicBuffer r(std::span{buffer});
+        SECTION("in-place") {
+            REQUIRE(formatTo(r, "%d%s", 42, "++") == 4u);
+            REQUIRE(r.view() == "42++");
+            REQUIRE(r.data() == buffer);
+        }
+        SECTION("grow") {
+            REQUIRE(formatTo(r, "%d%s", 423, "++") == 5u);
+            REQUIRE(r.view() == "423++");
+            REQUIRE(r.data() != buffer);
+        }
+        SECTION("empty") {
+            DynamicBuffer buf;
+            formatTo(buf, "%d%s", 423, "++");
+            REQUIRE(buf.view() == "423++");
+            REQUIRE(buf.capacity() > buf.size());
         }
     }
 }

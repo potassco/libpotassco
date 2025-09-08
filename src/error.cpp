@@ -1,4 +1,29 @@
+//
+// Copyright (c) 2024 - present, Benjamin Kaufmann
+//
+// This file is part of Potassco.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to
+// deal in the Software without restriction, including without limitation the
+// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+// sell copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+// IN THE SOFTWARE.
+//
 #include <potassco/error.h>
+
+#include <potassco/basic_types.h>
 
 #if __has_include(<fpu_control.h>)
 #include <fpu_control.h>
@@ -129,59 +154,30 @@ const char* ExpressionInfo::relativeFileName(const std::source_location& loc) {
     return res;
 }
 
-static void append(std::span<char>& s, std::string_view view) {
-    auto n = std::min(view.size(), s.size());
-    std::copy_n(view.begin(), n, s.begin());
-    s = s.subspan(n);
-}
-
-static void appendExpression(std::span<char>& span, const ExpressionInfo& info, bool addFile, std::string_view type,
-                             bool more) {
-    append(span, addFile ? ExpressionInfo::relativeFileName(info.location) : info.location.function_name());
-    append(span, ":"sv);
-    auto r = std::to_chars(span.data(), span.data() + span.size(), info.location.line());
-    span   = span.subspan(static_cast<size_t>(r.ptr - span.data()));
-    if (addFile) {
-        append(span, ": "sv);
-        append(span, info.location.function_name());
-    }
-    append(span, ": "sv);
-    if (not type.empty()) {
-        append(span, type);
-        if (not info.expression.empty()) {
-            append(span, " '"sv);
-            append(span, info.expression);
-            append(span, "'"sv);
-        }
-        append(span, " "sv);
-    }
-    append(span, "failed."sv);
-    if (more) {
-        append(span, "\nmessage: "sv);
-    }
-}
-
-constinit AbortHandler g_abortHandler = nullptr;
-extern AbortHandler    setAbortHandler(AbortHandler handler) { return std::exchange(g_abortHandler, handler); }
+constinit AbortHandler g_abort_handler = nullptr;
+extern AbortHandler    setAbortHandler(AbortHandler handler) { return std::exchange(g_abort_handler, handler); }
 
 extern void failAbort(const ExpressionInfo& expressionInfo, const char* fmt, ...) {
-    char      message[1024];
-    std::span span(message, std::size(message) - 1);
-    auto      hasMessage = fmt && *fmt;
-    appendExpression(span, expressionInfo, true, "Assertion"sv, hasMessage);
+    char        local[1024];
+    auto        buffer     = DynamicBuffer{local};
+    auto        hasMessage = fmt && *fmt;
+    const char* quote      = expressionInfo.expression.empty() ? "" : "'";
+    const char* sep        = expressionInfo.expression.empty() ? "" : " ";
+    formatTo(buffer, "%s:%u: %s: Assertion %s%" PRIsv "%s%sfailed.%s",
+             ExpressionInfo::relativeFileName(expressionInfo.location), expressionInfo.location.line(),
+             expressionInfo.location.function_name(), quote, PRI_SV(expressionInfo.expression), quote, sep,
+             hasMessage ? "\nmessage: " : "");
     if (hasMessage) {
         va_list args;
         va_start(args, fmt);
-        if (auto r = std::vsnprintf(span.data(), span.size(), fmt, args); r > 0) {
-            span = span.subspan(static_cast<size_t>(std::min(r, static_cast<int>(span.size()))));
-        }
+        vFormatTo(buffer, fmt, args);
         va_end(args);
     }
-    *span.data() = 0;
-    if (g_abortHandler) {
-        g_abortHandler(message);
+    buffer.push(0);
+    if (g_abort_handler) {
+        g_abort_handler(buffer.data());
     }
-    fprintf(stderr, "%s\n", message);
+    fprintf(stderr, "%s\n", buffer.data());
     std::abort();
 }
 
@@ -189,32 +185,36 @@ extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char*
     if (ec == Errc::bad_alloc) {
         throw std::bad_alloc();
     }
-
-    char      message[1024];
-    std::span span(message, std::size(message) - 1);
-    auto      hasMessage = fmt && *fmt;
+    char        local[1024];
+    auto        buffer     = DynamicBuffer{local};
+    auto        hasMessage = fmt && *fmt;
+    const char* startExp   = expressionInfo.expression.empty() ? "" : "'";
+    const char* endExp     = expressionInfo.expression.empty() ? "" : "' ";
+    va_list     args;
+    va_start(args, fmt);
     if (ec == Errc::precondition_fail) {
-        appendExpression(span, expressionInfo, false, "Precondition"sv, hasMessage);
-    }
-    auto next = std::string_view{};
-    if (hasMessage) {
-        va_list args;
-        va_start(args, fmt);
-        if (auto r = std::vsnprintf(span.data(), span.size(), fmt, args); r > 0) {
-            span = span.subspan(static_cast<size_t>(std::min(r, static_cast<int>(span.size()))));
+        formatTo(buffer, "%s:%u: Precondition %s%" PRIsv "%sfailed.%s", expressionInfo.location.function_name(),
+                 expressionInfo.location.line(), startExp, PRI_SV(expressionInfo.expression), endExp,
+                 hasMessage ? "\nmessage: " : "");
+        if (hasMessage) {
+            vFormatTo(buffer, fmt, args);
         }
-        va_end(args);
-        next = ": "sv;
+        ec = Errc::invalid_argument;
     }
-    if (ec == Errc::precondition_fail) {
-        *span.data() = 0;
-        throw std::invalid_argument(message);
+    else {
+        const char* next = "";
+        if (hasMessage) {
+            vFormatTo(buffer, fmt, args);
+            next = ": ";
+        }
+        startExp = expressionInfo.expression.empty() ? "" : "check '";
+        formatTo(buffer, "%s%s\n%s:%u: %s%" PRIsv "%sfailed.", next,
+                 std::generic_category().message(static_cast<int>(ec)).c_str(), expressionInfo.location.function_name(),
+                 expressionInfo.location.line(), startExp, PRI_SV(expressionInfo.expression), endExp);
     }
-    append(span, next);
-    append(span, std::generic_category().message(static_cast<int>(ec)));
-    append(span, "\n");
-    appendExpression(span, expressionInfo, false, expressionInfo.expression.empty() ? ""sv : "check"sv, false);
-    *span.data() = 0;
+    va_end(args);
+    buffer.push(0);
+    const char* message = buffer.data();
     switch (ec) {
         // logic
         case Errc::length_error    : throw std::length_error(message);

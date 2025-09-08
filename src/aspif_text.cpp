@@ -477,10 +477,9 @@ struct AspifTextOutput::Data {
         }
         return *this;
     }
-    void          endStep(std::ostream&, bool more);
-    void          visitTheoryAtoms(std::ostream& os);
-    void          showAtom(std::ostream& os, std::string_view name, amc::vector<char>& temp,
-                           std::pair<std::string_view, int>& last);
+    void endStep(std::ostream&, bool more);
+    void visitTheoryAtoms(std::ostream& os);
+    void showAtom(std::ostream& os, std::string_view name, DynamicBuffer& temp, std::pair<std::string_view, int>& last);
     std::ostream& printTheoryAtom(std::ostream&, const TheoryAtom&);
     std::ostream& appendTerm(std::ostream&, Id_t tId) const;
     std::ostream& printName(std::ostream& os, Lit_t lit);
@@ -748,18 +747,16 @@ std::ostream& AspifTextOutput::Data::printMinimize(std::ostream& os, const uint3
     }
     return os << '}';
 }
-void AspifTextOutput::Data::showAtom(std::ostream& os, std::string_view name, amc::vector<char>& temp,
+void AspifTextOutput::Data::showAtom(std::ostream& os, std::string_view name, DynamicBuffer& temp,
                                      std::pair<std::string_view, int>& last) {
     if (auto [id, arity] = predicate(name); arity <= 0) {
         POTASSCO_ASSERT(arity == 0);
         os << "#show " << id << "/0.\n";
     }
     else if (arity != last.second || id != last.first) {
-        temp.resize(static_cast<amc::vector<char>::size_type>(name.size()));
-        auto w = snprintf(temp.data(), temp.size(), "%" PRIsv "/%d", PRI_SV(id), arity);
-        POTASSCO_ASSERT(w > 0 && static_cast<std::size_t>(w) > id.size());
-        auto pred = std::string_view{temp.data(), temp.data() + static_cast<std::size_t>(w)};
-        if (try_emplace(strings, pred, 0).second) {
+        temp.clear();
+        toChars(temp.append(id).append("/"), arity);
+        if (auto pred = temp.view(); try_emplace(strings, pred, 0).second) {
             os << "#show " << pred << ".\n";
         }
         last = {id, arity};
@@ -825,8 +822,9 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
         POTASSCO_ASSERT(pos <= end);
     }
     if (maxGenAtom) {
-        amc::vector<char> temp;
-        auto              last = std::pair<std::string_view, int>{};
+        char          buf[64];
+        DynamicBuffer temp(buf);
+        auto          last = std::pair<std::string_view, int>{};
         for (auto a = startAtom; a <= maxNamedAtom; ++a) {
             if (const auto* name = getAtomName(a); name && *name->c_str() != '&') {
                 showAtom(os, name->view(), temp, last);

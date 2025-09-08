@@ -26,6 +26,8 @@
 #include <potassco/error.h>
 
 #include <algorithm>
+#include <charconv>
+#include <cstdarg>
 #include <cstring>
 #include <istream>
 #include <numeric>
@@ -249,12 +251,18 @@ static constexpr uint32_t nextCapacity(uint32_t current) {
     }
     return current <= c_fast_grow_cap ? (current * 3 + 1) >> 1 : current << 1u;
 }
-DynamicBuffer::DynamicBuffer(std::size_t init) : beg_(nullptr), cap_(0), size_(0) { reserve(init); }
+DynamicBuffer::DynamicBuffer(std::size_t init) { reserve(init); }
+DynamicBuffer::DynamicBuffer(std::span<char> borrow)
+    : beg_(borrow.data())
+    , cap_(safe_cast<uint32_t>(borrow.size()))
+    , sizeOwn_(nth_bit<uint32_t>(borrow_bit)) {
+    POTASSCO_ASSERT(sizeOwn_ > size_mask && cap_ < sizeOwn_ && size() == 0);
+}
 DynamicBuffer::DynamicBuffer(DynamicBuffer&& other) noexcept
     : beg_(std::exchange(other.beg_, nullptr))
     , cap_(std::exchange(other.cap_, 0))
-    , size_(std::exchange(other.size_, 0)) {}
-DynamicBuffer::DynamicBuffer(const DynamicBuffer& other) : DynamicBuffer() { append(other.data(), other.size_); }
+    , sizeOwn_(std::exchange(other.sizeOwn_, 0)) {}
+DynamicBuffer::DynamicBuffer(const DynamicBuffer& other) : DynamicBuffer() { append(other.data(), other.size()); }
 DynamicBuffer::~DynamicBuffer() { release(); }
 DynamicBuffer& DynamicBuffer::operator=(DynamicBuffer&& other) noexcept {
     if (this != &other) {
@@ -270,31 +278,92 @@ DynamicBuffer& DynamicBuffer::operator=(const DynamicBuffer& other) {
 }
 void DynamicBuffer::release() noexcept {
     if (auto p = std::exchange(beg_, nullptr); p) {
-        std::free(p);
-        cap_ = size_ = 0;
+        if (not test_bit(sizeOwn_, borrow_bit)) {
+            std::free(p);
+        }
+        cap_ = sizeOwn_ = 0;
     }
 }
 void DynamicBuffer::swap(DynamicBuffer& other) noexcept {
     std::swap(beg_, other.beg_);
     std::swap(cap_, other.cap_);
-    std::swap(size_, other.size_);
+    std::swap(sizeOwn_, other.sizeOwn_);
 }
 void DynamicBuffer::reserve(std::size_t n) {
     if (n > capacity()) {
         auto  newCap = safe_cast<uint32_t>(std::max(static_cast<std::size_t>(nextCapacity(capacity())), n));
-        void* t      = std::realloc(beg_, newCap);
+        void* t      = not test_bit(sizeOwn_, borrow_bit) ? std::realloc(beg_, newCap) : std::malloc(newCap);
         POTASSCO_CHECK(t, Errc::bad_alloc);
+        if (test_bit(sizeOwn_, borrow_bit)) {
+            std::memcpy(t, beg_, size());
+            store_clear_bit(sizeOwn_, borrow_bit);
+        }
         beg_ = t;
         cap_ = newCap;
     }
 }
 std::span<char> DynamicBuffer::alloc(std::size_t n) {
     reserve(size() + n);
-    return {data(std::exchange(size_, static_cast<uint32_t>(size_ + n))), n};
+    return {data(std::exchange(sizeOwn_, static_cast<uint32_t>(sizeOwn_ + n)) & size_mask), n};
 }
 void DynamicBuffer::append(const void* what, std::size_t n) {
     if (n) {
         std::memcpy(alloc(n).data(), what, n);
+    }
+}
+template <typename T>
+static void toCharsImpl(DynamicBuffer& buffer, T x) {
+    for (auto max = static_cast<uint32_t>(std::numeric_limits<T>::digits10 + 1),
+              sz  = std::min(buffer.capacity() - buffer.size(), max);
+         ; sz     = max) {
+        auto  mem = buffer.alloc(sz);
+        auto* end = mem.data() + mem.size();
+        if (auto [p, ec] = std::to_chars(mem.data(), end, x); ec == std::errc{} || sz == max) {
+            buffer.pop(static_cast<std::size_t>(end - p));
+            return;
+        }
+    }
+}
+DynamicBuffer& toChars(DynamicBuffer& buffer, int64_t x) {
+    toCharsImpl(buffer, x);
+    return buffer;
+}
+DynamicBuffer& toChars(DynamicBuffer& buffer, uint64_t x) {
+    toCharsImpl(buffer, x);
+    return buffer;
+}
+std::size_t formatTo(DynamicBuffer& buffer, const char* fmt, ...) noexcept {
+    va_list args;
+    va_start(args, fmt);
+    auto ret = vFormatTo(buffer, fmt, args);
+    va_end(args);
+    return ret;
+}
+std::size_t vFormatTo(DynamicBuffer& buffer, const char* fmt, va_list ap) noexcept {
+    bool truncate = false;
+    for (va_list saved;;) {
+        va_copy(saved, ap);
+        POTASSCO_SCOPE_EXIT({ va_end(saved); });
+        auto avail = buffer.alloc(buffer.capacity() - buffer.size());
+        auto n     = std::vsnprintf(avail.data(), avail.size(), fmt, saved);
+        if (n < 0) {
+            return 0;
+        }
+        if (static_cast<std::size_t>(n) < avail.size()) {
+            buffer.pop(avail.size() - static_cast<std::size_t>(n));
+            return static_cast<std::size_t>(n);
+        }
+        if (truncate) {
+            return avail.size();
+        }
+        try {
+            buffer.pop(avail.size());
+            buffer.reserve(buffer.size() + static_cast<std::size_t>(n + 1));
+        }
+        catch (const std::exception&) {
+            // allocation error - truncate result
+            truncate = true;
+        }
     }
 }
 /////////////////////////////////////////////////////////////////////////////////////////

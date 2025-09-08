@@ -249,6 +249,7 @@ public:
 
     //! Creates a buffer with the given initial capacity.
     explicit DynamicBuffer(std::size_t initialCap = 0);
+    explicit DynamicBuffer(std::span<char> borrow);
     ~DynamicBuffer();
     DynamicBuffer(const DynamicBuffer&);
     DynamicBuffer(DynamicBuffer&&) noexcept;
@@ -258,7 +259,7 @@ public:
     //! Returns the maximum size that the buffer may grow to without triggering reallocation.
     [[nodiscard]] uint32_t capacity() const noexcept { return cap_; }
     //! Returns the number of bytes used in this buffer.
-    [[nodiscard]] uint32_t size() const noexcept { return size_; }
+    [[nodiscard]] uint32_t size() const noexcept { return sizeOwn_ & size_mask; }
     //! Returns a pointer to the beginning of the buffer.
     [[nodiscard]] char*            data() const noexcept { return static_cast<char*>(beg_); }
     [[nodiscard]] char*            data(std::size_t pos) const noexcept { return data() + pos; }
@@ -278,14 +279,18 @@ public:
      */
     [[nodiscard]] std::span<char> alloc(std::size_t n);
     void                          append(const void* what, std::size_t n);
+    DynamicBuffer&                append(std::string_view str) {
+        append(str.data(), str.size());
+        return *this;
+    }
     //! Appends the given character to the buffer.
     void  push(char c) { append(&c, 1); }
     char& back() { return data()[size() - 1]; }
 
     //! Reduces the number of used bytes in this region by `n`.
-    void pop(std::size_t n) { size_ -= n <= size_ ? static_cast<uint32_t>(n) : size_; }
+    void pop(std::size_t n) { sizeOwn_ -= n <= size() ? static_cast<uint32_t>(n) : size(); }
     //! Reduces the number of used bytes in this region to 0.
-    void clear() { size_ = 0; }
+    void clear() { sizeOwn_ &= ~size_mask; }
 
     //! Swaps this and other.
     void swap(DynamicBuffer& other) noexcept;
@@ -297,11 +302,32 @@ public:
     void release() noexcept;
 
 private:
-    void*    beg_;
-    uint32_t cap_;
-    uint32_t size_;
+    static constexpr auto size_mask  = 0x7FFFFFFFu;
+    static constexpr auto borrow_bit = 31u;
+    void*                 beg_{nullptr};
+    uint32_t              cap_{0};
+    uint32_t              sizeOwn_{0};
 };
-inline void swap(DynamicBuffer& lhs, DynamicBuffer& rhs) noexcept { lhs.swap(rhs); }
+inline void    swap(DynamicBuffer& lhs, DynamicBuffer& rhs) noexcept { lhs.swap(rhs); }
+DynamicBuffer& toChars(DynamicBuffer& buffer, int64_t value);
+DynamicBuffer& toChars(DynamicBuffer& buffer, uint64_t value);
+template <std::integral T>
+DynamicBuffer& toChars(DynamicBuffer& buffer, T value) {
+    if constexpr (std::signed_integral<T>) {
+        return toChars(buffer, static_cast<int64_t>(value));
+    }
+    else {
+        return toChars(buffer, static_cast<uint64_t>(value));
+    }
+}
+
+//! Formats the given arguments according to `fmt` and stores the result in `buffer`.
+/*!
+ * \note Formatting follows the rules of std::vsnprintf().
+ * \return The number of bytes written to buffer.
+ */
+std::size_t formatTo(DynamicBuffer& buffer, const char* fmt, ...) noexcept POTASSCO_ATTRIBUTE_FORMAT(2, 3);
+std::size_t vFormatTo(DynamicBuffer& buffer, const char* fmt, va_list ap) noexcept POTASSCO_ATTRIBUTE_FORMAT(2, 0);
 
 class DynamicBitset {
 public:
