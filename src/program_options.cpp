@@ -503,9 +503,15 @@ void ParseContext::setValue(Option& opt, std::string_view value) {
             throw ValueError(name_, ValueError::multiple_occurrences, opt.name(), value);
         }
     }
-    if (not doSetValue(opt, value)) {
-        throw ValueError(name_, ValueError::invalid_value, opt.name(), value);
+    try {
+        if (doSetValue(opt, value)) {
+            return;
+        }
     }
+    catch (const std::invalid_argument& e) {
+        throw ValueError(name_, ValueError::invalid_value, opt.name(), value, e.what());
+    }
+    throw ValueError(name_, ValueError::invalid_value, opt.name(), value);
 }
 void ParseContext::finish(const std::exception_ptr& error) { doFinish(error); }
 
@@ -826,13 +832,21 @@ static std::string format(ContextError::Type t, std::string_view ctx, std::strin
     }
     return ret;
 }
-static std::string format(ValueError::Type t, std::string_view ctx, std::string_view key, std::string_view value) {
+static std::string format(ValueError::Type t, std::string_view ctx, std::string_view key, std::string_view value,
+                          std::string_view msg) {
     std::string ret = formatContext(ctx);
-    switch (std::string_view x; t) {
+    switch (t) {
         case ValueError::multiple_occurrences: ret.append("multiple occurrences: "sv); break;
-        case ValueError::invalid_default     : x = "default "sv; [[fallthrough]];
+        case ValueError::invalid_default:
+            if (msg.empty()) {
+                msg = "invalid default value"sv;
+            }
+            [[fallthrough]];
         case ValueError::invalid_value:
-            ret.append(quote(value)).append(" invalid "sv).append(x).append("value for: "sv);
+            if (msg.empty()) {
+                msg = "invalid value"sv;
+            }
+            ret.append(quote(value)).append(" "sv).append(msg).append(" for: "sv);
             break;
         default: ret.append("unknown error in: "sv);
     }
@@ -845,8 +859,8 @@ ContextError::ContextError(std::string_view ctx, Type t, std::string_view key, s
     , ctx_(ctx)
     , key_(key)
     , type_(t) {}
-ValueError::ValueError(std::string_view ctx, Type t, std::string_view opt, std::string_view value)
-    : Error(format(t, ctx, opt, value))
+ValueError::ValueError(std::string_view ctx, Type t, std::string_view opt, std::string_view value, std::string_view msg)
+    : Error(format(t, ctx, opt, value, msg))
     , ctx_(ctx)
     , key_(opt)
     , value_(value)

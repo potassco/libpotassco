@@ -81,7 +81,7 @@ public:
 class ValueError : public Error {
 public:
     enum Type { multiple_occurrences, invalid_default, invalid_value };
-    ValueError(std::string_view ctx, Type t, std::string_view opt, std::string_view value);
+    ValueError(std::string_view ctx, Type t, std::string_view opt, std::string_view value, std::string_view msg = {});
     [[nodiscard]] Type               type() const { return type_; }
     [[nodiscard]] const std::string& key() const { return key_; }
     [[nodiscard]] const std::string& ctx() const { return ctx_; }

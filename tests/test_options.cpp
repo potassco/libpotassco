@@ -24,6 +24,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <cstring>
 #include <ranges>
@@ -465,6 +467,15 @@ TEST_CASE("Test parsed options", "[options]") {
     int             i1, i2;
     g.addOptions()                          //
         ("int1", Po::storeTo(i1), "An int") //
+        ("custom",
+         Po::storeTo(i1,
+                     [](std::string_view v, int x) {
+                         if (v == "invalid") {
+                             throw std::invalid_argument("custom message");
+                         }
+                         return Potassco::stringTo(v, x) == std::errc{};
+                     }),
+         "An int") //
         ("int2", Po::storeTo(i2).defaultsTo("10"), "Another int");
     Po::OptionContext       ctx;
     Po::DefaultParseContext po{ctx};
@@ -497,6 +508,12 @@ TEST_CASE("Test parsed options", "[options]") {
 
         REQUIRE_NOTHROW(Po::parseCommandString(po.clearParsed(), "--int1=3 --no-flag --int2=5 --int3=5"));
         REQUIRE((i1 == 3 && b1 == false && i2 == 5 && int3 == 5));
+    }
+    SECTION("map invalid argument") {
+        REQUIRE_THROWS_MATCHES(po.setValue(*po.getOption("custom", OptionContext::find_name), "invalid"), ValueError,
+                               Catch::Matchers::Message("'invalid' custom message for: 'custom'"));
+        REQUIRE_THROWS_MATCHES(po.setValue(*po.getOption("custom", OptionContext::find_name), "bla"), ValueError,
+                               Catch::Matchers::Message("'bla' invalid value for: 'custom'"));
     }
 }
 
