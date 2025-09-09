@@ -19,11 +19,11 @@ libpotassco is part of the potassco project. For further information, please vis
 
 ## Installation
 
-The preferred way to build libpotassco is to use [CMake][cmake] 
+The preferred way to build libpotassco is to use [CMake][cmake]
 version 3.16 or later.
 
 The following options can be used to configure the build:
-  
+
     LIB_POTASSCO_BUILD_APP  : whether to build the lpconvert tool
     LIB_POTASSCO_BUILD_TESTS: whether to build unit tests
 
@@ -33,7 +33,7 @@ For example, to build libpotassco in release mode in directory `<dir>`:
     cmake --build <dir>
 
 The following options can be used to configure the installation:
-    
+
     CMAKE_INSTALL_PREFIX    : install path prefix
     LIB_POTASSCO_INSTALL_LIB: whether to install libpotassco
 
@@ -55,12 +55,12 @@ Finally, call `target_link_libraries(your_target PUBLIC libpotassco)` to link to
 ## Documentation
 Source code documentation can be generated with [Doxygen][doxygen].
 Either explicitly:
-  
+
     cd doc/
     doxygen
 
 or via the `doc_potassco` target when using cmake.
-  
+
 [aspif]: https://www.cs.uni-potsdam.de/wv/publications/DBLP_conf/iclp/GebserKKOSW16x.pdf  "Aspif specification"
 [cmake]: https://cmake.org/
 [doxygen]: https://www.doxygen.nl/
