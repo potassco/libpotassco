@@ -27,7 +27,6 @@
 
 #include <algorithm>
 #include <charconv>
-#include <cstdarg>
 #include <cstring>
 #include <istream>
 #include <numeric>
@@ -241,6 +240,19 @@ bool matchTerm(std::string_view& input, std::string_view& arg) {
     input = scan.substr(pos);
     return not arg.empty();
 }
+bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut) {
+    int  n;
+    auto r  = std::from_chars(in.data(), in.data() + in.size(), nOut ? *nOut : n);
+    auto sz = static_cast<std::size_t>(r.ptr - in.data());
+    if (r.ec != std::errc{} || sz == 0) {
+        return false;
+    }
+    if (sOut) {
+        *sOut = in.substr(0, sz);
+    }
+    in.remove_prefix(sz);
+    return true;
+}
 /////////////////////////////////////////////////////////////////////////////////////////
 // DynamicBuffer
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -309,61 +321,6 @@ std::span<char> DynamicBuffer::alloc(std::size_t n) {
 void DynamicBuffer::append(const void* what, std::size_t n) {
     if (n) {
         std::memcpy(alloc(n).data(), what, n);
-    }
-}
-template <typename T>
-static void toCharsImpl(DynamicBuffer& buffer, T x) {
-    for (auto max = static_cast<uint32_t>(std::numeric_limits<T>::digits10 + 1),
-              sz  = std::min(buffer.capacity() - buffer.size(), max);
-         ; sz     = max) {
-        auto  mem = buffer.alloc(sz);
-        auto* end = mem.data() + mem.size();
-        if (auto [p, ec] = std::to_chars(mem.data(), end, x); ec == std::errc{} || sz == max) {
-            buffer.pop(static_cast<std::size_t>(end - p));
-            return;
-        }
-    }
-}
-DynamicBuffer& toChars(DynamicBuffer& buffer, int64_t x) {
-    toCharsImpl(buffer, x);
-    return buffer;
-}
-DynamicBuffer& toChars(DynamicBuffer& buffer, uint64_t x) {
-    toCharsImpl(buffer, x);
-    return buffer;
-}
-std::size_t formatTo(DynamicBuffer& buffer, const char* fmt, ...) noexcept {
-    va_list args;
-    va_start(args, fmt);
-    auto ret = vFormatTo(buffer, fmt, args);
-    va_end(args);
-    return ret;
-}
-std::size_t vFormatTo(DynamicBuffer& buffer, const char* fmt, va_list ap) noexcept {
-    bool truncate = false;
-    for (va_list saved;;) {
-        va_copy(saved, ap);
-        POTASSCO_SCOPE_EXIT({ va_end(saved); });
-        auto avail = buffer.alloc(buffer.capacity() - buffer.size());
-        auto n     = std::vsnprintf(avail.data(), avail.size(), fmt, saved);
-        if (n < 0) {
-            return 0;
-        }
-        if (static_cast<std::size_t>(n) < avail.size()) {
-            buffer.pop(avail.size() - static_cast<std::size_t>(n));
-            return static_cast<std::size_t>(n);
-        }
-        if (truncate) {
-            return avail.size();
-        }
-        try {
-            buffer.pop(avail.size());
-            buffer.reserve(buffer.size() + static_cast<std::size_t>(n + 1));
-        }
-        catch (const std::exception&) {
-            // allocation error - truncate result
-            truncate = true;
-        }
     }
 }
 /////////////////////////////////////////////////////////////////////////////////////////

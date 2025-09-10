@@ -24,6 +24,7 @@
 #include <potassco/error.h>
 
 #include <potassco/basic_types.h>
+#include <potassco/format.h>
 
 #if __has_include(<fpu_control.h>)
 #include <fpu_control.h>
@@ -74,7 +75,6 @@ static bool isCygPty(FILE*) { return false; }
 #endif
 
 #include <cfloat>
-#include <charconv>
 #include <cstdarg>
 #include <cstdio>
 #include <span>
@@ -157,20 +157,29 @@ const char* ExpressionInfo::relativeFileName(const std::source_location& loc) {
 constinit AbortHandler g_abort_handler = nullptr;
 extern AbortHandler    setAbortHandler(AbortHandler handler) { return std::exchange(g_abort_handler, handler); }
 
+static DynamicBuffer& appendInfo(DynamicBuffer& buffer, std::string_view type, const ExpressionInfo& expressionInfo,
+                                 bool addFile) {
+    buffer.append(addFile ? ExpressionInfo::relativeFileName(expressionInfo.location)
+                          : expressionInfo.location.function_name());
+    toChars(buffer.append(":"sv), expressionInfo.location.line());
+    if (addFile) {
+        buffer.append(": "sv).append(expressionInfo.location.function_name());
+    }
+    buffer.append(": "sv);
+    auto startExp = expressionInfo.expression.empty() ? ""sv : "'"sv;
+    auto endExp   = expressionInfo.expression.empty() ? ""sv : "' "sv;
+    return buffer.append(type).append(startExp).append(expressionInfo.expression).append(endExp).append("failed."sv);
+}
+
 extern void failAbort(const ExpressionInfo& expressionInfo, const char* fmt, ...) {
-    char        local[1024];
-    auto        buffer     = DynamicBuffer{local};
-    auto        hasMessage = fmt && *fmt;
-    const char* quote      = expressionInfo.expression.empty() ? "" : "'";
-    const char* sep        = expressionInfo.expression.empty() ? "" : " ";
-    formatTo(buffer, "%s:%u: %s: Assertion %s%" PRIsv "%s%sfailed.%s",
-             ExpressionInfo::relativeFileName(expressionInfo.location), expressionInfo.location.line(),
-             expressionInfo.location.function_name(), quote, PRI_SV(expressionInfo.expression), quote, sep,
-             hasMessage ? "\nmessage: " : "");
+    char local[1024];
+    auto buffer     = DynamicBuffer{local};
+    auto hasMessage = fmt && *fmt;
+    appendInfo(buffer, "Assertion "sv, expressionInfo, true);
     if (hasMessage) {
         va_list args;
         va_start(args, fmt);
-        vFormatTo(buffer, fmt, args);
+        Detail::vFormatf(buffer.append("\nmessage: "sv), fmt, args);
         va_end(args);
     }
     buffer.push(0);
@@ -185,32 +194,26 @@ extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char*
     if (ec == Errc::bad_alloc) {
         throw std::bad_alloc();
     }
-    char        local[1024];
-    auto        buffer     = DynamicBuffer{local};
-    auto        hasMessage = fmt && *fmt;
-    const char* startExp   = expressionInfo.expression.empty() ? "" : "'";
-    const char* endExp     = expressionInfo.expression.empty() ? "" : "' ";
-    va_list     args;
+    char    local[1024];
+    auto    buffer     = DynamicBuffer{local};
+    auto    hasMessage = fmt && *fmt;
+    va_list args;
     va_start(args, fmt);
     if (ec == Errc::precondition_fail) {
-        formatTo(buffer, "%s:%u: Precondition %s%" PRIsv "%sfailed.%s", expressionInfo.location.function_name(),
-                 expressionInfo.location.line(), startExp, PRI_SV(expressionInfo.expression), endExp,
-                 hasMessage ? "\nmessage: " : "");
+        appendInfo(buffer, "Precondition "sv, expressionInfo, false);
         if (hasMessage) {
-            vFormatTo(buffer, fmt, args);
+            Detail::vFormatf(buffer.append("\nmessage: "), fmt, args);
         }
         ec = Errc::invalid_argument;
     }
     else {
-        const char* next = "";
         if (hasMessage) {
-            vFormatTo(buffer, fmt, args);
-            next = ": ";
+            Detail::vFormatf(buffer, fmt, args);
+            buffer.append(": "sv);
         }
-        startExp = expressionInfo.expression.empty() ? "" : "check '";
-        formatTo(buffer, "%s%s\n%s:%u: %s%" PRIsv "%sfailed.", next,
-                 std::generic_category().message(static_cast<int>(ec)).c_str(), expressionInfo.location.function_name(),
-                 expressionInfo.location.line(), startExp, PRI_SV(expressionInfo.expression), endExp);
+        auto check = expressionInfo.expression.empty() ? ""sv : "check "sv;
+        buffer.append(std::generic_category().message(static_cast<int>(ec))).append("\n"sv);
+        appendInfo(buffer, check, expressionInfo, false);
     }
     va_end(args);
     buffer.push(0);

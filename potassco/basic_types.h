@@ -308,26 +308,7 @@ private:
     uint32_t              cap_{0};
     uint32_t              sizeOwn_{0};
 };
-inline void    swap(DynamicBuffer& lhs, DynamicBuffer& rhs) noexcept { lhs.swap(rhs); }
-DynamicBuffer& toChars(DynamicBuffer& buffer, int64_t value);
-DynamicBuffer& toChars(DynamicBuffer& buffer, uint64_t value);
-template <std::integral T>
-DynamicBuffer& toChars(DynamicBuffer& buffer, T value) {
-    if constexpr (std::signed_integral<T>) {
-        return toChars(buffer, static_cast<int64_t>(value));
-    }
-    else {
-        return toChars(buffer, static_cast<uint64_t>(value));
-    }
-}
-
-//! Formats the given arguments according to `fmt` and stores the result in `buffer`.
-/*!
- * \note Formatting follows the rules of std::vsnprintf().
- * \return The number of bytes written to buffer.
- */
-std::size_t formatTo(DynamicBuffer& buffer, const char* fmt, ...) noexcept POTASSCO_ATTRIBUTE_FORMAT(2, 3);
-std::size_t vFormatTo(DynamicBuffer& buffer, const char* fmt, va_list ap) noexcept POTASSCO_ATTRIBUTE_FORMAT(2, 0);
+inline void swap(DynamicBuffer& lhs, DynamicBuffer& rhs) noexcept { lhs.swap(rhs); }
 
 class DynamicBitset {
 public:

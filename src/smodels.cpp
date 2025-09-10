@@ -26,7 +26,6 @@
 #include <potassco/error.h>
 #include <potassco/rule_utils.h>
 
-#include <charconv>
 #include <cstring>
 #include <ostream>
 #include <unordered_map>
@@ -263,20 +262,6 @@ static constexpr bool match(std::string_view& in, std::string_view word) {
     return false;
 }
 static constexpr bool match(std::string_view& in, char sep) { return match(in, {&sep, 1}); }
-
-static bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr) {
-    int  n;
-    auto r  = std::from_chars(in.data(), in.data() + in.size(), nOut ? *nOut : n);
-    auto sz = static_cast<std::size_t>(r.ptr - in.data());
-    if (r.ec != std::errc{} || sz == 0) {
-        return false;
-    }
-    if (sOut) {
-        *sOut = in.substr(0, sz);
-    }
-    in.remove_prefix(sz);
-    return true;
-}
 
 static bool match(std::string_view& input, DomModifier& heuType) {
     for (const auto& [k, n] : enum_entries<DomModifier>()) {

@@ -25,6 +25,7 @@
 
 #include <potassco/aspif.h>
 #include <potassco/error.h>
+#include <potassco/format.h>
 #include <potassco/rule_utils.h>
 POTASSCO_WARNING_BEGIN_RELAXED
 #include <amc/vector.hpp>
@@ -32,7 +33,6 @@ POTASSCO_WARNING_END_RELAXED
 
 #include <algorithm>
 #include <cctype>
-#include <charconv>
 #include <cstring>
 #include <ostream>
 #include <sstream>
@@ -409,9 +409,8 @@ struct AspifTextOutput::Data {
         if (arity == auxArity && name.starts_with(auxPred.view())) {
             name.remove_prefix(auxPred.size());
             name.remove_suffix(arity);
-            auto n = atom;
-            auto r = std::from_chars(name.data(), name.data() + name.size(), n);
-            if (n != atom && r.ptr == name.data() + name.size()) {
+            int i = lit(atom);
+            if (not matchNum(name, nullptr, &i) || i != lit(atom)) {
                 return true;
             }
         }

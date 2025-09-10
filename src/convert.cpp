@@ -24,6 +24,7 @@
 #include <potassco/convert.h>
 
 #include <potassco/error.h>
+#include <potassco/format.h>
 #include <potassco/rule_utils.h>
 #include <potassco/smodels.h>
 
@@ -32,7 +33,6 @@ POTASSCO_WARNING_BEGIN_RELAXED
 POTASSCO_WARNING_END_RELAXED
 
 #include <algorithm>
-#include <charconv>
 #include <memory>
 #include <string_view>
 #include <unordered_map>

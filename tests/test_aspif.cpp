@@ -286,26 +286,6 @@ TEST_CASE("Test DynamicBuffer", "[rule]") {
             CHECK(m1.data() == nullptr);
         }
     }
-    SECTION("formatTo") {
-        char          buffer[5];
-        DynamicBuffer r(std::span{buffer});
-        SECTION("in-place") {
-            REQUIRE(formatTo(r, "%d%s", 42, "++") == 4u);
-            REQUIRE(r.view() == "42++");
-            REQUIRE(r.data() == buffer);
-        }
-        SECTION("grow") {
-            REQUIRE(formatTo(r, "%d%s", 423, "++") == 5u);
-            REQUIRE(r.view() == "423++");
-            REQUIRE(r.data() != buffer);
-        }
-        SECTION("empty") {
-            DynamicBuffer buf;
-            formatTo(buf, "%d%s", 423, "++");
-            REQUIRE(buf.view() == "423++");
-            REQUIRE(buf.capacity() > buf.size());
-        }
-    }
 }
 TEST_CASE("Test ConstString", "[rule]") {
     SECTION("empty") {

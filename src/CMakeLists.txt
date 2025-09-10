@@ -18,6 +18,7 @@ set(header
     ${header_path}/convert.h
     ${header_path}/enum.h
     ${header_path}/error.h
+    ${header_path}/format.h
     ${header_path}/match_basic_types.h
     ${header_path}/platform.h
     ${header_path}/rule_utils.h

@@ -37,11 +37,6 @@ std::from_chars_result parseChar(std::string_view in, unsigned char& out);
 std::from_chars_result parseUnsigned(std::string_view in, std::uintmax_t& out, std::uintmax_t max);
 std::from_chars_result parseSigned(std::string_view in, std::intmax_t& out, std::intmax_t min, std::intmax_t max);
 std::from_chars_result parseFloat(std::string_view in, double& out, double min, double max);
-
-char* writeSigned(char* first, char* last, std::intmax_t);
-char* writeUnsigned(char* first, char* last, std::uintmax_t);
-char* writeFloat(char* first, char* last, double);
-
 } // namespace Detail
 namespace Parse {
 template <typename T>
@@ -198,80 +193,6 @@ constexpr std::errc extract(std::string_view& in, T& out) {
     return r.ec;
 }
 ///////////////////////////////////////////////////////////////////////////////
-// T -> chars
-///////////////////////////////////////////////////////////////////////////////
-template <typename T>
-concept CharBuffer = requires(T buffer, std::string_view v) {
-    { buffer.append(v) } -> std::convertible_to<T&>;
-};
-
-template <CharBuffer S>
-S& toChars(S& out, const char* in) {
-    return out.append(in ? std::string_view(in) : std::string_view());
-}
-template <CharBuffer S>
-S& toChars(S& out, const std::string& s) {
-    return out.append(std::string_view(s));
-}
-template <CharBuffer S>
-S& toChars(S& out, std::string_view s) {
-    return out.append(s);
-}
-template <CharBuffer S>
-S& toChars(S& out, bool b) {
-    return out.append(std::string_view(b ? "true" : "false"));
-}
-
-template <CharBuffer S, std::integral T>
-S& toChars(S& out, T in) {
-    char  temp[128];
-    char* end;
-    if constexpr (std::is_unsigned_v<T>) {
-        if (in == static_cast<T>(-1)) {
-            return out.append(std::string_view("umax"));
-        }
-        end = Detail::writeUnsigned(std::begin(temp), std::end(temp), in);
-    }
-    else {
-        end = Detail::writeSigned(std::begin(temp), std::end(temp), in);
-    }
-    return out.append(std::string_view{temp, end});
-}
-template <CharBuffer S, std::floating_point T>
-S& toChars(S& out, T in) {
-    char  temp[128];
-    auto* end = Detail::writeFloat(std::begin(temp), std::end(temp), static_cast<double>(in));
-    return out.append(std::string_view{temp, end});
-}
-template <CharBuffer S, HasEnumEntries EnumT>
-S& toChars(S& out, EnumT enumT) {
-    if (auto name = Potassco::enum_name(enumT); not name.empty()) {
-        return out.append(name);
-    }
-    return toChars(out, to_underlying(enumT));
-}
-
-template <CharBuffer S, typename T, typename U>
-S& toChars(S& out, const std::pair<T, U>& p, char sep = ',') {
-    toChars(out, p.first).append(1, sep);
-    return toChars(out, p.second);
-}
-template <CharBuffer S, typename C>
-requires requires(S& s, C c) {
-    c.begin();
-    c.end();
-    toChars(s, *c.begin());
-}
-S& toChars(S& out, const C& c, char sep = ',') {
-    std::size_t n = 0;
-    for (const auto& v : c) {
-        out.append(std::string_view(&sep, std::exchange(n, 1)));
-        toChars(out, v);
-    }
-    return out;
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // string -> T
 ///////////////////////////////////////////////////////////////////////////////
 template <typename T>
@@ -282,25 +203,6 @@ std::errc stringTo(std::string_view arg, T& x) {
     else {
         return r.ptr == arg.data() + arg.size() ? std::errc{} : std::errc::invalid_argument;
     }
-}
-///////////////////////////////////////////////////////////////////////////////
-// T -> string
-///////////////////////////////////////////////////////////////////////////////
-template <typename T>
-requires requires(std::string& out, T& in) { toChars(out, in); }
-constexpr std::string toString(const T& x) {
-    std::string out;
-    toChars(out, x);
-    return out;
-}
-template <typename T, typename... Args>
-std::string toString(const T& t, const Args&... args) {
-    std::string res;
-    toChars(res, t);
-    if constexpr (sizeof...(Args) > 0) {
-        std::ignore = (toChars(res.append(1, ','), args), ...);
-    }
-    return res;
 }
 
 } // namespace Potassco

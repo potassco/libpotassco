@@ -21,6 +21,7 @@
 #include <potassco/program_opts/string_convert.h>
 
 #include <potassco/error.h>
+#include <potassco/format.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -330,6 +331,36 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE_FALSE(Potassco::Parse::eqIgnoreCase("H", "H", 2));
         REQUIRE(Potassco::Parse::eqIgnoreCase("haL", "HALx", 3));
         REQUIRE(Potassco::Parse::eqIgnoreCase("haL", "HALx", 3));
+    }
+
+    SECTION("StrF") {
+        REQUIRE(formatF("Hello").view() == "Hello");
+        REQUIRE(formatF("Hello %s", "World").c_str() == std::string_view{"Hello World"});
+        REQUIRE(formatF("Hello %08u|%gs", 22, 3.1).view() == "Hello 00000022|3.1s");
+        std::string exp("Hello ");
+        exp.append(130, ' ');
+        exp.append("foo");
+        REQUIRE(formatF("Hello %130sfoo", "").view() == exp);
+    }
+    SECTION("formatToBuffer") {
+        char          buffer[5];
+        DynamicBuffer r(std::span{buffer});
+        SECTION("in-place") {
+            REQUIRE(formatTo(r, "%d%s", 42, "++") == 4u);
+            REQUIRE(r.view() == "42++");
+            REQUIRE(r.data() == buffer);
+        }
+        SECTION("grow") {
+            REQUIRE(formatTo(r, "%d%s", 423, "++") == 5u);
+            REQUIRE(r.view() == "423++");
+            REQUIRE(r.data() != buffer);
+        }
+        SECTION("empty") {
+            DynamicBuffer buf;
+            formatTo(buf, "%d%s", 423, "++");
+            REQUIRE(buf.view() == "423++");
+            REQUIRE(buf.capacity() > buf.size());
+        }
     }
 }
 
