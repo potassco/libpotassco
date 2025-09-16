@@ -278,7 +278,7 @@ struct AspifOutput::Data {
         if (outTerms.size() <= termId) {
             outTerms.resize(termId + 1);
         }
-        POTASSCO_CHECK_PRE(outTerms[termId].name.size() == 0, "Redefinition: term %u already defined", termId);
+        POTASSCO_CHECK_PRE(outTerms[termId].name.size() == 0, "Redefinition: term {} already defined", termId);
         outTerms[termId] = termName;
     }
     struct OutTerm {
@@ -427,7 +427,7 @@ void AspifOutput::output(Id_t id, LitSpan cond) {
         startDir(AspifType::output).add(OutputType::cond).add(id).add(cond).endDir();
     }
     else {
-        POTASSCO_CHECK_PRE(data_ && id < data_->outTerms.size(), "Undefined: term %u is unknown", id);
+        POTASSCO_CHECK_PRE(data_ && id < data_->outTerms.size(), "Undefined: term {} is unknown", id);
         if (not data_->trueAtom) {
             nextAtom_       = identityMax_ + 1;
             data_->trueAtom = newAtom();

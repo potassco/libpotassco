@@ -4,3 +4,6 @@
 [submodule "third_party/amc"]
 	path = third_party/amc
 	url = ../../AmadeusITGroup/amc
+[submodule "third_party/fmt"]
+	path = third_party/fmt
+	url = ../../fmtlib/fmt.git

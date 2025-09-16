@@ -194,7 +194,7 @@ void            ProgramReader::doReset() {}
 unsigned        ProgramReader::line() const { return str_ ? str_->line() : 1; }
 BufferedStream* ProgramReader::stream() const { return str_; }
 void            ProgramReader::error(const char* msg) const {
-    POTASSCO_FAIL(std::errc::operation_not_supported, "parse error in line %u: %s", str_->line(), msg);
+    POTASSCO_FAIL(std::errc::operation_not_supported, "parse error in line {}: {}", str_->line(), msg);
 }
 char ProgramReader::get() { return str_->get(); }
 char ProgramReader::peek() const { return str_->peek(); }
@@ -203,7 +203,7 @@ void ProgramReader::skipLine() {
 }
 char ProgramReader::skipWs() { return str_->skipWs(), str_->peek(); }
 void ProgramReader::matchChar(char c) {
-    POTASSCO_CHECK(str_->get() == c, std::errc::operation_not_supported, "parse error in line %u: '%c' expected",
+    POTASSCO_CHECK(str_->get() == c, std::errc::operation_not_supported, "parse error in line {}: '{}' expected",
                    str_->line(), c);
 }
 int readProgram(std::istream& str, ProgramReader& reader) {

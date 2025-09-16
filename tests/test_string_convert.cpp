@@ -75,13 +75,7 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(Potassco::fromChars("18446744073709551616", iVal).ec == std::errc::result_out_of_range);
         REQUIRE(Potassco::fromChars("18446744073709551616", uVal).ec == std::errc::result_out_of_range);
     }
-    SECTION("positive and negative ints convert to string") {
-        REQUIRE(Potassco::toString(10) == "10");
-        REQUIRE(Potassco::toString(-10) == "-10");
-    }
     SECTION("unsigned -1 converts to named limit") {
-        REQUIRE(Potassco::toString(static_cast<unsigned int>(-1)) == "umax");
-        REQUIRE(Potassco::toString(static_cast<unsigned long>(-1)) == "umax");
         REQUIRE(string_cast<unsigned int>("umax") == static_cast<unsigned int>(-1));
         REQUIRE(string_cast<unsigned long>("umax") == static_cast<unsigned long>(-1));
         REQUIRE(string_cast<unsigned long long>("umax") == static_cast<unsigned long long>(-1));
@@ -145,23 +139,10 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE_FALSE(string_cast<bool>("false").value());
         REQUIRE_FALSE(string_cast<bool>("off").value());
         REQUIRE_FALSE(string_cast<bool>("no").value());
-
-        REQUIRE(Potassco::toString(true) == "true");
-        REQUIRE(Potassco::toString(false) == "false");
     }
 
-    SECTION("double converts to string") { REQUIRE(Potassco::toString(10.2) == "10.2"); }
-    SECTION("double conversion is reversible") {
-        constexpr double d = 0.00000001;
-        REQUIRE(string_cast<double>(Potassco::toString(d)) == d);
-
-        float x{};
-        REQUIRE(Potassco::Parse::ok(Potassco::stringTo("0.8", x)));
-        REQUIRE(Potassco::toString(x) == "0.8");
-    }
     SECTION("Pairs can be converted") {
         constexpr std::pair p(10, false);
-        REQUIRE(Potassco::toString(p) == "10,false");
         REQUIRE((string_cast<std::pair<int, bool>>("10,false") == p));
 
         using IntPair = std::pair<int, int>;
@@ -188,27 +169,6 @@ TEST_CASE("String conversion", "[string]") {
         value = "99";
         REQUIRE(Potassco::stringTo(value, x) == std::errc{});
         REQUIRE((x.first == IntPair(99, 4) && x.second == IntPair(5, 6)));
-    }
-    SECTION("Sequence can be converted") {
-        REQUIRE(Potassco::toString(1, 2, 3) == "1,2,3");
-        REQUIRE(Potassco::toString(1, "Hallo") == "1,Hallo");
-
-        REQUIRE(Potassco::toString(std::vector{1, 2, 3}) == "1,2,3");
-    }
-    SECTION("conversion works with long long") {
-        long long mx = LLONG_MAX, mn = LLONG_MIN, y;
-        REQUIRE((Potassco::stringTo(Potassco::toString(mx), y) == std::errc{} && mx == y));
-        REQUIRE((Potassco::stringTo(Potassco::toString(mn), y) == std::errc{} && mn == y));
-    }
-    SECTION("conversion works with long long even if errno is initially set") {
-        long long          mx  = LLONG_MAX, y;
-        unsigned long long umx = ULLONG_MAX, z;
-        errno                  = ERANGE;
-        REQUIRE((Potassco::stringTo(Potassco::toString(mx), y) == std::errc{} && mx == y));
-
-        auto s = Potassco::toString(ULLONG_MAX);
-        errno  = ERANGE;
-        REQUIRE((Potassco::stringTo(s, z) == std::errc{} && umx == z));
     }
 
     SECTION("double parsing before local change") {
@@ -332,36 +292,6 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(Potassco::Parse::eqIgnoreCase("haL", "HALx", 3));
         REQUIRE(Potassco::Parse::eqIgnoreCase("haL", "HALx", 3));
     }
-
-    SECTION("StrF") {
-        REQUIRE(formatF("Hello").view() == "Hello");
-        REQUIRE(formatF("Hello %s", "World").c_str() == std::string_view{"Hello World"});
-        REQUIRE(formatF("Hello %08u|%gs", 22, 3.1).view() == "Hello 00000022|3.1s");
-        std::string exp("Hello ");
-        exp.append(130, ' ');
-        exp.append("foo");
-        REQUIRE(formatF("Hello %130sfoo", "").view() == exp);
-    }
-    SECTION("formatToBuffer") {
-        char          buffer[5];
-        DynamicBuffer r(std::span{buffer});
-        SECTION("in-place") {
-            REQUIRE(formatTo(r, "%d%s", 42, "++") == 4u);
-            REQUIRE(r.view() == "42++");
-            REQUIRE(r.data() == buffer);
-        }
-        SECTION("grow") {
-            REQUIRE(formatTo(r, "%d%s", 423, "++") == 5u);
-            REQUIRE(r.view() == "423++");
-            REQUIRE(r.data() != buffer);
-        }
-        SECTION("empty") {
-            DynamicBuffer buf;
-            formatTo(buf, "%d%s", 423, "++");
-            REQUIRE(buf.view() == "423++");
-            REQUIRE(buf.capacity() > buf.size());
-        }
-    }
 }
 
 enum class Foo : unsigned { value1 = 0, value2 = 1, value3 = 2, value4, value5 = 7, value6 = 7 + 1 };
@@ -392,14 +322,14 @@ TEST_CASE("Enum entries", "[enum]") {
 }
 
 TEST_CASE("Enum to string", "[enum]") {
-    REQUIRE(toString(Foo::value1) == "value1");
-    REQUIRE(toString(Foo::value2) == "value2");
-    REQUIRE(toString(Foo::value3) == "value3");
-    REQUIRE(toString(Foo::value4) == "value4");
-    REQUIRE(toString(Foo::value5) == "value5");
-    REQUIRE(toString(Foo::value6) == "value6");
+    REQUIRE(fmt::format("{}", Foo::value1) == "value1");
+    REQUIRE(fmt::format("{}", Foo::value2) == "value2");
+    REQUIRE(fmt::format("{}", Foo::value3) == "value3");
+    REQUIRE(fmt::format("{}", Foo::value4) == "value4");
+    REQUIRE(fmt::format("{}", Foo::value5) == "value5");
+    REQUIRE(fmt::format("{}", Foo::value6) == "value6");
     Foo unknown{12};
-    REQUIRE(toString(unknown) == "12");
+    REQUIRE(fmt::format("{}", unknown) == "12");
 }
 
 TEST_CASE("Enum from string", "[enum]") {

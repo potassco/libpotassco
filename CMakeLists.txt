@@ -60,6 +60,7 @@ endif()
 ### Third party stuff                                                                                                ###
 ########################################################################################################################
 add_subdirectory(third_party/amc EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
 if(NOT AMC_PEDANTIC)
     # NOTE: This should be part of the AMC cmake config.
     target_compile_definitions(amc INTERFACE AMC_NONSTD_FEATURES)

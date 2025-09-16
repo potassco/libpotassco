@@ -425,7 +425,7 @@ struct AspifTextOutput::Data {
     }
     void addOutput(Id_t termId, LitSpan cond) {
         auto it = term2Name.find(termId);
-        POTASSCO_CHECK_PRE(it != term2Name.end(), "Undefined: term %u is undefined", termId);
+        POTASSCO_CHECK_PRE(it != term2Name.end(), "Undefined: term {} is undefined", termId);
         addOutput(&it->second, cond);
     }
     auto assignAtomName(Atom_t atom, std::string_view name) {
@@ -516,7 +516,7 @@ void AspifTextOutput::setAtomPred(std::string_view pred) {
     }
     auto [id, n] = Data::predicate(pred);
     POTASSCO_CHECK(n == 0 && id == pred && isAtomPrefix(id, false), std::errc::invalid_argument,
-                   "invalid atom predicate '%" PRIsv "'", PRI_SV(pred));
+                   "invalid atom predicate '{}'", pred);
     if (arity == 0u) {
         data_->auxPred = ConstString(id);
     }
@@ -575,9 +575,9 @@ void AspifTextOutput::outputAtom(Atom_t atom, std::string_view name) {
     }
     else {
         auto [id, arity] = Data::predicate(name);
-        POTASSCO_CHECK_PRE(arity >= 0, "invalid atom name <%u:%" PRIsv ">", atom, PRI_SV(name));
+        POTASSCO_CHECK_PRE(arity >= 0, "invalid atom name <{}:{}>", atom, name);
         POTASSCO_CHECK(not data_->isReservedName(atom, name, static_cast<unsigned>(arity)),
-                       std::errc::operation_not_supported, "atom name <%u:%" PRIsv "> is reserved", atom, PRI_SV(name));
+                       std::errc::operation_not_supported, "atom name <{}:{}> is reserved", atom, name);
         if (arity == 0) {
             name = id;
         }
@@ -589,7 +589,7 @@ void AspifTextOutput::outputAtom(Atom_t atom, std::string_view name) {
 }
 void AspifTextOutput::outputTerm(Id_t termId, std::string_view name) {
     auto [it, added] = data_->term2Name.try_emplace(termId, name);
-    POTASSCO_CHECK_PRE(added || it->second == name, "Redefinition: term %u already defined as %s", termId,
+    POTASSCO_CHECK_PRE(added || it->second == name, "Redefinition: term {} already defined as {}", termId,
                        it->second.c_str());
 }
 void AspifTextOutput::output(Id_t id, LitSpan cond) { data_->addOutput(id, cond); }
@@ -685,10 +685,9 @@ void AspifTextOutput::Data::visitTheoryAtoms(std::ostream& os) {
             printTheoryAtom(str, *a);
             auto name = std::move(str).str();
             POTASSCO_CHECK_PRE(atom >= startAtom,
-                               "Redefinition: theory atom '%u:%s' already defined in a previous step", atom,
-                               name.c_str());
+                               "Redefinition: theory atom '{}:{}' already defined in a previous step", atom, name);
             auto [it, added] = assignAtomName(atom, name);
-            POTASSCO_CHECK_PRE(added, "Redefinition: theory atom '%u:%s' already defined as %s", atom, name.c_str(),
+            POTASSCO_CHECK_PRE(added, "Redefinition: theory atom '{}:{}' already defined as {}", atom, name,
                                it->second.c_str());
         }
     }
@@ -754,7 +753,7 @@ void AspifTextOutput::Data::showAtom(std::ostream& os, std::string_view name, Dy
     }
     else if (arity != last.second || id != last.first) {
         temp.clear();
-        toChars(temp.append(id).append("/"), arity);
+        formatTo(temp, "{}/{}", id, arity);
         if (auto pred = temp.view(); try_emplace(strings, pred, 0).second) {
             os << "#show " << pred << ".\n";
         }

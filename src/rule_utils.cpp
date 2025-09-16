@@ -91,7 +91,7 @@ bool RuleBuilder::isFact() const {
 }
 void RuleBuilder::start(Range& r, uint32_t type, const Weight_t* bound) {
     if (not frozen()) {
-        POTASSCO_CHECK_PRE(r.open(), "%s already started", (&r == &head_ ? "Head" : "Body"));
+        POTASSCO_CHECK_PRE(r.open(), "{} already started", (&r == &head_ ? "Head" : "Body"));
         if (auto& other = &r == &head_ ? body_ : head_; not other.open()) {
             store_set_bit(other.end_flag, Range::end_bit);
         }
@@ -111,7 +111,7 @@ void RuleBuilder::extend(Range& r, const T& elem, const char* what) {
     if (not r.started()) {
         start(r, 0u);
     }
-    POTASSCO_CHECK_PRE(not r.finished(), "%s already frozen", what);
+    POTASSCO_CHECK_PRE(not r.finished(), "{} already frozen", what);
     new (mem_.alloc(sizeof(T)).data()) T(elem);
     r.end_flag += sizeof(T);
 }

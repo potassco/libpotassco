@@ -167,16 +167,14 @@ struct SmodelsConvert::SmData {
     }
     SymTab::iterator addOutput(Atom_t atom, std::string_view str) {
         auto [it, added] = symTab.try_emplace(atom, str);
-        POTASSCO_CHECK_PRE(added, "Redefinition: atom '%u:%" PRIsv "' already shown as '%s'", atom, PRI_SV(str),
-                           it->second.c_str());
+        POTASSCO_CHECK_PRE(added, "Redefinition: atom '{}:{}' already shown as '{}'", atom, str, it->second.c_str());
         output.emplace_back(it);
         return it;
     }
     void addTerm(Id_t termId, std::string_view str) {
         auto [it, added] = termTab.try_emplace(termId, scratch, str);
-        POTASSCO_CHECK_PRE(added || it->second.name.view() == str,
-                           "Redefinition: term '%u:%" PRIsv "' already defined as '%s'", termId, PRI_SV(str),
-                           it->second.name.c_str());
+        POTASSCO_CHECK_PRE(added || it->second.name.view() == str, "Redefinition: term '{}:{}' already defined as '{}'",
+                           termId, str, it->second.name.c_str());
     }
     void addMinimize(Weight_t prio, WeightLitSpan lits) {
         if (minimize.empty() || minimize.back().prio != prio) {
@@ -296,7 +294,7 @@ void SmodelsConvert::outputAtom(Atom_t atom, std::string_view name) {
 void SmodelsConvert::outputTerm(Id_t termId, std::string_view name) { data_->addTerm(termId, name); }
 void SmodelsConvert::output(Id_t termId, LitSpan cond) {
     auto it = data_->termTab.find(termId);
-    POTASSCO_CHECK_PRE(it != data_->termTab.end(), "Undefined: term %u is unknown", termId);
+    POTASSCO_CHECK_PRE(it != data_->termTab.end(), "Undefined: term {} is unknown", termId);
     auto condAtom = makeAtom(cond, neg(it->second.last), false);
     if (not it->second.atom) {
         it->second.atom = data_->newAtom();
