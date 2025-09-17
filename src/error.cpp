@@ -75,7 +75,6 @@ static bool isCygPty(FILE*) { return false; }
 #endif
 
 #include <cfloat>
-#include <cstdarg>
 #include <cstdio>
 #include <span>
 #include <utility>
@@ -161,7 +160,7 @@ static DynamicBuffer& appendInfo(DynamicBuffer& buffer, std::string_view type, c
                                  bool addFile) {
     buffer.append(addFile ? ExpressionInfo::relativeFileName(expressionInfo.location)
                           : expressionInfo.location.function_name());
-    toChars(buffer.append(":"sv), expressionInfo.location.line());
+    formatTo(buffer, ":{}", expressionInfo.location.line());
     if (addFile) {
         buffer.append(": "sv).append(expressionInfo.location.function_name());
     }
@@ -171,16 +170,12 @@ static DynamicBuffer& appendInfo(DynamicBuffer& buffer, std::string_view type, c
     return buffer.append(type).append(startExp).append(expressionInfo.expression).append(endExp).append("failed."sv);
 }
 
-extern void failAbort(const ExpressionInfo& expressionInfo, const char* fmt, ...) {
+extern void failAbort(const ExpressionInfo& expressionInfo, std::string_view msg) {
     char local[1024];
-    auto buffer     = DynamicBuffer{local};
-    auto hasMessage = fmt && *fmt;
+    auto buffer = DynamicBuffer{local};
     appendInfo(buffer, "Assertion "sv, expressionInfo, true);
-    if (hasMessage) {
-        va_list args;
-        va_start(args, fmt);
-        Detail::vFormatf(buffer.append("\nmessage: "sv), fmt, args);
-        va_end(args);
+    if (not msg.empty()) {
+        buffer.append("\nmessage: "sv).append(msg);
     }
     buffer.push(0);
     if (g_abort_handler) {
@@ -190,32 +185,28 @@ extern void failAbort(const ExpressionInfo& expressionInfo, const char* fmt, ...
     std::abort();
 }
 
-extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char* fmt, ...) {
+extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, std::string_view msg) {
     if (ec == Errc::bad_alloc) {
         throw std::bad_alloc();
     }
-    char    local[1024];
-    auto    buffer     = DynamicBuffer{local};
-    auto    hasMessage = fmt && *fmt;
-    va_list args;
-    va_start(args, fmt);
+    char local[1024];
+    auto buffer = DynamicBuffer{local};
     if (ec == Errc::precondition_fail) {
         appendInfo(buffer, "Precondition "sv, expressionInfo, false);
-        if (hasMessage) {
-            Detail::vFormatf(buffer.append("\nmessage: "), fmt, args);
+        if (not msg.empty()) {
+            buffer.append("\nmessage: "sv).append(msg);
         }
         ec = Errc::invalid_argument;
     }
     else {
-        if (hasMessage) {
-            Detail::vFormatf(buffer, fmt, args);
+        if (not msg.empty()) {
+            buffer.append(msg);
             buffer.append(": "sv);
         }
         auto check = expressionInfo.expression.empty() ? ""sv : "check "sv;
         buffer.append(std::generic_category().message(static_cast<int>(ec))).append("\n"sv);
         appendInfo(buffer, check, expressionInfo, false);
     }
-    va_end(args);
     buffer.push(0);
     const char* message = buffer.data();
     switch (ec) {
@@ -240,5 +231,15 @@ std::string_view RuntimeError::details() const noexcept {
     auto pos = ret.find('\n');
     return ret.substr(pos < ret.size() ? pos + 1 : ret.size());
 }
+
+namespace Detail {
+auto vmessage(std::string_view format, std::format_args args) -> std::string_view {
+    thread_local std::string buffer;
+    auto&                    x = buffer;
+    x.clear();
+    std::vformat_to(std::back_inserter(x), format, args);
+    return x;
+}
+} // namespace Detail
 
 } // namespace Potassco

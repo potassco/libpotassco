@@ -182,7 +182,7 @@ void SmodelsInput::readSymbols() {
         }
         if (opts_.cHeuristic) {
             if (auto [it, added] = extra_->addAtom(name, atom); not added) {
-                POTASSCO_CHECK_PRE(it->second == 0, "Redefinition: atom '%s' already exists", scratch.data());
+                POTASSCO_CHECK_PRE(it->second == 0, "Redefinition: atom '{}' already exists", scratch.data());
                 it->second = atom;
             }
         }

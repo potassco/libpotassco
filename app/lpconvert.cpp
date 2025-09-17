@@ -124,7 +124,7 @@ void LpConvert::run() try {
     std::istream& in = iFile.is_open() ? iFile : std::cin;
     std::ostream& os = oFile.is_open() ? oFile : std::cout;
     POTASSCO_CHECK(in.peek() == 'a' || std::isdigit(in.peek()), std::errc::not_supported,
-                   "Unrecognized input format '%c' - expected 'aspif' or <digit>", in.peek());
+                   "Unrecognized input format '{}' - expected 'aspif' or <digit>", in.peek());
     Potassco::SmodelsInput::Options opts;
     if (potassco_) {
         opts.enableClaspExt().convertEdges().convertHeuristic();

@@ -246,6 +246,7 @@ constexpr Weight_t weight(const WeightLit& w) { return w.weight; }
 class DynamicBuffer {
 public:
     using trivially_relocatable = std::true_type; // NOLINT
+    using value_type            = char;           // NOLINT
 
     //! Creates a buffer with the given initial capacity.
     explicit DynamicBuffer(std::size_t initialCap = 0);
@@ -286,6 +287,7 @@ public:
     //! Appends the given character to the buffer.
     void  push(char c) { append(&c, 1); }
     char& back() { return data()[size() - 1]; }
+    void  push_back(char c) { push(c); }
 
     //! Reduces the number of used bytes in this region by `n`.
     void pop(std::size_t n) { sizeOwn_ -= n <= size() ? static_cast<uint32_t>(n) : size(); }

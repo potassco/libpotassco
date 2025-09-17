@@ -195,7 +195,7 @@ void TheoryData::addElement(Id_t id, IdSpan terms, Id_t cId) {
         data_->elems.resize(std::max(numTerms(), id + 1));
     }
     else {
-        POTASSCO_CHECK_PRE(not isNewElement(id), "Redefinition of theory element '%u'", id);
+        POTASSCO_CHECK_PRE(not isNewElement(id), "Redefinition of theory element '{}'", id);
         DestroyT()(data_->elems[id]);
     }
     data_->elems[id] = Data::allocConstruct<TheoryElement>(terms, cId != 0 ? &cId : nullptr);
@@ -213,7 +213,7 @@ TheoryTerm& TheoryData::setTerm(Id_t id) {
         data_->terms.resize(std::max(numTerms(), id + 1), c_nul_term);
     }
     else {
-        POTASSCO_CHECK_PRE(not isNewTerm(id), "Redefinition of theory term '%u'", id);
+        POTASSCO_CHECK_PRE(not isNewTerm(id), "Redefinition of theory term '{}'", id);
         removeTerm(id);
     }
     return data_->terms[id];
@@ -248,11 +248,11 @@ bool     TheoryData::isNewTerm(Id_t id) const { return hasTerm(id) && id >= data
 bool     TheoryData::hasElement(Id_t id) const { return id < numElems() && data_->elems[id] != nullptr; }
 bool     TheoryData::isNewElement(Id_t id) const { return hasElement(id) && id >= data_->frame.elem; }
 auto     TheoryData::getTerm(Id_t id) const -> TheoryTerm {
-    POTASSCO_CHECK(hasTerm(id), Errc::out_of_range, "Unknown term '%u'", id);
+    POTASSCO_CHECK(hasTerm(id), Errc::out_of_range, "Unknown term '{}'", id);
     return data_->terms[id];
 }
 const TheoryElement& TheoryData::getElement(Id_t id) const {
-    POTASSCO_CHECK(hasElement(id), Errc::out_of_range, "Unknown element '%u'", id);
+    POTASSCO_CHECK(hasElement(id), Errc::out_of_range, "Unknown element '{}'", id);
     return *data_->elems[id];
 }
 void TheoryData::accept(Visitor& out, VisitMode m) const {

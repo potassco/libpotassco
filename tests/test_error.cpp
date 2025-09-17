@@ -34,9 +34,8 @@ struct Error_t {};
 struct Error : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
-[[noreturn]] void failThrow(Error_t, const Potassco::ExpressionInfo& info, std::string m) {
-    m.append(" with failed expression: ").append(info.expression);
-    throw Error(m);
+[[noreturn]] void failThrow(Error_t, const Potassco::ExpressionInfo& info, std::string_view m) {
+    throw Error(std::string(m).append(" with failed expression: ").append(info.expression));
 }
 } // namespace User
 
@@ -80,10 +79,11 @@ TEST_CASE("Assertion and Error", "[error]") {
                                      messageEquals(std::string("custom message: ") + defMessage + "\n" + loc +
                                                    "check 'expression' failed."));
 
-                CHECK_THROWS_MATCHES(Potassco::failThrow(makeError(), e, "custom message with args %u %s", 1, "bla"),
-                                     std::invalid_argument,
-                                     messageEquals(std::string("custom message with args 1 bla: ") + defMessage + "\n" +
-                                                   loc + "check 'expression' failed."));
+                CHECK_THROWS_MATCHES(
+                    Potassco::failThrow(makeError(), e, Detail::message("custom message with args {} {}", 1, "bla")),
+                    std::invalid_argument,
+                    messageEquals(std::string("custom message with args 1 bla: ") + defMessage + "\n" + loc +
+                                  "check 'expression' failed."));
             }
         }
 
@@ -104,11 +104,11 @@ TEST_CASE("Assertion and Error", "[error]") {
                                      messageEquals(loc + "Precondition 'expression' failed.\n"
                                                          "message: custom message"));
 
-                CHECK_THROWS_MATCHES(
-                    Potassco::failThrow(Errc::precondition_fail, e, "custom message with args %u %s", 1, "bla"),
-                    std::invalid_argument,
-                    messageEquals(loc + "Precondition 'expression' failed.\n"
-                                        "message: custom message with args 1 bla"));
+                CHECK_THROWS_MATCHES(Potassco::failThrow(Errc::precondition_fail, e,
+                                                         Detail::message("custom message with args {} {}", 1, "bla")),
+                                     std::invalid_argument,
+                                     messageEquals(loc + "Precondition 'expression' failed.\n"
+                                                         "message: custom message with args 1 bla"));
             }
         }
 
@@ -131,11 +131,6 @@ TEST_CASE("Assertion and Error", "[error]") {
                 CHECK_THROWS_MATCHES(Potassco::failAbort(e, "custom message"), std::logic_error,
                                      messageEquals(loc + "Assertion 'expression' failed.\n"
                                                          "message: custom message"));
-
-                CHECK_THROWS_MATCHES(Potassco::failAbort(e, "custom message with args %u %s", 1, "bla"),
-                                     std::logic_error,
-                                     messageEquals(loc + "Assertion 'expression' failed.\n"
-                                                         "message: custom message with args 1 bla"));
             }
         }
     }
@@ -178,22 +173,17 @@ TEST_CASE("Assertion and Error", "[error]") {
             CHECK_THROWS_AS(POTASSCO_FAIL(std::errc::not_enough_memory), std::bad_alloc);
             CHECK_THROWS_MATCHES(POTASSCO_FAIL(std::errc::invalid_argument, "not good enough"), std::invalid_argument,
                                  messageContains("not good enough"));
-            CHECK_THROWS_MATCHES(POTASSCO_FAIL(Errc::length_error, "at most %d allowed", 3), std::length_error,
-                                 messageContains("at most 3 allowed"));
         }
 
         SECTION("check") {
             CHECK_NOTHROW(POTASSCO_CHECK(true, std::errc::invalid_argument));
             CHECK_NOTHROW(POTASSCO_CHECK(true, std::errc::invalid_argument, "foo"));
-            CHECK_NOTHROW(POTASSCO_CHECK(true, std::errc::invalid_argument, "%s", "foo"));
 
             CHECK_THROWS_MATCHES(POTASSCO_CHECK(false, std::errc::argument_out_of_domain), std::domain_error,
                                  messageContains("check 'false' failed"));
             CHECK_THROWS_MATCHES(POTASSCO_CHECK(false, std::errc::argument_out_of_domain, "Message"), std::domain_error,
                                  messageContains("Message"));
-            CHECK_THROWS_MATCHES(POTASSCO_CHECK(false, std::errc::illegal_byte_sequence, "Message %d", 2), RuntimeError,
-                                 messageContains("Message 2"));
-            CHECK_THROWS_AS(POTASSCO_CHECK(false, std::errc::not_enough_memory, "Message %d", 2), std::bad_alloc);
+            CHECK_THROWS_AS(POTASSCO_CHECK(false, std::errc::not_enough_memory, "Message"), std::bad_alloc);
 
             CHECK_THROWS_MATCHES(
                 POTASSCO_CHECK(false, EAGAIN), RuntimeError,
@@ -208,7 +198,6 @@ TEST_CASE("Assertion and Error", "[error]") {
         SECTION("precondition") {
             CHECK_NOTHROW(POTASSCO_CHECK_PRE(true));
             CHECK_NOTHROW(POTASSCO_CHECK_PRE(true, "custom message"));
-            CHECK_NOTHROW(POTASSCO_CHECK_PRE(true, "%s", "custom message"));
             CHECK_NOTHROW(POTASSCO_DEBUG_CHECK_PRE(true));
 
             CHECK_THROWS_MATCHES(POTASSCO_CHECK_PRE(false), std::invalid_argument,
@@ -216,14 +205,11 @@ TEST_CASE("Assertion and Error", "[error]") {
             CHECK_THROWS_MATCHES(POTASSCO_CHECK_PRE(false), std::invalid_argument, messageContains(POTASSCO_FUNC_NAME));
             CHECK_THROWS_MATCHES(POTASSCO_CHECK_PRE(false, "custom message"), std::invalid_argument,
                                  messageContains("custom message"));
-            CHECK_THROWS_MATCHES(POTASSCO_CHECK_PRE(false, "%s %d", "foo", 2), std::invalid_argument,
-                                 messageContains("foo 2"));
         }
 
         SECTION("assert") {
             CHECK_NOTHROW(POTASSCO_ASSERT(true));
             CHECK_NOTHROW(POTASSCO_ASSERT(true, "custom message"));
-            CHECK_NOTHROW(POTASSCO_ASSERT(true, "%s", "custom message"));
             CHECK_NOTHROW(POTASSCO_DEBUG_ASSERT(true));
 
             auto old = Potassco::setAbortHandler(+[](const char* msg) { throw std::logic_error(msg); });
@@ -231,7 +217,7 @@ TEST_CASE("Assertion and Error", "[error]") {
             using sc = std::source_location;
             // clang-format off
             CHECK_THROWS_WITH(POTASSCO_ASSERT(false), makeLocation(sc::current(), true, "Assertion 'false' failed."));
-            CHECK_THROWS_WITH(POTASSCO_ASSERT(false, "Fail %d", 123), makeLocation(sc::current(), true, "Assertion 'false' failed.\nmessage: Fail 123"));
+            CHECK_THROWS_WITH(POTASSCO_ASSERT(false, "Fail 123"), makeLocation(sc::current(), true, "Assertion 'false' failed.\nmessage: Fail 123"));
             CHECK_THROWS_WITH(POTASSCO_ASSERT_NOT_REACHED("foo"), makeLocation(sc::current(), true, "Assertion 'not reached' failed.\nmessage: foo"));
             // clang-format on
         }

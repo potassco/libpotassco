@@ -25,6 +25,7 @@
 #include <potassco/platform.h>
 
 #include <potassco/enum.h>
+#include <potassco/format.h>
 
 #include <system_error>
 namespace Potassco {
@@ -98,64 +99,71 @@ constexpr auto translateEc(T in) {
         return in;
     }
 }
+auto        vmessage(std::string_view format, std::format_args args) -> std::string_view;
+inline auto message(std::string_view m = {}) -> std::string_view { return m; } // NOLINT
+template <typename... Args>
+requires(sizeof...(Args) > 0)
+auto message(std::format_string<Args...> format, Args&&... args) -> std::string_view {
+    return Detail::vmessage(format.get(), std::make_format_args(args...));
+}
 } // namespace Detail
 
 //! Throws an exception of type defined the given error code.
-POTASSCO_ATTR_NORETURN extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char* fmt = nullptr,
-                                             ...) POTASSCO_ATTRIBUTE_FORMAT(3, 4);
+POTASSCO_ATTR_NORETURN extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, std::string_view msg = {});
 
 //! Calls the currently active abort handler.
 /*!
  * \see Potassco::setAbortHandler(AbortHandler handler).
  */
-POTASSCO_ATTR_NORETURN extern void failAbort(const ExpressionInfo& expressionInfo, const char* fmt = nullptr, ...)
-    POTASSCO_ATTRIBUTE_FORMAT(2, 3);
+POTASSCO_ATTR_NORETURN extern void failAbort(const ExpressionInfo& expressionInfo, std::string_view msg = {});
 
 //! Evaluates the given expression and calls `Potassco::failAbort()` if it is false.
 /*!
  * \note The given expression is @b always evaluated. Use `POTASSCO_DEBUG_ASSERT()` for debug-only checks.
  *
  * \param exp Expression that shall be true.
- * \param ... An optional message that is added to the error output on failure. The message can be a C-style format
+ * \param ... An optional message that is added to the error output on failure. The message can be a std::format
  *            string followed by corresponding arguments.
  */
 #define POTASSCO_ASSERT(exp, ...)                                                                                      \
-    (void) ((!!(exp)) || (Potassco::failAbort(POTASSCO_CAPTURE_EXPRESSION(exp) POTASSCO_OPTARGS(__VA_ARGS__)), 0))
+    (void) ((!!(exp)) ||                                                                                               \
+            (Potassco::failAbort(POTASSCO_CAPTURE_EXPRESSION(exp), Potassco::Detail::message(__VA_ARGS__)), 0))
 
 //! Evaluates the given expression and calls failThrow(code, ...) with the given error code if it is false.
 /*!
- * \note On failure, Potassco::failThrow(code, ...) is called if `code` is of type int, std::errc, or Errc.
- *       Otherwise, failThrow(code, ...) must be a viable function found via ADL.
+ * \note On failure, Potassco::failThrow(code, exp, msg) is called if `code` is of type int, std::errc, or Errc.
+ *       Otherwise, failThrow(code, exp, msg) must be a viable function found via ADL.
  *
  * \param exp  Expression that is expected to be true.
  * \param code An error code describing the error if `exp` is false.
- * \param ...  Optional parameters passed to the selected failThrow() overload on error.
+ * \param ...  Optional message passed to the selected failThrow() overload on error.
  */
 #define POTASSCO_CHECK(exp, code, ...)                                                                                 \
-    (void) ((!!(exp)) || (failThrow(Potassco::Detail::translateEc((code)),                                             \
-                                    POTASSCO_CAPTURE_EXPRESSION(exp) POTASSCO_OPTARGS(__VA_ARGS__)),                   \
+    (void) ((!!(exp)) || (failThrow(Potassco::Detail::translateEc((code)), POTASSCO_CAPTURE_EXPRESSION(exp),           \
+                                    Potassco::Detail::message(__VA_ARGS__)),                                           \
                           0))
 
 //! Effect: POTASSCO_CHECK(false, code, ...)
 #define POTASSCO_FAIL(code, ...)                                                                                       \
-    ((void) (failThrow(Potassco::Detail::translateEc((code)),                                                          \
-                       {{}, POTASSCO_CURRENT_LOCATION()} POTASSCO_OPTARGS(__VA_ARGS__)),                               \
+    ((void) (failThrow(Potassco::Detail::translateEc((code)), {{}, POTASSCO_CURRENT_LOCATION()},                       \
+                       Potassco::Detail::message(__VA_ARGS__)),                                                        \
              0))
 
-//! Evaluates the given expression and calls Potassco::failThrow(Errc::precondition_fail, ...) if it is false.
+//! Evaluates the given expression and calls Potassco::failThrow(Errc::precondition_fail, exp, msg) if it is false.
 /*!
  * \note The given expression is @b always evaluated. Use `POTASSCO_DEBUG_CHECK_PRE()` for debug-only checks.
  * \note By default, precondition failures are mapped to std::invalid_argument exceptions.
  *
  * \param exp Expression that shall be true.
- * \param ... An optional message that is added to the error output on failure. The message can be a C-style format
+ * \param ... An optional message that is added to the error output on failure. The message can be a std::format
  *            string followed by corresponding arguments.
  */
 #define POTASSCO_CHECK_PRE(exp, ...) POTASSCO_CHECK(exp, Potassco::Errc::precondition_fail, __VA_ARGS__)
 
-//! Effect: POTASSCO_ASSERT(false, Msg, ...)
+//! Effect: POTASSCO_ASSERT(false, Msg)
 #define POTASSCO_ASSERT_NOT_REACHED(Msg, ...)                                                                          \
-    Potassco::failAbort(POTASSCO_CAPTURE_EXPRESSION(not reached), Msg POTASSCO_OPTARGS(__VA_ARGS__))
+    Potassco::failAbort(POTASSCO_CAPTURE_EXPRESSION(not reached),                                                      \
+                        Potassco::Detail::message(Msg POTASSCO_OPTARGS(__VA_ARGS__)))
 
 /*!
  * \def POTASSCO_DEBUG_ASSERT(exp, ...)

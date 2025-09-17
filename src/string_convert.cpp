@@ -169,54 +169,6 @@ std::from_chars_result parseFloat(std::string_view in, double& out, double min, 
     return r;
 }
 
-char* writeSigned(char* first, char* last, std::intmax_t in) {
-    auto r = std::to_chars(first, last, in);
-    POTASSCO_CHECK(r.ec == std::errc{}, r.ec, "std::to_chars could not convert signed integer %zd",
-                   static_cast<std::ptrdiff_t>(in));
-    return r.ptr;
-}
-
-char* writeUnsigned(char* first, char* last, std::uintmax_t in) {
-    auto r = std::to_chars(first, last, in);
-    POTASSCO_CHECK(r.ec == std::errc{}, r.ec, "std::to_chars could not convert unsigned integer %zu",
-                   static_cast<size_t>(in));
-    return r.ptr;
-}
-
-char* writeFloat(char* first, char* last, double in) {
-    // Set precision = 6 to match the default behavior of (s)printf.
-    auto r = std::to_chars(first, last, in, std::chars_format::general, 6);
-    POTASSCO_CHECK(r.ec == std::errc{}, r.ec, "std::to_chars could not convert double %g", in);
-    return r.ptr;
-}
-std::size_t vFormatf(DynamicBuffer& buffer, const char* fmt, va_list args) noexcept {
-    bool truncate = false;
-    for (va_list saved;;) {
-        va_copy(saved, args);
-        POTASSCO_SCOPE_EXIT({ va_end(saved); });
-        auto avail = buffer.alloc(buffer.capacity() - buffer.size());
-        auto n     = std::vsnprintf(avail.data(), avail.size(), fmt, saved);
-        if (n < 0) {
-            return 0;
-        }
-        if (static_cast<std::size_t>(n) < avail.size()) {
-            buffer.pop(avail.size() - static_cast<std::size_t>(n));
-            return static_cast<std::size_t>(n);
-        }
-        if (truncate) {
-            return avail.size();
-        }
-        try {
-            buffer.pop(avail.size());
-            buffer.reserve(buffer.size() + static_cast<std::size_t>(n + 1));
-        }
-        catch (const std::exception&) {
-            // allocation error - truncate result
-            truncate = true;
-        }
-    }
-}
-
 } // namespace Detail
 namespace Parse {
 bool eqIgnoreCase(std::string_view lhs, std::string_view rhs) {
@@ -260,24 +212,5 @@ std::from_chars_result fromChars(std::string_view in, bool& out) {
     }
     return Parse::error(in);
 }
-
-std::size_t formatTo(DynamicBuffer& buffer, const char* fmt, ...) noexcept {
-    va_list args;
-    va_start(args, fmt);
-    auto r = Detail::vFormatf(buffer, fmt, args);
-    va_end(args);
-    return r;
-}
-StrF formatF(const char* fmt, ...) noexcept {
-    StrF    ret;
-    va_list args;
-    va_start(args, fmt);
-    Detail::vFormatf(ret.buffer_, fmt, args);
-    va_end(args);
-    ret.buffer_.push(0);
-    return ret;
-}
-auto StrF::c_str() const noexcept -> const char* { return buffer_.data(); }
-auto StrF::view() const noexcept -> std::string_view { return {buffer_.data(), buffer_.size() - 1}; }
 
 } // namespace Potassco
