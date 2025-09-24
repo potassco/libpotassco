@@ -2,6 +2,8 @@ add_executable(test_potassco_lp)
 target_sources(test_potassco_lp PRIVATE
     test_aspif.cpp
     test_error.cpp
+    test_graph.cpp
+    test_reify.cpp
     test_smodels.cpp
     test_text.cpp)
 add_executable(test_potassco_opts)
