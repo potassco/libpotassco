@@ -33,7 +33,7 @@
 
 namespace Potassco {
 namespace Detail {
-std::from_chars_result parseChar(std::string_view in, unsigned char& out);
+std::from_chars_result parseChar(std::string_view in, char& out);
 std::from_chars_result parseUnsigned(std::string_view in, std::uintmax_t& out, std::uintmax_t max);
 std::from_chars_result parseSigned(std::string_view in, std::intmax_t& out, std::intmax_t min, std::intmax_t max);
 std::from_chars_result parseFloat(std::string_view in, double& out, double min, double max);
@@ -84,11 +84,11 @@ std::from_chars_result fromChars(std::string_view in, T& out) {
             out = static_cast<T>(temp);
         }
     }
-    if constexpr (sizeof(T) == 1) {
+    if constexpr (std::is_same_v<T, char>) {
         if (not Parse::ok(res)) {
-            unsigned char temp;
+            char temp;
             if (res = Detail::parseChar(in, temp); Parse::ok(res)) {
-                out = static_cast<T>(temp);
+                out = temp;
             }
         }
     }
@@ -157,8 +157,10 @@ std::from_chars_result fromChars(std::string_view in, C& out) {
 template <HasEnumEntries EnumT>
 std::from_chars_result fromChars(std::string_view in, EnumT& out) {
     // try numeric extraction first
-    std::underlying_type_t<EnumT> v;
-    auto                          ret = fromChars(in, v);
+    using U = std::underlying_type_t<EnumT>;
+    using T = std::conditional_t<not std::is_same_v<U, char>, U, int>;
+    T    v;
+    auto ret = fromChars(in, v);
     if (Parse::ok(ret)) {
         if (enum_cast<EnumT>(v).has_value()) {
             out = static_cast<EnumT>(v);

@@ -55,7 +55,7 @@ static constexpr void skipws(std::string_view& in) {
     return in.remove_prefix(std::min(p, in.size()));
 }
 
-std::from_chars_result parseChar(std::string_view in, unsigned char& out) {
+std::from_chars_result parseChar(std::string_view in, char& out) {
     static constexpr auto c_from = "fnrtv"sv;
     static constexpr auto c_to   = "\f\n\r\t\v"sv;
 
@@ -64,11 +64,11 @@ std::from_chars_result parseChar(std::string_view in, unsigned char& out) {
     }
 
     if (auto pos = in[0] == '\\' ? c_from.find(in[in.size() > 1]) : std::string_view::npos; pos < c_to.size()) {
-        out = static_cast<unsigned char>(c_to[pos]);
+        out = c_to[pos];
         return Parse::success(in, 2);
     }
 
-    out = static_cast<unsigned char>(in[0]);
+    out = in[0];
     return Parse::success(in, 1);
 }
 

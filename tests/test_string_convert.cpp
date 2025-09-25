@@ -23,6 +23,7 @@
 #include <potassco/error.h>
 #include <potassco/format.h>
 
+#include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <climits>
@@ -363,10 +364,14 @@ TEST_CASE("String conversion", "[string]") {
         }
     }
 }
-
+namespace {
 enum class Foo : unsigned { value1 = 0, value2 = 1, value3 = 2, value4, value5 = 7, value6 = 7 + 1 };
+enum class Char : char { value1 = 0, value2 = 1, value3 = 2, value4, value5 = 7, value6 = 7 + 1 };
+enum class Byte : char { value1 = 0, value2 = 1, value3 = 2, value4, value5 = 7, value6 = 7 + 1 };
 POTASSCO_REFLECT_ENUM_ENTRIES(Foo, 0u, 8u);
-
+POTASSCO_REFLECT_ENUM_ENTRIES(Char, 0u, 8u);
+POTASSCO_REFLECT_ENUM_ENTRIES(Byte, 0u, 8u);
+} // namespace
 using namespace std::literals;
 static_assert(Potassco::enum_count<Foo>() == 6, "Wrong count");
 static_assert(Potassco::enum_name(Foo::value3) == "value3"sv, "Wrong name");
@@ -391,26 +396,28 @@ TEST_CASE("Enum entries", "[enum]") {
     REQUIRE(Potassco::enum_max<NoMeta>() == 255u);
 }
 
-TEST_CASE("Enum to string", "[enum]") {
-    REQUIRE(toString(Foo::value1) == "value1");
-    REQUIRE(toString(Foo::value2) == "value2");
-    REQUIRE(toString(Foo::value3) == "value3");
-    REQUIRE(toString(Foo::value4) == "value4");
-    REQUIRE(toString(Foo::value5) == "value5");
-    REQUIRE(toString(Foo::value6) == "value6");
-    Foo unknown{12};
+TEMPLATE_TEST_CASE("Enum to string", "[enum]", Foo, Char, Byte) {
+    using E = TestType;
+    REQUIRE(toString(E::value1) == "value1");
+    REQUIRE(toString(E::value2) == "value2");
+    REQUIRE(toString(E::value3) == "value3");
+    REQUIRE(toString(E::value4) == "value4");
+    REQUIRE(toString(E::value5) == "value5");
+    REQUIRE(toString(E::value6) == "value6");
+    E unknown{12};
     REQUIRE(toString(unknown) == "12");
 }
 
-TEST_CASE("Enum from string", "[enum]") {
-    REQUIRE(string_cast<Foo>("Value3") == Foo::value3);
-    REQUIRE(string_cast<Foo>("7") == Foo::value5);
-    REQUIRE(string_cast<Foo>("Value4") == Foo::value4);
-    REQUIRE(string_cast<Foo>("vAlUe4") == Foo::value4);
-    REQUIRE(string_cast<Foo>("8") == Foo::value6);
-    REQUIRE_FALSE(string_cast<Foo>("9").has_value());
-    REQUIRE_FALSE(string_cast<Foo>("Value98").has_value());
-    REQUIRE_FALSE(string_cast<Foo>("Value").has_value());
+TEMPLATE_TEST_CASE("Enum from string", "[enum]", Foo, Char, Byte) {
+    using E = TestType;
+    REQUIRE(string_cast<E>("Value3") == E::value3);
+    REQUIRE(string_cast<E>("7") == E::value5);
+    REQUIRE(string_cast<E>("Value4") == E::value4);
+    REQUIRE(string_cast<E>("vAlUe4") == E::value4);
+    REQUIRE(string_cast<E>("8") == E::value6);
+    REQUIRE_FALSE(string_cast<E>("9").has_value());
+    REQUIRE_FALSE(string_cast<E>("Value98").has_value());
+    REQUIRE_FALSE(string_cast<E>("Value").has_value());
 }
 
 } // namespace Potassco::Test
