@@ -21,7 +21,7 @@
 //
 #pragma once
 
-#include <potassco/platform.h>
+#include <potassco/format.h>
 #include <potassco/program_opts/program_options.h>
 
 #include <span>
@@ -33,11 +33,17 @@ namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
 class Application {
 public:
+    //! Default color style for messages if enabled via `enableColoredMessages()`.
+    static constexpr TextStyle col_error   = TextStyle::Emphasis::bold | TextStyle::Color::red;
+    static constexpr TextStyle col_warning = TextStyle::Emphasis::bold | TextStyle::Color::bright_yellow;
+    static constexpr TextStyle col_info    = TextStyle::Emphasis::bold | TextStyle::Color::cyan;
+    static constexpr TextStyle col_em      = TextStyle::Emphasis::bold;
+
     //! Description of and max value for the help option.
     struct HelpOpt {
         HelpOpt(ProgramOptions::Str str, unsigned lev) : desc(str), max(lev) {}
-        ProgramOptions::Str desc;
-        unsigned            max;
+        ProgramOptions::Str desc; //!< Description of the help option.
+        unsigned            max;  //!< Max supported value or 0 if option should not be added.
     };
     //! Range and default value for the verbose option.
     struct VerboseOpt {
@@ -100,40 +106,30 @@ public:
 
     enum MessageType { message_error, message_warning, message_info };
 
-    //! Returns an io-manipulator that writes the given messages formatted as `message_error` to a stream.
-    [[nodiscard]] auto error(std::string_view msg = {}) const {
-        return Prefix{.app = this, .msg = msg, .type = message_error};
-    }
-    //! Returns an io-manipulator that writes the given messages formatted as `message_warning` to a stream.
-    [[nodiscard]] auto warn(std::string_view msg = {}) const {
-        return Prefix{.app = this, .msg = msg, .type = message_warning};
-    }
-    //! Returns an io-manipulator that writes the given messages formatted as `message_info` to a stream.
-    [[nodiscard]] auto info(std::string_view msg = {}) const {
-        return Prefix{.app = this, .msg = msg, .type = message_info};
-    }
-
-    //! Writes a message of the given type to the provided buffer.
+    //! Returns an io-manipulator that writes the given message of type `t` to a stream.
     /*!
-     * The message format is: [<type-col>]'***' <type-prefix> (<app-name>): [<reset><bold>] <message>[<reset>], where
+     * The message format is: [col_<type>]'***' <type-prefix> (<app-name>): [<reset>col_em]<message>[<reset>], where
      *  the optional color codes are only added if colored messages are enabled.
      *
-     * \param[out] buf Buffer for storing the formatted message.
      * \param type Type of message.
-     * \param message The message to write.
+     * \param msg The message to write.
+     * \param exception Apply additional exception message formatting.
      */
-    template <typename BufT>
-    void writeMessage(BufT& buf, MessageType type, std::string_view message) const {
-        write(Sink{buf}, type, message, false);
+    [[nodiscard]] auto message(MessageType type, std::string_view msg = {}, bool exception = false) const {
+        return Prefix{.app = this, .msg = msg, .level = type, .exception = exception};
     }
+    //! Returns an io-manipulator that writes the given messages formatted as `message_error` to a stream.
+    [[nodiscard]] auto error(std::string_view msg = {}) const { return message(message_error, msg); }
+    //! Returns an io-manipulator that writes the given messages formatted as `message_warning` to a stream.
+    [[nodiscard]] auto warn(std::string_view msg = {}) const { return message(message_warning, msg); }
+    //! Returns an io-manipulator that writes the given messages formatted as `message_info` to a stream.
+    [[nodiscard]] auto info(std::string_view msg = {}) const { return message(message_info, msg); }
 
     //! Enables formatting of messages with ansi colors.
     /*!
-     * If enabled, messages are formatted with ansi color codes:
-     *  - Errors are prefixed in bold red (1;31)
-     *  - Warnings are prefixed in bold high-intensity yellow (1;93),
-     *  - Infos are highlighted in bold cyan (1;36), and
-     *  - any provided message is highlighted in bold (1).
+     * If enabled, messages are formatted with ansi color codes.
+     * Error, Warning, and Info messages are prefixed with col_error, col_warning, and col_info, respectively.
+     * Additionally, any provided message is highlighted in col_em.
      */
     void enableColoredMessages(bool enable = true);
 
@@ -186,15 +182,11 @@ private:
     struct Prefix {
         const Application* app;
         std::string_view   msg;
-        MessageType        type;
+        MessageType        level;
+        uint8_t            exception;
     };
     struct Sink {
         Sink(void* o, void (*f)(void*, std::string_view)) : obj(o), writeFun(f) {}
-        explicit Sink(std::ostream& os)
-            : Sink(&os, +[](void* o, std::string_view s) { (*static_cast<std::ostream*>(o)) << s; }) {}
-        template <typename S>
-        requires requires(S& s, std::string_view sv) { s.append(sv); }
-        explicit Sink(S& buf) : Sink(&buf, +[](void* o, std::string_view s) { static_cast<S*>(o)->append(s); }) {}
         void* obj{nullptr};
         void (*writeFun)(void*, std::string_view){nullptr};
         Sink& write(std::string_view s) {
@@ -203,11 +195,16 @@ private:
         }
     };
     friend std::ostream& operator<<(std::ostream& os, const Prefix& p) {
-        p.app->write(Sink{os}, p.type, p.msg);
+        p.app->write(Sink{&os, +[](void* o, std::string_view s) { (*static_cast<std::ostream*>(o)) << s; }}, p);
         return os;
     }
-    void              write(Sink s, MessageType type, std::string_view msg, bool internal = false) const;
-    static Sink&      colorize(Sink& sink, std::string_view msg, std::string_view color, bool internal);
+    template <CharBuffer B>
+    friend B& operator<<(B& b, const Prefix& p) {
+        p.app->write(Sink{&b, +[](void* o, std::string_view s) { static_cast<B*>(o)->append(s); }}, p);
+        return b;
+    }
+    void              write(Sink s, const Prefix& p) const;
+    static Sink&      colorize(Sink& sink, std::string_view msg, const TextStyle& color, bool exception);
     bool              applyOptions(std::span<const char* const> args);
     void              handleException();
     bool              unhandledException(const std::exception_ptr& e, std::string_view error, std::string_view info);

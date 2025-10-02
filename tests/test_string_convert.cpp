@@ -334,34 +334,154 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(Potassco::Parse::eqIgnoreCase("haL", "HALx", 3));
     }
 
-    SECTION("StrF") {
-        REQUIRE(formatF("Hello").view() == "Hello");
-        REQUIRE(formatF("Hello %s", "World").c_str() == std::string_view{"Hello World"});
-        REQUIRE(formatF("Hello %08u|%gs", 22, 3.1).view() == "Hello 00000022|3.1s");
+    SECTION("Num") {
+        REQUIRE(toString(num(42)) == "42");
+        REQUIRE(toString(num<4>(-42)) == " -42");
+        REQUIRE(toString(num<-4>(42)) == "42  ");
+
+        REQUIRE(toString(num<8>(4711u, 's')) == "   4711s");
+        REQUIRE(toString(num<-3>(7u, '%')) == "7% ");
+
+        REQUIRE(toString(num<0, 3>(0.12345)) == "0.123");
+        REQUIRE(toString(num<6, 3>(0.12345)) == " 0.123");
+        REQUIRE(toString(num<-7, 2>(0.12345)) == "0.12   ");
+        REQUIRE(toString(num<-7, 2>(0.12345, 's')) == "0.12s  ");
+    }
+    SECTION("Str") {
+        REQUIRE(toString(str("4711")) == "4711");
+        REQUIRE(toString(str<-8>("4711")) == "4711    ");
+        REQUIRE(toString(str<6>("4711")) == "  4711");
+    }
+    SECTION("Quoted") {
+        REQUIRE(toString(quoted("Hallo")) == "\"Hallo\"");
+        REQUIRE(toString(quoted("Hallo", "'")) == "'Hallo'");
+        REQUIRE(toString(quoted(42, "'")) == "'42'");
+    }
+    SECTION("Keyed") {
+        REQUIRE(toString(keyed("Hello", num<0, 3>(0.12345))) == "Hello: 0.123");
+        REQUIRE(toString(keyed("Foo", quoted("Bar"))) == "Foo: \"Bar\"");
+        REQUIRE(toString(keyed("", 23)) == "23");
+    }
+    SECTION("Styled") {
+        REQUIRE(toString(styled("Hallo", TextStyle::Emphasis::bold)) == "\x1b[1mHallo\x1b[0m");
+        REQUIRE(toString(styled(quoted("Hallo", "'"), TextStyle::Color::red | TextStyle::Emphasis::italic)) ==
+                "\x1b[3;31m'Hallo'\x1b[0m");
+    }
+}
+TEST_CASE("BasicCharBuffer", "[string]") {
+    BasicCharBuffer buffer;
+    SECTION("move") {
+        const auto* local = buffer.view().data();
+        SECTION("small") {
+            buffer.open(TextStyle::Color::red, '\n').append("Hello");
+            BasicCharBuffer buffer2(std::move(buffer));
+            REQUIRE(buffer.empty()); // NOLINT(bugprone-use-after-move)
+            REQUIRE(buffer.view().data() == local);
+            REQUIRE(buffer.close().empty());
+            REQUIRE(buffer2.view() == "\x1b[0;31mHello");
+            REQUIRE(buffer2.view().data() != local);
+            REQUIRE(buffer2.close() == "\x1b[0;31mHello\x1b[0m\n");
+            buffer = std::move(buffer2);
+            REQUIRE(buffer2.empty()); // NOLINT(bugprone-use-after-move)
+            REQUIRE(buffer2.close().empty());
+            REQUIRE(buffer.view() == "\x1b[0;31mHello\x1b[0m\n");
+            REQUIRE(buffer.view().data() == local);
+            REQUIRE(buffer.close() == "\x1b[0;31mHello\x1b[0m\n");
+        }
+        SECTION("large") {
+            std::string data(500, 'x');
+            buffer.append(data);
+            REQUIRE(buffer.view().data() != local);
+            BasicCharBuffer buffer2(std::move(buffer));
+            REQUIRE(buffer.empty()); // NOLINT(bugprone-use-after-move)
+            REQUIRE(buffer.view().data() == local);
+            REQUIRE(buffer.close().empty());
+            REQUIRE(buffer2.view() == data);
+            buffer = std::move(buffer2);
+            REQUIRE(buffer2.empty()); // NOLINT(bugprone-use-after-move)
+            REQUIRE(buffer2.close().empty());
+            REQUIRE(buffer.view() == data);
+            REQUIRE(buffer.view().data() != local);
+        }
+    }
+    SECTION("OpenClose") {
+        REQUIRE(buffer.view().empty());
+        buffer.open(TextStyle::Color::red, '\n');
+        REQUIRE(buffer.view() == "\x1b[0;31m");
+        buffer.append("Hello");
+        REQUIRE(buffer.close() == "\x1b[0;31mHello\x1b[0m\n");
+        buffer.clear();
+        buffer.open(TextStyle::Color::green);
+        buffer.append("World");
+        REQUIRE(buffer.close() == "\x1b[0;32mWorld\x1b[0m");
+        buffer.clear();
+        buffer.open(TextStyle::Color::blue, 0);
+        std::string exp("\x1b[0;34m\x1b[0m");
+        exp.push_back(0);
+        REQUIRE(buffer.close() == exp);
+        buffer.clear();
+        buffer.open(TextStyle(), ';');
+        buffer.append("World");
+        REQUIRE(buffer.view() == "World");
+        REQUIRE(buffer.close() == "World;");
+        buffer.clear();
+        buffer.open(TextStyle::Color::red, ' ').append("Hello").open(TextStyle(), '!').append("World").close();
+        REQUIRE(buffer.view() == "\x1b[0;31mHello\x1b[0m World!");
+    }
+    SECTION("appendSeq") {
+        buffer.appendSep(" ", 1, 2.2, "Hallo", true);
+        REQUIRE(buffer.view() == "1 2.2 Hallo true");
+        buffer.clear();
+        buffer.appendSep(";", 1, 2.2, "Hallo", true);
+        REQUIRE(buffer.view() == "1;2.2;Hallo;true");
+
+        SECTION("all empty") {
+            buffer.clear();
+            buffer.appendSep("<>", std::optional<int>{}, std::optional<int>{});
+            REQUIRE(buffer.view().empty());
+        }
+        SECTION("empty followed by non empty") {
+            buffer.clear();
+            buffer.appendSep("<>", std::optional<int>{}, 1, 2);
+            REQUIRE(buffer.view() == "1<>2");
+        }
+        SECTION("non empty followed by empty") {
+            buffer.clear();
+            buffer.appendSep("<>", 1, 2, std::optional<int>{});
+            REQUIRE(buffer.view() == "1<>2");
+        }
+        SECTION("mixed") {
+            buffer.clear();
+            buffer.appendSep("<>", 1, std::optional<int>{}, 2);
+            REQUIRE(buffer.view() == "1<>2");
+
+            buffer.clear();
+            buffer.appendSep("<>", std::optional<int>{}, 1, std::optional<int>{});
+            REQUIRE(buffer.view() == "1");
+            buffer.clear();
+            buffer.appendSep("<>", std::optional<int>{}, 1, std::optional<int>{}, 2, std::optional<int>{});
+            REQUIRE(buffer.view() == "1<>2");
+        }
+    }
+    SECTION("appendField") {
+        buffer.append(str<6>("4711"));
+        REQUIRE(buffer.view() == "  4711");
+        buffer.clear();
+        buffer.append(num<-3>(7u, '%'));
+        REQUIRE(buffer.view() == "7% ");
+    }
+    SECTION("appendChar") {
+        buffer.append('(').append(4, 'x').push_back(')');
+        REQUIRE(buffer.view() == "(xxxx)");
+    }
+    SECTION("appendF") {
+        REQUIRE(BasicCharBuffer{}.appendF("Hello").view() == "Hello");
+        REQUIRE(BasicCharBuffer{}.appendF("Hello %s", "World").c_str() == std::string_view{"Hello World"});
+        REQUIRE(BasicCharBuffer{}.appendF("Hello %08u|%gs", 22, 3.1).view() == "Hello 00000022|3.1s");
         std::string exp("Hello ");
         exp.append(130, ' ');
         exp.append("foo");
-        REQUIRE(formatF("Hello %130sfoo", "").view() == exp);
-    }
-    SECTION("formatToBuffer") {
-        char          buffer[5];
-        DynamicBuffer r(std::span{buffer});
-        SECTION("in-place") {
-            REQUIRE(formatTo(r, "%d%s", 42, "++") == 4u);
-            REQUIRE(r.view() == "42++");
-            REQUIRE(r.data() == buffer);
-        }
-        SECTION("grow") {
-            REQUIRE(formatTo(r, "%d%s", 423, "++") == 5u);
-            REQUIRE(r.view() == "423++");
-            REQUIRE(r.data() != buffer);
-        }
-        SECTION("empty") {
-            DynamicBuffer buf;
-            formatTo(buf, "%d%s", 423, "++");
-            REQUIRE(buf.view() == "423++");
-            REQUIRE(buf.capacity() > buf.size());
-        }
+        REQUIRE(BasicCharBuffer{}.appendF("Hello %130sfoo", "").c_str() == exp);
     }
 }
 namespace {

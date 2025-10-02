@@ -42,19 +42,14 @@ using namespace std::literals;
 // SmodelsConvert::SmData
 /////////////////////////////////////////////////////////////////////////////////////////
 struct SmodelsConvert::SmData {
-    using ScratchType = DynamicBuffer;
-    template <std::integral T>
-    static void append(ScratchType& buffer, T in) {
-        toChars(buffer, in);
-    }
-    static void append(ScratchType& buffer, std::string_view n) { buffer.append(n); }
+    using ScratchType = BasicCharBuffer;
     template <typename... Args>
-    static std::string_view makePred(ScratchType& buffer, std::string_view name, Args... args) {
+    static std::string_view makePred(ScratchType& buffer, std::string_view name, const Args&... args) {
         static_assert(sizeof...(Args) > 0, "at least one arg expected");
         buffer.clear();
         buffer.append(name).append("("sv);
-        ((append(buffer, args), buffer.push(',')), ...);
-        buffer.back() = ')';
+        buffer.appendSep(",", args...);
+        buffer.push_back(')');
         return buffer.view();
     }
     struct Atom {
@@ -211,17 +206,17 @@ struct SmodelsConvert::SmData {
         output.clear();
     }
 
-    AtomMap     atoms;     // maps input atoms to output atoms
-    SymTab      symTab;    // maps output atoms to their names
-    TermTab     termTab;   // maps output terms to their names
-    AtomVec     external;  // external atoms
-    HeuVec      heuristic; // list of heuristic modifications not yet processed
-    MinSet      minimize;  // set of minimize constraints
-    WLitVec     minLits;   // minimize literals
-    OutVec      output;    // list of output atoms not yet processed
-    RuleBuilder rule;      // active (mapped) rule
-    ScratchType scratch;   // scratch buffer
-    Atom_t      next{2};   // next unused output atom
+    BasicCharBuffer scratch;   // scratch buffer
+    AtomMap         atoms;     // maps input atoms to output atoms
+    SymTab          symTab;    // maps output atoms to their names
+    TermTab         termTab;   // maps output terms to their names
+    AtomVec         external;  // external atoms
+    HeuVec          heuristic; // list of heuristic modifications not yet processed
+    MinSet          minimize;  // set of minimize constraints
+    WLitVec         minLits;   // minimize literals
+    OutVec          output;    // list of output atoms not yet processed
+    RuleBuilder     rule;      // active (mapped) rule
+    Atom_t          next{2};   // next unused output atom
 };
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsConvert

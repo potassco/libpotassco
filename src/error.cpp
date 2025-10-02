@@ -156,12 +156,13 @@ const char* ExpressionInfo::relativeFileName(const std::source_location& loc) {
 
 constinit AbortHandler g_abort_handler = nullptr;
 extern AbortHandler    setAbortHandler(AbortHandler handler) { return std::exchange(g_abort_handler, handler); }
+using ErrorBuffer = BasicCharBufferT<1024>;
 
-static DynamicBuffer& appendInfo(DynamicBuffer& buffer, std::string_view type, const ExpressionInfo& expressionInfo,
-                                 bool addFile) {
+static ErrorBuffer& appendInfo(ErrorBuffer& buffer, std::string_view type, const ExpressionInfo& expressionInfo,
+                               bool addFile) {
     buffer.append(addFile ? ExpressionInfo::relativeFileName(expressionInfo.location)
                           : expressionInfo.location.function_name());
-    toChars(buffer.append(":"sv), expressionInfo.location.line());
+    buffer.append(":"sv).append(expressionInfo.location.line());
     if (addFile) {
         buffer.append(": "sv).append(expressionInfo.location.function_name());
     }
@@ -172,21 +173,20 @@ static DynamicBuffer& appendInfo(DynamicBuffer& buffer, std::string_view type, c
 }
 
 extern void failAbort(const ExpressionInfo& expressionInfo, const char* fmt, ...) {
-    char local[1024];
-    auto buffer     = DynamicBuffer{local};
-    auto hasMessage = fmt && *fmt;
+    ErrorBuffer buffer;
+    auto        hasMessage = fmt && *fmt;
     appendInfo(buffer, "Assertion "sv, expressionInfo, true);
     if (hasMessage) {
+        buffer.append("\nmessage: "sv);
         va_list args;
         va_start(args, fmt);
-        Detail::vFormatf(buffer.append("\nmessage: "sv), fmt, args);
+        buffer.vAppendF(fmt, args);
         va_end(args);
     }
-    buffer.push(0);
     if (g_abort_handler) {
-        g_abort_handler(buffer.data());
+        g_abort_handler(buffer.c_str());
     }
-    fprintf(stderr, "%s\n", buffer.data());
+    fprintf(stderr, "%s\n", buffer.c_str());
     std::abort();
 }
 
@@ -194,30 +194,27 @@ extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char*
     if (ec == Errc::bad_alloc) {
         throw std::bad_alloc();
     }
-    char    local[1024];
-    auto    buffer     = DynamicBuffer{local};
-    auto    hasMessage = fmt && *fmt;
-    va_list args;
+    ErrorBuffer buffer;
+    auto        hasMessage = fmt && *fmt;
+    va_list     args;
     va_start(args, fmt);
     if (ec == Errc::precondition_fail) {
         appendInfo(buffer, "Precondition "sv, expressionInfo, false);
         if (hasMessage) {
-            Detail::vFormatf(buffer.append("\nmessage: "), fmt, args);
+            buffer.append("\nmessage: ").vAppendF(fmt, args);
         }
         ec = Errc::invalid_argument;
     }
     else {
         if (hasMessage) {
-            Detail::vFormatf(buffer, fmt, args);
-            buffer.append(": "sv);
+            buffer.vAppendF(fmt, args).append(": "sv);
         }
         auto check = expressionInfo.expression.empty() ? ""sv : "check "sv;
         buffer.append(std::generic_category().message(static_cast<int>(ec))).append("\n"sv);
         appendInfo(buffer, check, expressionInfo, false);
     }
     va_end(args);
-    buffer.push(0);
-    const char* message = buffer.data();
+    const char* message = buffer.c_str();
     switch (ec) {
         // logic
         case Errc::length_error    : throw std::length_error(message);

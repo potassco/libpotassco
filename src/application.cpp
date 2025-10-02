@@ -194,20 +194,8 @@ int Application::main(int argc, char** argv) {
 
 Application* Application::getInstance() { return g_instance; }
 
-static constexpr auto col_reset = "\033[0m"sv;
-static constexpr auto col_em    = "\033[1m"sv;
-static constexpr auto col_err   = "\033[1;31m"sv;
-static constexpr auto col_warn  = "\033[1;93m"sv;
-static constexpr auto col_info  = "\033[1;36m"sv;
+static constexpr auto col_def = TextStyle();
 
-static std::string_view color(Application::MessageType t) {
-    switch (t) {
-        default                          : return ""sv;
-        case Application::message_error  : return col_err;
-        case Application::message_warning: return col_warn;
-        case Application::message_info   : return col_info;
-    }
-}
 void Application::handleException() {
     auto             current = std::current_exception();
     int              code    = EXIT_FAILURE;
@@ -247,11 +235,10 @@ void Application::handleException() {
     }
 }
 bool Application::unhandledException(const std::exception_ptr& e, std::string_view error, std::string_view info) {
-    char          local[1024];
-    DynamicBuffer buffer(local);
-    write(Sink{buffer}, message_error, error, true);
+    BasicCharBufferT<1024> buffer;
+    buffer << message(message_error, error, true);
     if (not info.empty()) {
-        write(Sink{buffer.append("\n"sv)}, message_info, info, true);
+        buffer.append("\n"sv) << message(message_info, info, true);
     }
     return onUnhandledException(e, buffer.view());
 }
@@ -276,7 +263,7 @@ void Application::stop(int code) {
         Application::exit(code);
     }
 }
-void Application::enableColoredMessages(bool col) { color_ = col; }
+void Application::enableColoredMessages(bool enable) { color_ = enable; }
 
 void Application::shutdown() {}
 
@@ -340,13 +327,15 @@ static std::string_view prefix(Application::MessageType t) {
         case Application::message_info   : return "*** Info : "sv;
     }
 }
-
-auto Application::colorize(Sink& sink, std::string_view msg, std::string_view color, bool internal) -> Sink& {
-    if (color.empty() || msg.empty()) {
-        return sink.write(msg);
-    }
-    if (not internal) {
-        return sink.write(color).write(msg).write(col_reset);
+static auto writeStyled(auto& sink, const TextStyle& style, const auto&... args) -> decltype(sink)& {
+    sink.write(style.view());
+    (sink.write(args), ...);
+    sink.write(style.resetView());
+    return sink;
+}
+auto Application::colorize(Sink& sink, std::string_view msg, const TextStyle& color, bool exception) -> Sink& {
+    if (msg.empty() || not exception || color.view().empty()) {
+        return not msg.empty() ? writeStyled(sink, color, msg) : sink;
     }
     static constexpr auto pre_key      = "Precondition "sv;
     static constexpr auto check_key    = "check "sv;
@@ -365,37 +354,42 @@ auto Application::colorize(Sink& sink, std::string_view msg, std::string_view co
             msg = {};
         }
         else if (auto exp = isExpression(msg, p, pre_key); exp != std::string_view::npos) {
-            sink.write(msg.substr(0, p - pre_key.size())).write(col_warn).write(pre_key).write(col_reset).write("'"sv);
-            ++p;
-            sink.write(color).write(msg.substr(p, exp - p)).write(col_reset).write("' "sv);
-            sink.write(col_warn).write(post_key.substr(2)).write(col_reset);
+            auto n = p + 1;
+            sink.write(msg.substr(0, p - pre_key.size()));
+            writeStyled(sink, col_warning, pre_key);
+            writeStyled(sink.write("'"sv), color, msg.substr(n, exp - n));
+            writeStyled(sink.write("' "sv), col_warning, post_key.substr(2));
             msg = msg.substr(exp + post_key.size());
         }
         else {
             exp = isExpression(msg, p, check_key);
             e   = exp != std::string_view::npos ? exp : e;
             ++p;
-            sink.write(msg.substr(0, p)).write(color).write(msg.substr(p, e - p)).write(col_reset);
-            sink.write("'"sv);
+            sink.write(msg.substr(0, p));
+            writeStyled(sink, color, msg.substr(p, e - p)).write("'"sv);
             msg = msg.substr(e + 1);
         }
     }
     return sink;
 }
 
-void Application::write(Sink s, MessageType type, std::string_view msg, bool internal) const {
-    std::string_view col[2];
-    std::string_view post;
+void Application::write(Sink s, const Prefix& p) const {
     std::string_view sep{};
-    if (color_) {
-        col[0] = color(type);
-        col[1] = not msg.empty() ? col_em : ""sv;
-        post   = not col[0].empty() ? col_reset : ""sv;
-    }
+    const auto&      tc = color_ ? [](MessageType t) -> const TextStyle& {
+        switch (t) {
+            default             : return col_def;
+            case message_error  : return col_error;
+            case message_warning: return col_warning;
+            case message_info   : return col_info;
+        }
+    }(p.level)
+        : col_def;
+    const auto& mc  = color_ && not p.msg.empty() ? col_em : col_def;
+    auto        msg = p.msg;
     do {
-        auto line = internal ? msg.substr(0, std::min(msg.find('\n'), msg.size())) : msg;
-        s.write(sep).write(col[0]).write(prefix(type)).write("("sv).write(getName()).write("): "sv).write(post);
-        colorize(s, line, col[1], internal);
+        auto line = p.exception ? msg.substr(0, std::min(msg.find('\n'), msg.size())) : msg;
+        writeStyled(s.write(sep), tc, prefix(p.level), "(", getName(), "): ");
+        colorize(s, line, mc, p.exception);
         sep = "\n"sv;
         msg.remove_prefix(std::min(line.size() + 1, msg.size()));
     } while (not msg.empty());

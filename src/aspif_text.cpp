@@ -476,9 +476,10 @@ struct AspifTextOutput::Data {
         }
         return *this;
     }
-    void endStep(std::ostream&, bool more);
-    void visitTheoryAtoms(std::ostream& os);
-    void showAtom(std::ostream& os, std::string_view name, DynamicBuffer& temp, std::pair<std::string_view, int>& last);
+    void          endStep(std::ostream&, bool more);
+    void          visitTheoryAtoms(std::ostream& os);
+    void          showAtom(std::ostream& os, std::string_view name, BasicCharBuffer& temp,
+                           std::pair<std::string_view, int>& last);
     std::ostream& printTheoryAtom(std::ostream&, const TheoryAtom&);
     std::ostream& appendTerm(std::ostream&, Id_t tId) const;
     std::ostream& printName(std::ostream& os, Lit_t lit);
@@ -746,7 +747,7 @@ std::ostream& AspifTextOutput::Data::printMinimize(std::ostream& os, const uint3
     }
     return os << '}';
 }
-void AspifTextOutput::Data::showAtom(std::ostream& os, std::string_view name, DynamicBuffer& temp,
+void AspifTextOutput::Data::showAtom(std::ostream& os, std::string_view name, BasicCharBuffer& temp,
                                      std::pair<std::string_view, int>& last) {
     if (auto [id, arity] = predicate(name); arity <= 0) {
         POTASSCO_ASSERT(arity == 0);
@@ -754,7 +755,7 @@ void AspifTextOutput::Data::showAtom(std::ostream& os, std::string_view name, Dy
     }
     else if (arity != last.second || id != last.first) {
         temp.clear();
-        toChars(temp.append(id).append("/"), arity);
+        temp.append(id).append("/").append(arity);
         if (auto pred = temp.view(); try_emplace(strings, pred, 0).second) {
             os << "#show " << pred << ".\n";
         }
@@ -821,9 +822,8 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
         POTASSCO_ASSERT(pos <= end);
     }
     if (maxGenAtom) {
-        char          buf[64];
-        DynamicBuffer temp(buf);
-        auto          last = std::pair<std::string_view, int>{};
+        BasicCharBuffer temp;
+        auto            last = std::pair<std::string_view, int>{};
         for (auto a = startAtom; a <= maxNamedAtom; ++a) {
             if (const auto* name = getAtomName(a); name && *name->c_str() != '&') {
                 showAtom(os, name->view(), temp, last);

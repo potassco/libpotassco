@@ -183,13 +183,41 @@ char* writeUnsigned(char* first, char* last, std::uintmax_t in) {
     return r.ptr;
 }
 
-char* writeFloat(char* first, char* last, double in) {
-    // Set precision = 6 to match the default behavior of (s)printf.
-    auto r = std::to_chars(first, last, in, std::chars_format::general, 6);
+char* writeFloat(char* first, char* last, double in, int p) {
+    auto fmt = std::chars_format::fixed;
+    if (p <= 0) { // Set precision = 6 to match the default behavior of (s)printf.
+        p   = 6;
+        fmt = std::chars_format::general;
+    }
+    auto r = std::to_chars(first, last, in, fmt, p);
     POTASSCO_CHECK(r.ec == std::errc{}, r.ec, "std::to_chars could not convert double %g", in);
     return r.ptr;
 }
-std::size_t vFormatf(DynamicBuffer& buffer, const char* fmt, va_list args) noexcept {
+
+void writeField(DynamicBuffer& buffer, const Field& f) {
+    char             temp[128];
+    char*            ep = std::end(temp);
+    std::string_view s;
+    switch (f.prec) {
+        case Field::str_field : s = f.f.s; break;
+        case Field::int_field : s = {temp, writeSigned(temp, ep, f.f.i)}; break;
+        case Field::uint_field: s = {temp, writeUnsigned(temp, ep, f.f.u)}; break;
+        default               : s = {temp, writeFloat(temp, ep, f.f.d, f.prec)}; break;
+    }
+    auto  w   = s.size() + (f.term != 0);
+    auto  lf  = std::cmp_greater(f.width, w) ? static_cast<std::size_t>(f.width) - w : 0;
+    auto  rf  = std::cmp_greater(-f.width, w) ? static_cast<std::size_t>(-f.width) - w : 0;
+    auto* oIt = std::fill_n(buffer.alloc(w + lf + rf).data(), lf, ' ');
+    oIt       = std::copy_n(s.data(), s.size(), oIt);
+    if (f.term != 0) {
+        *oIt++ = f.term;
+    }
+    std::fill_n(oIt, rf, ' ');
+}
+
+auto resetStyle() -> std::string_view { return TextStyle::ts_reset_v; }
+
+auto vFormatTo(DynamicBuffer& buffer, const char* fmt, va_list args) noexcept -> std::size_t {
     bool truncate = false;
     for (va_list saved;;) {
         va_copy(saved, args);
@@ -261,23 +289,48 @@ std::from_chars_result fromChars(std::string_view in, bool& out) {
     return Parse::error(in);
 }
 
-std::size_t formatTo(DynamicBuffer& buffer, const char* fmt, ...) noexcept {
-    va_list args;
-    va_start(args, fmt);
-    auto r = Detail::vFormatf(buffer, fmt, args);
-    va_end(args);
-    return r;
-}
-StrF formatF(const char* fmt, ...) noexcept {
-    StrF    ret;
-    va_list args;
-    va_start(args, fmt);
-    Detail::vFormatf(ret.buffer_, fmt, args);
-    va_end(args);
-    ret.buffer_.push(0);
+auto TextStyle::Spec::fromString(std::string_view str, std::string_view::size_type startPos) -> Spec {
+    POTASSCO_CHECK_PRE(startPos <= str.size(), "startPos out of range");
+    auto style = str;
+    str        = style.substr(startPos);
+    Spec ret{};
+    while (not str.empty()) {
+        uint8_t val    = 0;
+        auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), val);
+        POTASSCO_CHECK(ec == std::errc{}, ec, "invalid number in '%" PRIsv "'", PRI_SV(style));
+        if (val < 30) {
+            POTASSCO_CHECK(ret.em == Emphasis::none, std::errc::invalid_argument, "duplicate emphasis in '%" PRIsv "'",
+                           PRI_SV(style));
+            POTASSCO_CHECK(val <= to_underlying(Emphasis::underline), Potassco::Errc::domain_error,
+                           "invalid emphasis in '%" PRIsv "'", PRI_SV(style));
+            ret.em = static_cast<Emphasis>(val);
+        }
+        else {
+            auto bg  = val == 49 || (val > 40 && val < 48) || (val > 100 && val < 108) ? 10u : 0u;
+            auto off = ((val >= 90 ? 81u : 29u) * (val != (39 + bg))) + bg;
+            auto tc  = static_cast<Color>(val - off);
+            POTASSCO_CHECK(tc == TextStyle::Color::def ||
+                               (tc >= TextStyle::Color::black && tc <= TextStyle::Color::bright_white),
+                           Potassco::Errc::domain_error, "invalid terminal color  in '%" PRIsv "'", PRI_SV(style));
+            if (bg) {
+                POTASSCO_CHECK(std::exchange(ret.bg, tc) == Color{}, std::errc::invalid_argument,
+                               "duplicate bg color in '%" PRIsv "'", PRI_SV(style));
+            }
+            else {
+                POTASSCO_CHECK(std::exchange(ret.fg, tc) == Color{}, std::errc::invalid_argument,
+                               "duplicate fg color in '%" PRIsv "'", PRI_SV(style));
+            }
+        }
+        str.remove_prefix(static_cast<std::string_view::size_type>(ptr - str.data()));
+        if (str.starts_with(';') && str.size() > 1) {
+            str.remove_prefix(1);
+        }
+    }
     return ret;
 }
-auto StrF::c_str() const noexcept -> const char* { return buffer_.data(); }
-auto StrF::view() const noexcept -> std::string_view { return {buffer_.data(), buffer_.size() - 1}; }
+auto TextStyle::fromString(std::string_view str, std::string_view::size_type startPos) -> TextStyle {
+    auto spec = Spec::fromString(str, startPos);
+    return spec != Spec{} ? TextStyle(spec) : TextStyle();
+}
 
 } // namespace Potassco

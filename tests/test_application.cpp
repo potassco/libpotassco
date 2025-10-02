@@ -32,7 +32,7 @@
 
 namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
-
+namespace {
 struct MyApp : Application {
     [[nodiscard]] std::string_view getName() const override { return "TestApp"; }
     [[nodiscard]] std::string_view getVersion() const override { return "1.0"; }
@@ -66,9 +66,57 @@ struct MyApp : Application {
     Messages             messages;
 };
 
+std::string style(std::string_view msg, const TextStyle& ts) {
+    return std::string(ts.view()).append(msg).append(ts.resetView());
+}
+} // namespace
+
 TEST_CASE("Test application formatting", "[app]") {
     MyApp app;
     using namespace std::literals;
+    SECTION("text style") {
+        using Color = TextStyle::Color;
+        using Emph  = TextStyle::Emphasis;
+        STATIC_CHECK(TextStyle().view().empty());
+        STATIC_CHECK(TextStyle().resetView().empty());
+        STATIC_CHECK(TextStyle(Color::black).view() == "\x1B[0;30m"sv);
+        STATIC_CHECK(TextStyle(Color::black | Emph::bold).view() == "\x1B[1;30m"sv);
+
+        STATIC_CHECK(TextStyle(Color::green).view() == "\x1B[0;32m"sv);
+        STATIC_CHECK(TextStyle(Color::black | Emph::underline).view() == "\x1B[4;30m"sv);
+
+        STATIC_CHECK(TextStyle(Color::bright_black | Emph::none).view() == "\x1B[0;90m"sv);
+        STATIC_CHECK(TextStyle(Color::bright_cyan | Emph::italic).view() == "\x1B[3;96m"sv);
+        CHECK(TextStyle(TextStyle::bg(Color::bright_cyan) | Emph::italic).view() == "\x1B[3;106m"sv);
+
+        CHECK(TextStyle(Color::bright_cyan | Emph::italic | TextStyle::bg(Color::black)).view() == "\x1B[3;96;40m"sv);
+        CHECK(TextStyle(Color::bright_cyan | Emph::italic | TextStyle::bg(Color::bright_white)).view() ==
+              "\x1B[3;96;107m"sv);
+        CHECK(TextStyle(Color::bright_cyan | Emph::italic | TextStyle::bg(Color::def)).view() == "\x1B[3;96;49m"sv);
+
+        STATIC_CHECK(MyApp::col_em.view() == "\x1B[1m"sv);
+        STATIC_CHECK(MyApp::col_warning.view() == "\x1B[1;93m"sv);
+        STATIC_CHECK(MyApp::col_error.view() == "\x1B[1;31m"sv);
+
+        CHECK(TextStyle::fromString("01;31").view() == "\x1B[1;31m"sv);
+        CHECK(TextStyle::fromString("32").view() == "\x1B[0;32m"sv);
+        CHECK(TextStyle::fromString("4;96").view() == "\x1B[4;96m"sv);
+        CHECK(TextStyle::fromString("warning=1;35", 8).view() == "\x1B[1;35m"sv);
+        CHECK(TextStyle::fromString("1;39").view() == "\x1B[1;39m"sv);
+        CHECK(TextStyle::fromString("").view().empty());
+        CHECK(TextStyle::fromString("1").view() == "\x1B[1m"sv);
+        CHECK(TextStyle::fromString("0").view().empty());
+        CHECK(TextStyle::fromString("4;96;46").view() == "\x1B[4;96;46m"sv);
+        CHECK(TextStyle::fromString("4;43;95").view() == "\x1B[4;95;43m"sv);
+        CHECK(TextStyle::fromString("1;43").view() == "\x1B[1;43m"sv);
+        CHECK(TextStyle::fromString("1;34;49").view() == "\x1B[1;34;49m"sv);
+
+        CHECK_THROWS_AS(TextStyle::fromString("7;31").view(), std::domain_error);
+        CHECK_THROWS_AS(TextStyle::fromString("50").view(), std::domain_error);
+        CHECK_THROWS_AS(TextStyle::fromString("1;").view(), std::invalid_argument);
+        CHECK_THROWS_AS(TextStyle::fromString("300").view(), std::out_of_range);
+        CHECK_THROWS_AS(TextStyle::fromString("4;96;46;32").view(), std::invalid_argument);
+    }
     SECTION("stream") {
         std::stringstream s;
         s << app.error("An error") << "\n" << app.warn("A warning") << "\n" << app.info("Some info") << "\n";
@@ -79,31 +127,41 @@ TEST_CASE("Test application formatting", "[app]") {
             app.enableColoredMessages();
             s.str("");
             s << app.error("An error") << '\n' << app.warn("A warning") << "\n";
-            REQUIRE(s.str() == "\033[1;31m*** ERROR: (TestApp): \033[0m\033[1mAn error\033[0m\n"
-                               "\033[1;93m*** Warn : (TestApp): \033[0m\033[1mA warning\033[0m\n");
+            REQUIRE(s.str() == style("*** ERROR: (TestApp): ", Application::col_error)
+                                   .append(style("An error", Application::col_em))
+                                   .append("\n")
+                                   .append(style("*** Warn : (TestApp): ", Application::col_warning))
+                                   .append(style("A warning", Application::col_em))
+                                   .append("\n"));
         }
     }
-    SECTION("sink") {
+    SECTION("buffer") {
         std::string s;
         app.enableColoredMessages();
-        app.writeMessage(s, Application::message_error, "An error");
-        CHECK(s == "\033[1;31m*** ERROR: (TestApp): \033[0m\033[1mAn error\033[0m"sv);
+        s << app.error("An error");
+        CHECK(s ==
+              style("*** ERROR: (TestApp): ", Application::col_error).append(style("An error", Application::col_em)));
         DynamicBuffer db;
-        app.writeMessage(db, Application::message_info, "Some info");
-        CHECK(db.view() == "\033[1;36m*** Info : (TestApp): \033[0m\033[1mSome info\033[0m"sv);
+        db << app.info("Some info");
+        CHECK(db.view() ==
+              style("*** Info : (TestApp): ", Application::col_info).append(style("Some info", Application::col_em)));
 
         struct SpanAdapter {
             std::span<char> buf;
-            void            append(std::string_view s) {
+            SpanAdapter&    append(std::string_view s) {
                 auto n = std::min(buf.size(), s.size());
                 std::copy_n(std::data(s), n, buf.data());
                 buf = buf.subspan(n);
+                return *this;
             }
         } span;
         db.clear();
         span.buf = db.alloc(30);
-        app.writeMessage(span, Application::message_info, "Some info");
-        CHECK(db.view() == "\033[1;36m*** Info : (TestApp): \033"sv);
+        span << app.info("Some info");
+        auto exp = style("*** Info : (TestApp): ", Application::col_info)
+                       .append(style("Some info", Application::col_em))
+                       .substr(0, 30);
+        CHECK(db.view() == exp);
     }
     SECTION("fail and stop") {
         SECTION("noop if not running") {
@@ -148,12 +206,8 @@ TEST_CASE("Test application formatting", "[app]") {
         }
     }
     SECTION("other errors") {
-        auto emph = [](std::string_view m, bool yes) {
-            return std::string(yes ? "\033[1m" : "").append(m).append(yes ? "\033[0m" : "");
-        };
-        auto warn = [](std::string_view m, bool yes) {
-            return std::string(yes ? "\033[1;93m" : "").append(m).append(yes ? "\033[0m" : "");
-        };
+        auto emph = [](std::string_view m, bool yes) { return style(m, yes ? Application::col_em : TextStyle()); };
+        auto warn = [](std::string_view m, bool yes) { return style(m, yes ? Application::col_warning : TextStyle()); };
         std::stringstream expected;
         auto*             what    = GENERATE("default", "colored");
         auto              colored = what == std::string_view{"colored"};
@@ -236,10 +290,18 @@ TEST_CASE("Test application", "[app]") {
         SECTION("colored") {
             app.enableColoredMessages(true);
             REQUIRE(app.main(std::span(args).subspan(0, 1)) == EXIT_FAILURE);
-            REQUIRE(app.messages["error"] ==
-                    "\033[1;31m*** ERROR: (TestApp): \033[0mIn context '\033[1m<TestApp>\033[0m': '\033[1m3\033[0m' "
-                    "invalid value for: '\033[1mhelp\033[0m'\n"
-                    "\033[1;36m*** Info : (TestApp): \033[0mTry '\033[1m--help\033[0m' for usage information");
+            REQUIRE(app.messages["error"] == style("*** ERROR: (TestApp): ", Application::col_error)
+                                                 .append("In context '")
+                                                 .append(style("<TestApp>", Application::col_em))
+                                                 .append("': '")
+                                                 .append(style("3", Application::col_em))
+                                                 .append("' invalid value for: '")
+                                                 .append(style("help", Application::col_em))
+                                                 .append("'\n")
+                                                 .append(style("*** Info : (TestApp): ", Application::col_info))
+                                                 .append("Try '")
+                                                 .append(style("--help", Application::col_em))
+                                                 .append("' for usage information"));
         }
     }
     SECTION("argv overload") {
