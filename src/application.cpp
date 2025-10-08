@@ -60,7 +60,7 @@ static void         alarm(unsigned sec) {
             std::condition_variable_any cond;
             std::mutex                  m;
             m.lock();
-            cond.wait_for(m, timeout, []() { return false; });
+            cond.wait_for(m, stop, timeout, []() { return false; });
             if (not stop.stop_requested() && g_alarmHandler != SIG_IGN && g_alarmHandler != SIG_DFL) {
                 g_alarmHandler(14);
             }
