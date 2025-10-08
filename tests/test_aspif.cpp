@@ -650,6 +650,70 @@ TEST_CASE("Test Basic", "[rule]") {
         CHECK(other.largest() == 130);
         CHECK(other.words() == 3);
     }
+
+    SECTION("cmpAtom") {
+        CHECK(std::is_eq(cmpAtom("", "", {})));
+        CHECK(std::is_lt(cmpAtom("a", "b", {})));
+        CHECK(std::is_lt(cmpAtom("10", "2", {})));
+        CHECK(std::is_gt(cmpAtom("2", "10", {})));
+        CHECK(std::is_gt(cmpAtom("b", "a", {})));
+    }
+
+    SECTION("cmpAtomNatural") {
+        auto cmp = AtomCompare::cmp_natural;
+        CHECK(std::is_eq(cmpAtom("", "", cmp)));
+        CHECK(std::is_lt(cmpAtom("a", "b", cmp)));
+        CHECK(std::is_gt(cmpAtom("b", "a", cmp)));
+
+        CHECK(std::is_gt(cmpAtom("10", "2", cmp)));
+        CHECK(std::is_lt(cmpAtom("2", "10", cmp)));
+
+        CHECK(std::is_gt(cmpAtom("a(10)", "a(2)", cmp)));
+        CHECK(std::is_lt(cmpAtom("a(2,10,4)", "a(2,10,10)", cmp)));
+        CHECK(std::is_eq(cmpAtom("a(2,10,4)", "a(2,10,4)", cmp)));
+        CHECK(std::is_gt(cmpAtom("a(2,10,8)", "a(2,10,4)", cmp)));
+
+        CHECK(std::is_lt(cmpAtom("a(001)", "a(2)", cmp)));
+    }
+
+    SECTION("cmpAtomArity") {
+        auto cmp = AtomCompare::cmp_arity;
+        CHECK(std::is_eq(cmpAtom("", "", cmp)));
+        CHECK(std::is_lt(cmpAtom("a", "b", cmp)));
+        CHECK(std::is_gt(cmpAtom("b", "a", cmp)));
+
+        CHECK(std::is_lt(cmpAtom("a(2)", "a(1,0)", cmp)));
+        CHECK(std::is_lt(cmpAtom("b(2)", "a(1,0)", cmp)));
+        CHECK(std::is_lt(cmpAtom("a(1,0)", "x(1,0)", cmp)));
+        CHECK(std::is_lt(cmpAtom("a(10,0)", "a(2,0)", cmp)));
+    }
+
+    SECTION("cmpAtomNaturalArity") {
+        auto cmp = AtomCompare::cmp_arity | AtomCompare::cmp_natural;
+        CHECK(std::is_eq(cmpAtom("", "", cmp)));
+        CHECK(std::is_lt(cmpAtom("a", "b", cmp)));
+        CHECK(std::is_gt(cmpAtom("b", "a", cmp)));
+
+        CHECK(std::is_lt(cmpAtom("a(2)", "a(1,0)", cmp)));
+        CHECK(std::is_lt(cmpAtom("b(2)", "a(1,0)", cmp)));
+        CHECK(std::is_gt(cmpAtom("a(10,0)", "a(2,0)", cmp)));
+        CHECK(std::is_lt(cmpAtom("a(2,0)", "a(10,0)", cmp)));
+    }
+
+    SECTION("predicate") {
+        using namespace std::literals;
+        CHECK(predicate({}) == std::pair(""sv, 0));
+        CHECK(predicate("foo"sv) == std::pair("foo"sv, 0));
+        CHECK(predicate("foo(x)"sv) == std::pair("foo"sv, 1));
+        CHECK(predicate("foo(x, y)"sv) == std::pair("foo"sv, 2));
+        CHECK(predicate("foo(\"bla\")"sv) == std::pair("foo"sv, 1));
+        CHECK(predicate("tuple((1,2),(3,4))"sv) == std::pair("tuple"sv, 2));
+        CHECK(predicate("(1,2)"sv) == std::pair(""sv, 2));
+        CHECK(predicate("1,2"sv) == std::pair("1,2"sv, 0));
+        // invalid
+        CHECK(predicate("tuple((1,2),(3,4)"sv) == std::pair("tuple"sv, -1));
+        CHECK(predicate("foo(\"bla)"sv) == std::pair("foo"sv, -1));
+    }
 }
 TEST_CASE("Test RuleBuilder", "[rule]") {
     RuleBuilder rb;

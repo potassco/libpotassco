@@ -335,7 +335,7 @@ void SmodelsConvert::flushMinimize() {
     std::ranges::sort(data_->minimize, [](const auto& lhs, const auto& rhs) {
         return lhs.prio < rhs.prio || (lhs.prio == rhs.prio && lhs.startPos < rhs.startPos);
     });
-    const SmData::Minimize* last = &data_->minimize[0];
+    const auto* last = data_->minimize.data();
     data_->rule.startMinimize(last->prio);
     for (const auto& m : data_->minimize) {
         if (last->prio != m.prio) {

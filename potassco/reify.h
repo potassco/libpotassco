@@ -26,14 +26,12 @@
 
 #include <potassco/aspif.h>
 
-#include <cstdint>
-
 namespace Potassco {
 //! Writes a program in reified facts format to the given output stream.
 /*!
  * \ingroup WriteType
  */
-class Reifier : public Potassco::AbstractProgram {
+class Reifier : public AbstractProgram {
 public:
     //! Options for configuring Reifier behavior.
     struct Options {

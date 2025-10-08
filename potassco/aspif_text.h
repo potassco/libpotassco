@@ -23,7 +23,6 @@
 //
 #pragma once
 #include <potassco/match_basic_types.h>
-#include <potassco/theory_data.h>
 
 #include <memory>
 

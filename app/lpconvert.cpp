@@ -37,10 +37,12 @@
 #include <fstream>
 #include <iostream>
 
-using namespace Potassco::ProgramOptions;
+namespace ProgOpts = Potassco::ProgramOptions;
 
 class LpConvert : public Potassco::Application {
 public:
+    enum class Format : uint8_t { auto_, text, smodels, aspif_v1, aspif, reify };
+
     [[nodiscard]] std::string_view getName() const override { return "lpconvert"; }
     [[nodiscard]] std::string_view getVersion() const override { return "2.0.0"; }
     [[nodiscard]] std::string_view getPositional(std::string_view) const override { return "input"; }
@@ -48,17 +50,15 @@ public:
         return "[options] [<file>]\n"
                "Convert program in <file> or standard input";
     }
-    void initOptions(OptionContext& root) override;
-    void validateOptions(const OptionContext&, const ParsedOptions& parsed) override {
+    void initOptions(ProgOpts::OptionContext& root) override;
+    void validateOptions(const ProgOpts::OptionContext&, const ProgOpts::ParsedOptions& parsed) override {
         if (parsed.contains("text") && parsed.contains("format")) {
-            throw Potassco::ProgramOptions::Error("options 'text' and 'format' are mutually exclusive");
+            throw ProgOpts::Error("options 'text' and 'format' are mutually exclusive");
         }
     }
     void setup() override {}
     void run() override;
-    void onHelp(const std::string& info, Potassco::ProgramOptions::DescriptionLevel) override {
-        std::cout << info << "\n";
-    }
+    void onHelp(const std::string& info, ProgOpts::DescriptionLevel) override { std::cout << info << "\n"; }
     void onVersion(const std::string& info) override {
         std::cout << info << "\nlibpotassco version " << LIB_POTASSCO_VERSION
                   << "\nCopyright (C) Benjamin Kaufmann\n"
@@ -84,22 +84,22 @@ public:
         fail(EXIT_FAILURE, error, info);
     }
 
-    enum class Format : uint8_t { auto_, text, smodels, aspif_v1, aspif, reify };
-
 private:
-    std::string                input_;
-    std::string                output_;
-    std::string                pred_;
-    Format                     format_{Format::auto_};
-    Potassco::Reifier::Options reifyOpts_;
-    bool                       potassco_ = false;
-    bool                       filter_   = false;
+    using ReifierOpts = Potassco::Reifier::Options;
+    std::string input_;
+    std::string output_;
+    std::string pred_;
+    Format      format_{Format::auto_};
+    ReifierOpts reifyOpts_;
+    bool        potassco_ = false;
+    bool        filter_   = false;
 };
 
 POTASSCO_SET_ENUM_ENTRIES(LpConvert::Format, {auto_, "auto"sv}, {text, "text"sv}, {smodels, "smodels"sv},
                           {aspif_v1, "aspif-v1"sv}, {aspif, "aspif"sv}, {reify, "reify"sv});
 
-void LpConvert::initOptions(OptionContext& root) {
+void LpConvert::initOptions(ProgOpts::OptionContext& root) {
+    using namespace Potassco::ProgramOptions;
     OptionGroup convert("Conversion Options");
     convert.addOptions()                                                                                         //
         ("-i@2,input", storeTo(input_, std::string()), "Input file")                                             //

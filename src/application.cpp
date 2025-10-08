@@ -86,7 +86,7 @@ static T fetchAndAdd(T* data, T add) {
 #if defined(__cpp_lib_atomic_ref) && __cpp_lib_atomic_ref >= 201806L
         return std::atomic_ref{*data}.fetch_add(add);
 #else
-        static_assert(std::is_same_v<T, void>, "unsupported compuler");
+        static_assert(std::is_same_v<T, void>, "unsupported compiler");
 #endif
     }
 }

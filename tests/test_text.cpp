@@ -25,6 +25,7 @@
 
 #include <potassco/aspif_text.h>
 #include <potassco/rule_utils.h>
+#include <potassco/theory_data.h>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>

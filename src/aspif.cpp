@@ -321,7 +321,7 @@ AspifOutput& AspifOutput::add(std::span<T> lits) {
 }
 AspifOutput& AspifOutput::add(std::string_view str) {
     os_ << " " << str.size() << " ";
-    os_.write(str.data(), std::ssize(str));
+    os_.write(std::data(str), std::ssize(str));
     return *this;
 }
 auto AspifOutput::map(Atom_t atom) -> Atom_t {

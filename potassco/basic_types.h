@@ -236,6 +236,12 @@ constexpr Weight_t weight(Lit_t) { return 1; }
 //! Returns the weight of the given weight literal.
 constexpr Weight_t weight(const WeightLit& w) { return w.weight; }
 
+//! Atom comparison flags.
+enum class AtomCompare : uint8_t { cmp_default = 0, cmp_natural = 1, cmp_arity = 2 };
+POTASSCO_ENABLE_BIT_OPS(AtomCompare);
+//! Returns whether lhsAtom is less than rhsAtom according to the compare flags.
+auto cmpAtom(std::string_view lhsAtom, std::string_view rhsAtom, AtomCompare cmp) noexcept -> std::strong_ordering;
+
 ///@}
 
 //! A (dynamically sized) buffer of raw memory.

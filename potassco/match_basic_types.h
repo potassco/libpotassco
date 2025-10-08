@@ -216,6 +216,7 @@ private:
 
 bool matchTerm(std::string_view& input, std::string_view& termOut);
 bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr);
+auto predicate(std::string_view name) -> std::pair<std::string_view, int>;
 
 //! Attaches the given stream to `r` and calls ProgramReader::parse() with the read mode set to
 //! ProgramReader::Complete.

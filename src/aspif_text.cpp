@@ -27,6 +27,8 @@
 #include <potassco/error.h>
 #include <potassco/format.h>
 #include <potassco/rule_utils.h>
+#include <potassco/theory_data.h>
+
 POTASSCO_WARNING_BEGIN_RELAXED
 #include <amc/vector.hpp>
 POTASSCO_WARNING_END_RELAXED
@@ -438,21 +440,6 @@ struct AspifTextOutput::Data {
         return it != atom2Name.end() ? &it->second : nullptr;
     }
 
-    static std::pair<std::string_view, int> predicate(std::string_view name) {
-        auto id   = name.substr(0, name.find('('));
-        auto args = name.substr(id.size());
-        if (args.size() < 3 || args.back() != ')') { // zero arity - pred or pred()
-            return {id, 0 - (not args.empty() && args != "()"sv)};
-        }
-        auto arity = 1;
-        args.remove_prefix(1);
-        for (auto t = ""sv; matchTerm(args, t) && args.size() > 2 && args.starts_with(',');) {
-            ++arity;
-            args.remove_prefix(1);
-        }
-        return {id, args == ")"sv ? arity : -1};
-    }
-
     template <typename T>
     requires(std::is_integral_v<T> || std::is_enum_v<T>)
     Data& push(T x) {
@@ -515,7 +502,7 @@ void AspifTextOutput::setAtomPred(std::string_view pred) {
         arity = pred.back() == '1';
         pred.remove_suffix(2);
     }
-    auto [id, n] = Data::predicate(pred);
+    auto [id, n] = predicate(pred);
     POTASSCO_CHECK(n == 0 && id == pred && isAtomPrefix(id, false), std::errc::invalid_argument,
                    "invalid atom predicate '%" PRIsv "'", PRI_SV(pred));
     if (arity == 0u) {
@@ -575,7 +562,7 @@ void AspifTextOutput::outputAtom(Atom_t atom, std::string_view name) {
         data_->addOutput(name, toSpan(cond));
     }
     else {
-        auto [id, arity] = Data::predicate(name);
+        auto [id, arity] = predicate(name);
         POTASSCO_CHECK_PRE(arity >= 0, "invalid atom name <%u:%" PRIsv ">", atom, PRI_SV(name));
         POTASSCO_CHECK(not data_->isReservedName(atom, name, static_cast<unsigned>(arity)),
                        std::errc::operation_not_supported, "atom name <%u:%" PRIsv "> is reserved", atom, PRI_SV(name));

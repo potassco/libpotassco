@@ -253,6 +253,56 @@ bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut) {
     in.remove_prefix(sz);
     return true;
 }
+auto predicate(std::string_view name) -> std::pair<std::string_view, int> {
+    using namespace std::literals;
+    auto id   = name.substr(0, name.find('('));
+    auto args = name.substr(id.size());
+    if (args.size() < 3 || args.back() != ')') { // zero arity - pred or pred()
+        return {id, 0 - (not args.empty() && args != "()"sv)};
+    }
+    auto arity = 1;
+    args.remove_prefix(1);
+    for (auto t = ""sv; matchTerm(args, t) && args.size() > 2 && args.starts_with(',');) {
+        ++arity;
+        args.remove_prefix(1);
+    }
+    return {id, args == ")"sv ? arity : -1};
+}
+auto cmpAtom(std::string_view lhsAtom, std::string_view rhsAtom, AtomCompare cmp) noexcept -> std::strong_ordering {
+    if (test(cmp, AtomCompare::cmp_arity)) {
+        auto [lId, lArity] = predicate(lhsAtom);
+        auto [rId, rArity] = predicate(rhsAtom);
+        if (auto res = lArity <=> rArity; res != 0) {
+            return res;
+        }
+        if (auto res = lId <=> rId; res != 0) {
+            return res;
+        }
+        lhsAtom = lhsAtom.substr(lId.size());
+        rhsAtom = rhsAtom.substr(rId.size());
+    }
+    if (test(cmp, AtomCompare::cmp_natural)) {
+        for (auto end = std::min(lhsAtom.size(), rhsAtom.size()), x = static_cast<decltype(end)>(0); x != end; ++x) {
+            if (auto l = lhsAtom[x], r = rhsAtom[x]; BufferedStream::isDigit(l) && BufferedStream::isDigit(r)) {
+                auto lhsStart = lhsAtom.substr(x);
+                auto rhsStart = rhsAtom.substr(x);
+                int  lhsNum, rhsNum;
+                auto skip = std::string_view{};
+                matchNum(lhsStart, &skip, &lhsNum);
+                matchNum(rhsStart, nullptr, &rhsNum);
+                if (lhsNum != rhsNum) {
+                    return lhsNum <=> rhsNum;
+                }
+                x += skip.size() - 1;
+            }
+            else if (auto res = l <=> r; res != 0) {
+                return res;
+            }
+        }
+        return lhsAtom.size() <=> rhsAtom.size();
+    }
+    return lhsAtom <=> rhsAtom;
+}
 /////////////////////////////////////////////////////////////////////////////////////////
 // DynamicBuffer
 /////////////////////////////////////////////////////////////////////////////////////////

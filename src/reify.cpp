@@ -282,7 +282,7 @@ void Reifier::theoryTerm(Id_t termId, int cId, IdSpan args) {
         printStepFact("theory_function", termId, cId, theoryTuple(args));
     }
     else {
-        const char* type = "";
+        const char* type;
         switch (cId) {
             case -1: type = "tuple"; break;
             case -2: type = "set"; break;
