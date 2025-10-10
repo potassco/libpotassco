@@ -30,6 +30,11 @@
 #include <potassco/program_opts/errors.h>
 #include <potassco/program_opts/typed_value.h>
 
+#if __has_include(<unistd.h>)
+#include <unistd.h> // for _exit
+#endif
+
+POTASSCO_WARNING_IGNORE_MSVC(4996)
 #include <atomic>
 #include <climits>
 #include <csignal>
@@ -37,39 +42,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
-
-#if __has_include(<unistd.h>)
-#include <unistd.h> // for _exit
-#endif
-
-using AlarmHandler = void (*)(int);
-
-#if not defined(SIGALRM)
-#include <condition_variable>
-#include <thread>
-static AlarmHandler g_alarmHandler = SIG_DFL;
-static void         setAlarmHandler(AlarmHandler handler) { g_alarmHandler = handler; }
-static void         alarm(unsigned sec) {
-    static std::jthread alarmThread;
-    if (alarmThread.joinable()) {
-        alarmThread.request_stop();
-        alarmThread.join();
-    }
-    if (sec) {
-        alarmThread = std::jthread([timeout = std::chrono::seconds(sec)](const std::stop_token& stop) {
-            std::condition_variable_any cond;
-            std::mutex                  m;
-            m.lock();
-            cond.wait_for(m, stop, timeout, []() { return false; });
-            if (not stop.stop_requested() && g_alarmHandler != SIG_IGN && g_alarmHandler != SIG_DFL) {
-                g_alarmHandler(14);
-            }
-        });
-    }
-}
-#else
-static void setAlarmHandler(AlarmHandler handler) { signal(SIGALRM, handler); }
-#endif
 
 using namespace Potassco::ProgramOptions;
 using namespace std;
@@ -122,19 +94,19 @@ void Application::resetInstance(const Application& app) {
     }
 }
 
-void Application::setAlarm(unsigned sec) {
-    if (sec) {
-        setAlarmHandler(&Application::sigHandler);
+void Application::setAlarmMs(unsigned millis) {
+    if (millis) {
+        auto ec = Potassco::setAlarm(millis, &Application::sigHandler);
+        POTASSCO_CHECK(ec == std::errc{}, ec, "Could not set alarm: %s", std::strerror(static_cast<int>(ec)));
     }
-    timeout_ = sec;
-    alarm(sec);
+    timeout_ = millis;
 }
+void Application::setAlarm(unsigned sec) { setAlarmMs(sec * 1000); }
 
 // Kill any pending alarm.
 void Application::killAlarm() {
     if (std::exchange(timeout_, 0u) > 0u) {
-        setAlarmHandler(SIG_DFL);
-        alarm(0);
+        std::ignore = Potassco::killAlarm();
     }
 }
 
@@ -147,9 +119,9 @@ int Application::main(std::span<const char* const> args) {
     try {
         if (applyOptions(args)) {
             // install signal handlers
-            for (const int* sig = getSignals(); sig && *sig; ++sig) {
-                if (signal(*sig, &Application::sigHandler) == SIG_IGN) {
-                    signal(*sig, SIG_IGN);
+            for (auto sig : getSignals()) {
+                if (signal(sig, &Application::sigHandler) == SIG_IGN) {
+                    signal(sig, SIG_IGN);
                 }
             }
             if (timeout_) {
@@ -470,6 +442,7 @@ bool Application::applyOptions(std::span<const char* const> args) {
 }
 
 unsigned Application::getVerbose() const { return verbose_; }
+unsigned Application::getTimeLimit() const { return timeout_; }
 void     Application::setVerbose(unsigned v) { verbose_ = v; }
 
 } // namespace Potassco

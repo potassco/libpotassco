@@ -62,8 +62,8 @@ public:
     [[nodiscard]] virtual std::string_view getName() const = 0;
     //! Returns the version number of this application.
     [[nodiscard]] virtual std::string_view getVersion() const = 0;
-    //! Returns a null-terminated array of signals that this application handles.
-    [[nodiscard]] virtual const int* getSignals() const { return nullptr; }
+    //! Returns the list of signals this application wants to handle.
+    [[nodiscard]] virtual std::span<const int> getSignals() const { return {}; }
     //! Returns the usage information of this application.
     [[nodiscard]] virtual std::string_view getUsage() const { return "[options]"; }
     //! Returns the application's help option and its description.
@@ -88,6 +88,8 @@ public:
     [[nodiscard]] int getExitCode() const;
     //! Returns the application's current verbosity level.
     [[nodiscard]] unsigned getVerbose() const;
+    //! Returns the current time limit in milliseconds or 0 if no time limit is set.
+    [[nodiscard]] unsigned getTimeLimit() const;
     //! Stops running application with the given exit code and error message.
     /*!
      * The function sets the given code as exit code and then stops the running application by calling
@@ -172,6 +174,7 @@ protected:
 
     void setVerbose(unsigned v);
     void setAlarm(unsigned sec);
+    void setAlarmMs(unsigned millis);
     void killAlarm();
     int  blockSignals();
     void unblockSignals(bool deliverPending);

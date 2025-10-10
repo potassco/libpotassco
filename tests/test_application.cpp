@@ -26,9 +26,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+POTASSCO_WARNING_IGNORE_MSVC(4996)
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <sstream>
+#include <thread>
 
 namespace Potassco::ProgramOptions::Test {
 namespace Po = ProgramOptions;
@@ -317,22 +320,51 @@ TEST_CASE("Test application", "[app]") {
     }
 }
 TEST_CASE("Test alarm", "[app]") {
-    struct TimedApp : MyApp {
-        TimedApp() : stop(0) {}
-        void run() override {
-            while (stop.load() == 0) { stop.wait(0); }
+    SECTION("platform") {
+        static std::atomic<int> stop;
+        stop = 0;
+        REQUIRE(Potassco::setAlarm(100, +[](int s) { stop = s; }) == std::errc{});
+        for (int i = 0; stop.load() == 0; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            REQUIRE(i != 100);
         }
-        bool onSignal(int sig) override {
-            stop = sig;
-            stop.notify_one();
-            return true;
+        REQUIRE(stop == 14);
+        REQUIRE_FALSE(Potassco::killAlarm());
+        stop = 0;
+        REQUIRE(Potassco::setAlarm(100, +[](int s) { stop = s; }) == std::errc{});
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if (Potassco::killAlarm()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            REQUIRE(stop.load() == 0);
         }
-        std::atomic<int> stop;
-    };
-
-    TimedApp    app;
-    const char* args[] = {"--time-limit=1"}; // NOLINT
-    app.main(args);
-    REQUIRE(app.stop == 14);
+        else {
+            REQUIRE(stop.load() == 14);
+        }
+        REQUIRE_FALSE(Potassco::killAlarm());
+    }
+    SECTION("App") {
+        struct TimedApp : MyApp {
+            TimedApp() : stop(0) {}
+            void run() override {
+                REQUIRE(getTimeLimit() == 5 * 1000);
+                setAlarmMs(100);
+                REQUIRE(getTimeLimit() == 100);
+                while (stop.load() == 0) { stop.wait(0); }
+            }
+            bool onSignal(int sig) override {
+                stop = sig;
+                stop.notify_one();
+                return true;
+            }
+            std::atomic<int> stop;
+        };
+        TimedApp    app;
+        const char* args[] = {"--time-limit=5"}; // NOLINT
+        auto        start  = std::chrono::steady_clock::now();
+        app.main(args);
+        REQUIRE(app.stop == 14);
+        auto dur = std::chrono::steady_clock::now() - start;
+        REQUIRE(dur < std::chrono::seconds(2));
+    }
 }
 } // namespace Potassco::ProgramOptions::Test

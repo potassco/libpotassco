@@ -23,8 +23,6 @@
 //
 #pragma once
 
-#include <cinttypes>
-#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <source_location>
@@ -49,6 +47,8 @@
 #define POTASSCO_OPTARGS(...) __VA_OPT__(, ) __VA_ARGS__
 #endif
 
+#define POTASSCO_PRAGMA(X) _Pragma(#X)
+
 #if defined(_MSC_VER)
 #define POTASSCO_WARNING_PUSH()         __pragma(warning(push))
 #define POTASSCO_WARNING_POP()          __pragma(warning(pop))
@@ -68,16 +68,16 @@
 #define __STDC_LIMIT_MACROS
 #endif
 #define POTASSCO_FUNC_NAME                __PRETTY_FUNCTION__
-#define POTASSCO_APPLY_PRAGMA(x)          _Pragma(#x)
-#define POTASSCO_PRAGMA_TODO(x)           POTASSCO_APPLY_PRAGMA(message("TODO: " #x))
+#define POTASSCO_PRAGMA_TODO(X)           POTASSCO_PRAGMA(message("TODO: " X))
 #define POTASSCO_ATTRIBUTE_FORMAT(fp, ap) __attribute__((__format__(__printf__, fp, ap)))
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
 #pragma clang diagnostic ignored "-Wvariadic-macros"
-#define POTASSCO_WARNING_PUSH()          _Pragma("clang diagnostic push")
-#define POTASSCO_WARNING_POP()           _Pragma("clang diagnostic pop")
-#define POTASSCO_WARNING_IGNORE_CLANG(X) _Pragma(POTASSCO_STRING(clang diagnostic ignored X))
+#define POTASSCO_PRAGMA_CLANG(X)         POTASSCO_PRAGMA(clang X)
+#define POTASSCO_WARNING_PUSH()          POTASSCO_PRAGMA_CLANG(diagnostic push)
+#define POTASSCO_WARNING_POP()           POTASSCO_PRAGMA_CLANG(diagnostic pop)
+#define POTASSCO_WARNING_IGNORE_CLANG(X) POTASSCO_PRAGMA_CLANG(diagnostic ignored X)
 #define POTASSCO_WARNING_BEGIN_RELAXED                                                                                 \
     POTASSCO_WARNING_PUSH()                                                                                            \
     POTASSCO_WARNING_IGNORE_CLANG("-Wzero-length-array") POTASSCO_WARNING_IGNORE_CLANG("-Wsign-conversion")
@@ -86,9 +86,10 @@
 #else
 #pragma GCC diagnostic push
 #pragma GCC system_header
-#define POTASSCO_WARNING_PUSH()        _Pragma("GCC diagnostic push") POTASSCO_WARNING_IGNORE_GCC("-Wpragmas")
-#define POTASSCO_WARNING_POP()         _Pragma("GCC diagnostic pop")
-#define POTASSCO_WARNING_IGNORE_GCC(X) _Pragma(POTASSCO_STRING(GCC diagnostic ignored X))
+#define POTASSCO_PRAGMA_GCC(X)         POTASSCO_PRAGMA(GCC X)
+#define POTASSCO_WARNING_PUSH()        POTASSCO_PRAGMA_GCC(diagnostic push) POTASSCO_WARNING_IGNORE_GCC("-Wpragmas")
+#define POTASSCO_WARNING_POP()         POTASSCO_PRAGMA_GCC(diagnostic pop)
+#define POTASSCO_WARNING_IGNORE_GCC(X) POTASSCO_PRAGMA_GCC(diagnostic ignored X)
 #define POTASSCO_WARNING_BEGIN_RELAXED                                                                                 \
     POTASSCO_WARNING_PUSH()                                                                                            \
     POTASSCO_WARNING_IGNORE_GCC("-Wpedantic")                                                                          \
@@ -145,14 +146,6 @@ struct ExpressionInfo {
 #define POTASSCO_CAPTURE_EXPRESSION(E)                                                                                 \
     Potassco::ExpressionInfo { .expression = #E, .location = POTASSCO_CURRENT_LOCATION() }
 
-using AbortHandler = void (*)(const char* msg);
-//! Sets handler as the new abort handler and returns the previously installed handler.
-/*!
- * \note A given handler shall either abort the program or throw an exception. If no handler is set, `std::abort()` is
- *       used as the abort handler.
- */
-extern AbortHandler setAbortHandler(AbortHandler handler);
-
 //! Sets x87 floating-point unit to double precision if needed and returns the previous configuration.
 /*!
  * \note This function does nothing (and returns 0) if the x87 floating-point unit is not active.
@@ -174,6 +167,21 @@ auto enableAnsiColorSupport(FILE* file) -> std::errc;
 bool isTerminal(FILE* file);
 void lockFile(FILE* file);
 void unlockFile(FILE* file);
+
+using AlarmFunc = void (*)(int);
+//! Platform wrapper for setitimer() function.
+/*!
+ * Sets a global timer that calls the given function `f` after `millis` milliseconds.
+ * \note Calling setAlarm() overrides any previously set alarm.
+ */
+auto setAlarm(uint32_t millis, AlarmFunc f) -> std::errc;
+//! Kills any pending alarm previously set by setAlarm().
+auto killAlarm() -> bool;
+
+//! Gets the total (user + system) time in seconds spent by the current process.
+auto getProcessTime() -> double;
+//! Gets the total (user + system) time in seconds spent by the current thread.
+auto getThreadTime() -> double;
 
 } // namespace Potassco
 

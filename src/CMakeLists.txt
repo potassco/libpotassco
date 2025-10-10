@@ -37,6 +37,7 @@ set(src
     convert.cpp
     error.cpp
     match_basic_types.cpp
+    platform.cpp
     program_options.cpp
     reify.cpp
     rule_utils.cpp

@@ -26,7 +26,6 @@
 
 #include <potassco/enum.h>
 
-#include <system_error>
 namespace Potassco {
 /*!
  * \addtogroup BasicTypes
@@ -99,6 +98,14 @@ constexpr auto translateEc(T in) {
     }
 }
 } // namespace Detail
+
+using AbortHandler = void (*)(const char* msg);
+//! Sets handler as the new abort handler and returns the previously installed handler.
+/*!
+ * \note A given handler shall either abort the program or throw an exception. If no handler is set, `std::abort()` is
+ *       used as the abort handler.
+ */
+extern AbortHandler setAbortHandler(AbortHandler handler);
 
 //! Throws an exception of type defined the given error code.
 POTASSCO_ATTR_NORETURN extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char* fmt = nullptr,
