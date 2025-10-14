@@ -4,9 +4,6 @@ if(POLICY CMP0063)
     cmake_policy(SET CMP0063 NEW)
 endif()
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
 # enable folders in IDEs like Visual Studio
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include(GNUInstallDirs)
@@ -17,7 +14,8 @@ option(LIB_POTASSCO_INSTALL_LIB "whether to install libpotassco" OFF)
 option(LIB_POTASSCO_INSTALL_VERSIONED "whether to use a versioned install layout" OFF)
 cmake_dependent_option(LIB_POTASSCO_TESTS_ENABLE_DBG_HEAP "enable windows debug heap in catch2" OFF "LIB_POTASSCO_BUILD_TESTS" OFF)
 cmake_dependent_option(LIB_POTASSCO_BUILD_STATIC "link lpconvert statically if supported" OFF "LIB_POTASSCO_BUILD_APP" ON)
-cmake_dependent_option(LIB_POTASSCO_SETUP_CATCH2 "setup third_party/Catch2" OFF "NOT LIB_POTASSCO_BUILD_TESTS" ON)
+option(LIB_POTASSCO_SETUP_CATCH2 "setup third_party/Catch2" ${LIB_POTASSCO_BUILD_TESTS})
+mark_as_advanced(LIB_POTASSCO_SETUP_CATCH2)
 
 if(LIB_POTASSCO_INSTALL_LIB AND NOT CMAKE_INSTALL_LIBDIR)
     message(STATUS "LIBDIR no set - using lib")
@@ -66,16 +64,18 @@ if(NOT AMC_PEDANTIC)
 endif()
 
 if(LIB_POTASSCO_SETUP_CATCH2)
+    message(STATUS "libpotassco: setting up Catch2")
     set(CATCH_BUILD_STATIC_LIBRARY ON CACHE INTERNAL " " FORCE)
     set(CATCH_CONFIG_WINDOWS_CRTDBG ${LIB_POTASSCO_TESTS_ENABLE_DBG_HEAP} CACHE INTERNAL " " FORCE)
     add_subdirectory(third_party/Catch2 EXCLUDE_FROM_ALL)
-    include(CTest)
-    include(Catch)
+elseif(LIB_POTASSCO_BUILD_TESTS)
+    find_package(Catch2 3.5 REQUIRED)
 endif()
 ########################################################################################################################
-
+add_library(potassco_default_options INTERFACE)
 add_library(potassco_default_warnings INTERFACE)
 add_library(potassco::potassco_default_warnings ALIAS potassco_default_warnings)
+add_library(potassco::potassco_default_options ALIAS potassco_default_options)
 if(MSVC)
     set(PROJECT_WARNINGS_CXX /W3)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -83,6 +83,8 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL
         -Wall -Wextra -Wpedantic -Wshadow -Wundef -Wformat -Wformat=2 -Wunused -Wsign-conversion -Wimplicit-fallthrough
         -Wextra-semi -Woverloaded-virtual -Wnon-virtual-dtor)
 endif()
+target_compile_features(potassco_default_options INTERFACE cxx_std_20)
+set_target_properties(potassco_default_options PROPERTIES CXX_EXTENSIONS OFF)
 target_compile_options(potassco_default_warnings
     INTERFACE
     $<$<COMPILE_LANGUAGE:CXX>:${PROJECT_WARNINGS_CXX}>)
@@ -93,6 +95,8 @@ if(LIB_POTASSCO_BUILD_APP)
 endif()
 
 if(LIB_POTASSCO_BUILD_TESTS)
+    include(CTest)
+    include(Catch)
     add_subdirectory(tests)
 endif()
 

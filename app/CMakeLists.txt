@@ -1,5 +1,5 @@
 add_executable(lpconvert lpconvert.cpp)
-target_link_libraries(lpconvert libpotassco)
+target_link_libraries(lpconvert PRIVATE libpotassco potassco_default_warnings)
 set_target_properties(lpconvert PROPERTIES FOLDER exe)
 if(LIB_POTASSCO_BUILD_STATIC)
     if(NOT MSVC)
