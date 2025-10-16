@@ -524,6 +524,7 @@ TEMPLATE_TEST_CASE("Enum to string", "[enum]", Foo, Char, Byte) {
     REQUIRE(toString(E::value4) == "value4");
     REQUIRE(toString(E::value5) == "value5");
     REQUIRE(toString(E::value6) == "value6");
+    REQUIRE(toString(std::vector{E::value1, E::value3, E::value6}) == "value1,value3,value6");
     E unknown{12};
     REQUIRE(toString(unknown) == "12");
 }

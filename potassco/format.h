@@ -31,16 +31,17 @@
 namespace Potassco {
 struct Field;
 namespace Detail {
-char*       writeSigned(char* first, char* last, std::intmax_t);
-char*       writeUnsigned(char* first, char* last, std::uintmax_t);
-char*       writeFloat(char* first, char* last, double, int p = -1);
-void        writeField(DynamicBuffer& buffer, const Field& f);
-std::size_t vFormatTo(DynamicBuffer&, const char* fmt, va_list args) noexcept POTASSCO_ATTRIBUTE_FORMAT(2, 0);
+char* writeSigned(char* first, char* last, std::intmax_t);
+char* writeUnsigned(char* first, char* last, std::uintmax_t);
+char* writeFloat(char* first, char* last, double, int p = -1);
+void  writeField(DynamicBuffer& buffer, const Field& f);
+struct TypeWithToChars {};
 enum class AugmentStyle {
     quoted,
     keyed,
     styled,
 };
+std::size_t    vFormatTo(DynamicBuffer&, const char* fmt, va_list args) noexcept POTASSCO_ATTRIBUTE_FORMAT(2, 0);
 constexpr bool hasValue(const auto&) { return true; }
 template <typename T>
 constexpr bool hasValue(const std::optional<T>& o) {
@@ -58,6 +59,10 @@ concept CharBuffer = requires(T& buffer, std::string_view v) {
 template <CharBuffer S>
 constexpr S& toChars(S& out, std::string_view s) {
     return out.append(s);
+}
+template <CharBuffer S>
+constexpr S& toChars(S& out, const std::string& s) {
+    return out.append(static_cast<std::string_view>(s));
 }
 template <CharBuffer S>
 constexpr S& toChars(S& out, const char* in) {
@@ -104,35 +109,45 @@ constexpr S& toChars(S& out, EnumT enumT) {
     using T = std::conditional_t<not std::is_same_v<U, char>, U, int>;
     return toChars(out, static_cast<T>(enumT));
 }
+// Container types
+template <CharBuffer S, typename T>
+constexpr S& toChars(S& out, const std::optional<T>& in);
+template <CharBuffer S, typename T, typename U>
+constexpr S& toChars(S& out, const std::pair<T, U>& p, char sep = ',');
+template <CharBuffer S, std::ranges::range C>
+requires(not std::is_same_v<std::ranges::range_value_t<C>, char>)
+constexpr S& toChars(S& out, const C& c, char sep = ',');
+
+template <typename S, typename T>
+POTASSCO_ATTR_INLINE constexpr S& toCharsChecked(S& out, const T& in) {
+    if constexpr (requires { toChars(out, in); }) {
+        toChars(out, in);
+    }
+    else {
+        static_assert(std::is_same_v<T, Detail::TypeWithToChars>, "type must provide toChars");
+    }
+    return out;
+}
 
 template <CharBuffer S, typename T, typename U>
-constexpr S& toChars(S& out, const std::pair<T, U>& p, char sep = ',') {
-    toChars(out, p.first).append(std::string_view{&sep, 1});
-    return toChars(out, p.second);
+constexpr S& toChars(S& out, const std::pair<T, U>& p, char sep) {
+    Potassco::toCharsChecked(out, p.first);
+    return Potassco::toCharsChecked(out.append(std::string_view{&sep, 1}), p.second);
 }
-template <CharBuffer S, typename C>
-requires requires(S& s, C c) {
-    typename C::value_type;
-    requires not std::is_same_v<typename C::value_type, char>;
-    c.begin();
-    c.end();
-    toChars(s, *c.begin());
-}
-constexpr S& toChars(S& out, const C& c, char sep = ',') {
+template <CharBuffer S, std::ranges::range C>
+requires(not std::is_same_v<std::ranges::range_value_t<C>, char>)
+constexpr S& toChars(S& out, const C& c, char sep) {
     for (std::size_t n = 0; const auto& v : c) {
         out.append(std::string_view(&sep, std::exchange(n, 1)));
-        toChars(out, v);
+        Potassco::toCharsChecked(out, v);
     }
     return out;
 }
 template <CharBuffer S, typename T>
 constexpr S& toChars(S& out, const std::optional<T>& in) {
-    if (in.has_value()) {
-        toChars(out, *in);
-    }
-    return out;
+    return in.has_value() ? Potassco::toCharsChecked(out, *in) : out;
 }
-
+// Style types
 template <typename T, Detail::AugmentStyle St = Detail::AugmentStyle::quoted>
 struct Augmented {
     template <CharBuffer S>
@@ -276,16 +291,19 @@ public:
         Color          fg{};
         Color          bg{};
     };
+    template <typename X>
+    static constexpr bool is_style_type =
+        std::is_same_v<X, Emphasis> || std::is_same_v<X, Color> || std::is_same_v<X, Bg>;
 
     //! Convenience operator for building a text style.
     template <typename X>
-    requires requires(Spec s, X x) { s.set(x); }
+    requires(is_style_type<X>)
     friend constexpr auto operator|(Spec s, X x) -> Spec {
         s.set(x);
         return s;
     }
     template <typename L, typename R>
-    requires requires(Spec s, L x, R y) { s.set(x), s.set(y); }
+    requires(is_style_type<L> && is_style_type<R>)
     friend constexpr auto operator|(L l, R r) -> Spec {
         return Spec{} | l | r;
     }
@@ -293,7 +311,7 @@ public:
     //! Creates an empty TextStyle.
     constexpr TextStyle() = default;
     template <typename X>
-    requires(std::is_same_v<X, Emphasis> || std::is_same_v<X, Color> || std::is_same_v<X, Bg>)
+    requires(is_style_type<X>)
     constexpr TextStyle(X x) : TextStyle(Spec{} | x) {} // NOLINT(*-explicit-constructor)
     constexpr TextStyle(Spec spec) {                    // NOLINT(*-explicit-constructor)
         auto n    = 0u;
@@ -504,20 +522,10 @@ private:
 using BasicCharBuffer = BasicCharBufferT<>;
 static_assert(CharBuffer<BasicCharBuffer> && sizeof(BasicCharBuffer) == 256);
 
-template <typename T>
-requires requires(std::string& out, T& in) { toChars(out, in); }
-constexpr std::string toString(const T& x) {
-    std::string out;
-    toChars(out, x);
-    return out;
-}
 template <typename T, typename... Args>
 std::string toString(const T& t, const Args&... args) {
     std::string res;
-    toChars(res, t);
-    if constexpr (sizeof...(Args) > 0) {
-        std::ignore = (toChars(res.append(1, ','), args), ...);
-    }
+    std::ignore = toChars(res, t), (toChars(res.append(1, ','), args), ...);
     return res;
 }
 
