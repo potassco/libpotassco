@@ -308,9 +308,8 @@ void Reifier::theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements, Id_t op,
 }
 
 void Reifier::endStep() {
-    for (size_t i = 0; const auto& scc : stepData_->graph.computeNonTrivialSccs()) {
+    for (auto [i, scc] : enumerate(stepData_->graph.computeNonTrivialSccs())) {
         for (auto x : std::views::reverse(scc)) { printStepFact("scc", i, x); }
-        ++i;
     }
     if (reifyStep_) {
         stepData_->clear();

@@ -201,7 +201,7 @@ void AspifInput::matchString() {
 void AspifInput::matchIds() {
     auto len = matchUint("number of terms expected");
     data_->ids.resize(len);
-    for (uint32_t i = 0; i != len; ++i) { data_->ids[i] = matchId(); }
+    for (auto& id : data_->ids) { id = matchId(); }
 }
 void AspifInput::matchOutput(OutputType t) {
     switch (t) {

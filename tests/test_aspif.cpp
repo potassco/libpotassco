@@ -714,6 +714,32 @@ TEST_CASE("Test Basic", "[rule]") {
         CHECK(predicate("tuple((1,2),(3,4)"sv) == std::pair("tuple"sv, -1));
         CHECK(predicate("foo(\"bla)"sv) == std::pair("foo"sv, -1));
     }
+
+    SECTION("enumerate") {
+        SECTION("lvalue") {
+            std::vector       v{1, 2, 3};
+            std::stringstream res;
+            for (auto [i, x] : enumerate(v)) {
+                res << "(" << i << "," << x << ")";
+                ++x;
+            }
+            REQUIRE(res.str() == "(0,1)(1,2)(2,3)");
+            res.str("");
+            const auto& cv = v;
+            STATIC_CHECK(
+                std::is_same_v<decltype(*enumerate(cv).begin()), std::pair<std::vector<int>::size_type, const int&>>);
+            for (auto [i, x] : enumerate(cv)) { res << "(" << i << "," << x << ")"; }
+            REQUIRE(res.str() == "(0,2)(1,3)(2,4)");
+        }
+        SECTION("rvalue") {
+            std::stringstream res;
+            for (auto [i, x] : enumerate(std::vector{1, 2, 3})) {
+                ++x;
+                res << "(" << i << "," << x << ")";
+            }
+            REQUIRE(res.str() == "(0,2)(1,3)(2,4)");
+        }
+    }
 }
 TEST_CASE("Test RuleBuilder", "[rule]") {
     RuleBuilder rb;

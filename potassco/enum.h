@@ -83,7 +83,7 @@ struct EnumMeta<EnumT, std::void_t<decltype(enable_meta(c_type<EnumT>))>> : std:
 template <std::size_t N>
 struct FixedString {
     constexpr FixedString(std::string_view s) {
-        for (std::size_t i = 0; i != N; ++i) { data[i] = s[i]; }
+        std::copy_n(s.data(), N, data);
         data[N] = 0;
     }
     [[nodiscard]] constexpr auto operator<=>(const FixedString&) const = default;
@@ -201,7 +201,7 @@ struct EnumEntries {
     using UT                        = std::underlying_type_t<EnumT>;      // NOLINT
     static constexpr auto null_elem = element_type{};
     explicit constexpr EnumEntries(const element_type* base) {
-        for (std::size_t i = 0; i != N; ++i) { vals[i] = base[i]; }
+        std::copy_n(base, N, vals.data());
         std::sort(vals.begin(), vals.end(),
                   [](const auto& lhs, const auto& rhs) { return to_underlying(lhs.first) < to_underlying(rhs.first); });
     }

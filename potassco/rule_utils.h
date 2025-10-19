@@ -24,6 +24,7 @@
 #pragma once
 
 #include <potassco/basic_types.h>
+#include <potassco/utils.h>
 
 namespace Potassco {
 /*!

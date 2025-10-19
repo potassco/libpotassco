@@ -102,7 +102,7 @@ void SmodelsInput::matchSum(RuleBuilder& rule, bool weights) {
         std::swap(bnd, neg);
     }
     rule.startSum(static_cast<Weight_t>(bnd));
-    for (uint32_t i = 0; i != len; ++i) {
+    while (len--) {
         auto p = lit(matchAtom());
         if (neg) {
             p *= -1;
@@ -307,24 +307,20 @@ static constexpr Lit_t smLit(const WeightLit& x) { return x.weight >= 0 ? x.lit 
 static constexpr Lit_t smLit(Lit_t x) { return x; }
 template <typename T>
 static constexpr unsigned negSize(const std::span<T>& lits) {
-    unsigned r = 0;
-    for (const auto& x : lits) { r += smLit(x) < 0; }
-    return r;
+    return static_cast<unsigned>(std::ranges::count_if(lits, [](auto x) { return smLit(x) < 0; }));
 }
 
 template <typename T, typename Op>
 static void print(std::ostream& os, const std::span<T>& span, unsigned neg, unsigned pos, Op op) {
-    for (auto it = span.begin(); neg; ++it) {
-        if (smLit(*it) < 0) {
-            os << " " << op(*it);
-            --neg;
+    for (int sign = -1; auto n : {neg, pos}) {
+        for (auto it = span.begin(); n; ++it) {
+            POTASSCO_ASSERT(it != span.end());
+            if (auto x = *it; (smLit(x) * sign) > 0) {
+                os << " " << op(x);
+                --n;
+            }
         }
-    }
-    for (auto it = span.begin(); pos; ++it) {
-        if (smLit(*it) >= 0) {
-            os << " " << op(*it);
-            --pos;
-        }
+        sign = -sign;
     }
 }
 template <typename T>

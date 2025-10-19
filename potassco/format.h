@@ -22,8 +22,8 @@
 // IN THE SOFTWARE.
 //
 #pragma once
-#include <potassco/basic_types.h>
 #include <potassco/enum.h>
+#include <potassco/utils.h>
 
 #include <cstdarg>
 #include <string>

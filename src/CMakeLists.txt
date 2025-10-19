@@ -25,6 +25,7 @@ set(header
     ${header_path}/reify.h
     ${header_path}/rule_utils.h
     ${header_path}/smodels.h
+    ${header_path}/utils.h
     ${header_path}/theory_data.h)
 set(ide_header_group "Header Files")
 source_group("${ide_header_group}" FILES ${header})
@@ -43,6 +44,7 @@ set(src
     rule_utils.cpp
     smodels.cpp
     string_convert.cpp
+    utils.cpp
     theory_data.cpp)
 
 add_library(libpotassco ${opts_header} ${header} ${src})

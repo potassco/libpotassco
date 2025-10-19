@@ -24,12 +24,11 @@
 #pragma once
 
 #include <potassco/basic_types.h>
+#include <potassco/utils.h>
 
 #include <climits>
-#include <cstdint>
 #include <ios>
 #include <iosfwd>
-#include <unordered_map>
 
 namespace Potassco {
 
@@ -221,20 +220,6 @@ auto predicate(std::string_view name) -> std::pair<std::string_view, int>;
 //! Attaches the given stream to `r` and calls ProgramReader::parse() with the read mode set to
 //! ProgramReader::Complete.
 int readProgram(std::istream& str, ProgramReader& r);
-
-template <typename ValueType>
-using StringMap = std::unordered_map<ConstString, ValueType, std::hash<ConstString>, std::equal_to<>>;
-
-template <typename ValueType, typename... Args>
-auto try_emplace(StringMap<ValueType>& map, std::string_view key,
-                 Args&&... args) -> std::pair<typename StringMap<ValueType>::iterator, bool> {
-    // Create a "borrowed" key for lookup. If `key` is not in map, `try_emplace()` will copy-construct a key from `k`,
-    // thereby materializing a full string. Otoh, if `map` already contains an element with the given key, we avoid an
-    // unnecessary allocation.
-    // NOTE: Once we have C++26 and the heterogeneous version of `try_emplace()`, this workaround can be removed.
-    ConstString k{ConstString::Borrow_t{}, key};
-    return map.try_emplace(k, std::forward<Args>(args)...);
-}
 
 } // namespace Potassco
 ///@}
