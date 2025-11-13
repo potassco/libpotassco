@@ -130,5 +130,6 @@ if(LIB_POTASSCO_INSTALL_LIB)
         ${CMAKE_CURRENT_BINARY_DIR}/PotasscoConfig.cmake
         ${CMAKE_CURRENT_BINARY_DIR}/PotasscoConfigVersion.cmake
         DESTINATION ${cmake_dest})
+    install(TARGETS potassco_default_warnings potassco_default_options EXPORT PotasscoTargets)
     install(EXPORT PotasscoTargets DESTINATION "${cmake_dest}")
 endif()
