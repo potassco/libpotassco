@@ -212,7 +212,7 @@ static bool isCygPty(FILE* file) {
 #endif
 }
 #else
-static bool isTerminal(FILE* file) { return isatty(fileno(file)); }
+static bool isTerminal(FILE* file) { return isatty(fileno(file)) > 0; }
 static bool isCygPty(FILE*) { return false; }
 static void lockfile(FILE* file) { ::flockfile(file); }
 static void unlockfile(FILE* file) { ::funlockfile(file); }
@@ -221,7 +221,9 @@ static void unlockfile(FILE* file) { ::funlockfile(file); }
 static auto enableTerminalColors([[maybe_unused]] FILE* file) -> std::errc {
     auto ec = std::errc::inappropriate_io_control_operation;
     if (isTerminal(file)) {
-#if !defined(_WIN32) || defined(__linux__)
+#if defined(__EMSCRIPTEN__)
+        ec = std::errc::function_not_supported;
+#elif !defined(_WIN32) || defined(__linux__)
         ec = {};
 #elif defined(ENABLE_VIRTUAL_TERMINAL_PROCESSING)
         if (file == stdout || file == stderr) {
