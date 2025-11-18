@@ -215,7 +215,26 @@ private:
 
 bool matchTerm(std::string_view& input, std::string_view& termOut);
 bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr);
-auto predicate(std::string_view name) -> std::pair<std::string_view, int>;
+//! Returns the predicate name and arity for the given atom.
+/*!
+ * Given an atom `foo(x,y)`, the function returns the pair ("foo"sv,2).
+ * If `atom` is not a valid atom name, the returned arity will be < 0.
+ */
+auto predicate(std::string_view atom) -> std::pair<std::string_view, int>;
+struct AtomView {
+    friend bool      operator==(const AtomView&, const AtomView&) = default;
+    auto             popFront() noexcept -> std::string_view;
+    auto             popBack() noexcept -> std::string_view;
+    std::string_view id;
+    std::string_view args;
+    int              arity;
+};
+//! Splits an atom name into predicate-id, arity, and arguments.
+/*!
+ * Given an atom `foo(x,y)`, the function returns {.id = "foo", .args = "x,y", .arity = 2}.
+ * If `atom` is not a valid atom name, the returned arity will be < 0.
+ */
+auto atomView(std::string_view atom) -> AtomView;
 
 //! Attaches the given stream to `r` and calls ProgramReader::parse() with the read mode set to
 //! ProgramReader::Complete.

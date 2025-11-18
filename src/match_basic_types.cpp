@@ -252,21 +252,71 @@ bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut) {
     in.remove_prefix(sz);
     return true;
 }
-auto predicate(std::string_view name) -> std::pair<std::string_view, int> {
+auto atomView(std::string_view atom) -> AtomView {
     using namespace std::literals;
-    auto id   = name.substr(0, name.find('('));
-    auto args = name.substr(id.size());
+    AtomView res;
+    res.id    = atom.substr(0, atom.find('('));
+    auto args = atom.substr(res.id.size());
     if (args.size() < 3 || args.back() != ')') { // zero arity - pred or pred()
-        return {id, 0 - (not args.empty() && args != "()"sv)};
+        res.arity = 0 - (not args.empty() && args != "()"sv);
+        return res;
     }
-    auto arity = 1;
+    res.arity = 1;
     args.remove_prefix(1);
+    res.args = args.substr(0, args.size() - 1);
     for (auto t = ""sv; matchTerm(args, t) && args.size() > 2 && args.starts_with(',');) {
-        ++arity;
+        ++res.arity;
         args.remove_prefix(1);
     }
-    return {id, args == ")"sv ? arity : -1};
+    if (args != ")"sv) {
+        res.arity = -1;
+        res.args  = {};
+    }
+    return res;
 }
+auto predicate(std::string_view atom) -> std::pair<std::string_view, int> {
+    auto r = atomView(atom);
+    return {r.id, r.arity};
+}
+auto AtomView::popFront() noexcept -> std::string_view {
+    std::string_view popped;
+    if (arity >= 1 && matchTerm(args, popped)) {
+        args.remove_prefix(args.starts_with(','));
+        --arity;
+    }
+    return popped; // NOLINT
+}
+auto AtomView::popBack() noexcept -> std::string_view {
+    if (arity <= 1) {
+        return popFront();
+    }
+    for (std::size_t pos = args.size(), paren = 0; pos;) {
+        switch (auto c = args[--pos]) {
+            default: break;
+            case '"':
+                for (bool quoted = false; pos;) {
+                    c = args[--pos];
+                    if (c == '"' && not quoted) {
+                        break;
+                    }
+                    quoted = not quoted && c == '\\';
+                }
+                break;
+            case ')': ++paren; break;
+            case '(': --paren; break;
+            case ',':
+                if (paren == 0) {
+                    auto popped = args.substr(pos + 1);
+                    args.remove_suffix(args.size() - pos);
+                    --arity;
+                    return popped; // NOLINT
+                }
+                break;
+        }
+    }
+    return {};
+}
+
 auto cmpAtom(std::string_view lhsAtom, std::string_view rhsAtom, AtomCompare cmp) noexcept -> std::strong_ordering {
     if (test(cmp, AtomCompare::cmp_arity)) {
         auto [lId, lArity] = predicate(lhsAtom);

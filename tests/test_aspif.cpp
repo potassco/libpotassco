@@ -38,6 +38,11 @@
 #include <algorithm>
 #include <sstream>
 
+namespace Potassco {
+static std::ostream& operator<<(std::ostream& os, const AtomView& atomView) {
+    return os << "{" << atomView.id << "/" << atomView.arity << ", " << atomView.args << "}";
+}
+} // namespace Potassco
 namespace Potassco::Test::Aspif {
 constexpr Weight_t   bound_none = -1;
 static std::ostream& operator<<(std::ostream& os, const Heuristic& h);
@@ -713,6 +718,52 @@ TEST_CASE("Test Basic", "[rule]") {
         // invalid
         CHECK(predicate("tuple((1,2),(3,4)"sv) == std::pair("tuple"sv, -1));
         CHECK(predicate("foo(\"bla)"sv) == std::pair("foo"sv, -1));
+    }
+    SECTION("atomView") {
+        using namespace std::literals;
+        CHECK(atomView("foo"sv) == AtomView{"foo"sv, ""sv, 0});
+        CHECK(atomView("foo(x)"sv) == AtomView("foo"sv, "x"sv, 1));
+        CHECK(atomView("foo(x,y)"sv) == AtomView("foo"sv, "x,y"sv, 2));
+        CHECK(atomView("foo(\"bla\",2)"sv) == AtomView("foo"sv, "\"bla\",2"sv, 2));
+        CHECK(atomView("tuple((1,2),(3,4))"sv) == AtomView("tuple"sv, "(1,2),(3,4)"sv, 2));
+        CHECK(atomView("(1,2,3)"sv) == AtomView(""sv, "1,2,3"sv, 3));
+        // invalid
+        CHECK(atomView({}) == AtomView(""sv, ""sv, 0));
+        CHECK(atomView("tuple((1,2),(3,4)"sv) == AtomView("tuple"sv, ""sv, -1));
+#define CHECK_POP(OP, X, P, R)                                                                                         \
+    do {                                                                                                               \
+        auto av = atomView(X);                                                                                         \
+        CHECK(av.OP == std::string_view(P));                                                                           \
+        CHECK(av == atomView(R));                                                                                      \
+    } while (0)
+        SECTION("popFront") {
+#define CHECK_POP_FRONT(X, P, R) CHECK_POP(popFront(), X, P, R)
+            CHECK_POP_FRONT("foo"sv, ""sv, "foo"sv);
+            CHECK_POP_FRONT("foo(x)"sv, "x"sv, "foo"sv);
+            CHECK_POP_FRONT("foo(x,y)"sv, "x"sv, "foo(y)"sv);
+            CHECK_POP_FRONT("foo(\"bla\",2)"sv, "\"bla\""sv, "foo(2)"sv);
+            CHECK_POP_FRONT("tuple((1,2),(3,4))"sv, "(1,2)"sv, "tuple((3,4))"sv);
+            CHECK_POP_FRONT("(1,2,3)"sv, "1"sv, "(2,3)"sv);
+            // invalid
+            CHECK_POP_FRONT({}, ""sv, ""sv);
+            CHECK_POP_FRONT("tuple((1,2),(3,4)"sv, ""sv, "tuple((1,2),(3,4)"sv);
+#undef CHECK_POP_FRONT
+        }
+        SECTION("popBack") {
+#define CHECK_POP_BACK(X, P, R) CHECK_POP(popBack(), X, P, R)
+            CHECK_POP_BACK("foo"sv, ""sv, "foo"sv);
+            CHECK_POP_BACK("foo(x)"sv, "x"sv, "foo"sv);
+            CHECK_POP_BACK("foo(x,y)"sv, "y"sv, "foo(x)"sv);
+            CHECK_POP_BACK("foo(x,((1,2),\"J(2)\"))"sv, "((1,2),\"J(2)\")"sv, "foo(x)"sv);
+            CHECK_POP_BACK("foo(\"bla\",2)"sv, "2"sv, "foo(\"bla\")"sv);
+            CHECK_POP_BACK("tuple((1,2),(3,4))"sv, "(3,4)"sv, "tuple((1,2))"sv);
+            CHECK_POP_BACK("(1,2,3)", "3"sv, "(1,2)"sv);
+            // invalid
+            CHECK_POP_BACK({}, ""sv, ""sv);
+            CHECK_POP_BACK("tuple((1,2),(3,4)"sv, ""sv, "tuple((1,2),(3,4)"sv);
+#undef CHECK_POP_BACK
+        }
+#undef CHECK_POP
     }
 
     SECTION("enumerate") {

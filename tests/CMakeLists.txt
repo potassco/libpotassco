@@ -13,6 +13,7 @@ target_sources(test_potassco_opts PRIVATE
     test_string_convert.cpp)
 
 foreach(target test_potassco_lp test_potassco_opts)
+    target_compile_definitions(${target} PRIVATE CATCH_CONFIG_ENABLE_PAIR_STRINGMAKER)
     target_link_libraries(${target} PRIVATE libpotassco Catch2::Catch2WithMain potassco_default_warnings)
     target_include_directories(${target} PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
     set_target_properties(${target} PROPERTIES FOLDER test)
