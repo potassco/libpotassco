@@ -222,12 +222,16 @@ bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr)
  */
 auto predicate(std::string_view atom) -> std::pair<std::string_view, int>;
 struct AtomView {
-    friend bool      operator==(const AtomView&, const AtomView&) = default;
-    auto             popFront() noexcept -> std::string_view;
-    auto             popBack() noexcept -> std::string_view;
-    std::string_view id;
-    std::string_view args;
-    int              arity;
+    friend bool operator==(const AtomView&, const AtomView&) = default;
+    auto        popFront() noexcept -> std::string_view;
+    auto        popBack() noexcept -> std::string_view;
+    auto        popStep(bool last = true) noexcept -> int;
+    //! Returns arguments at positions `keyArg` and `valArg` or an empty pair if any position is out of bounds.
+    [[nodiscard]] auto getAssignment(Id_t keyArg,
+                                     Id_t valArg) const noexcept -> std::pair<std::string_view, std::string_view>;
+    std::string_view   id;
+    std::string_view   args;
+    int                arity;
 };
 //! Splits an atom name into predicate-id, arity, and arguments.
 /*!

@@ -730,12 +730,16 @@ TEST_CASE("Test Basic", "[rule]") {
         // invalid
         CHECK(atomView({}) == AtomView(""sv, ""sv, 0));
         CHECK(atomView("tuple((1,2),(3,4)"sv) == AtomView("tuple"sv, ""sv, -1));
+        CHECK(atomView("(1,2,3)").popStep() == 3);
+        CHECK(atomView("(1,2,3)").popStep(false) == 1);
+        CHECK(atomView("tuple((1,2),(3,4))"sv).popStep() == -1);
 #define CHECK_POP(OP, X, P, R)                                                                                         \
     do {                                                                                                               \
         auto av = atomView(X);                                                                                         \
         CHECK(av.OP == std::string_view(P));                                                                           \
         CHECK(av == atomView(R));                                                                                      \
     } while (0)
+
         SECTION("popFront") {
 #define CHECK_POP_FRONT(X, P, R) CHECK_POP(popFront(), X, P, R)
             CHECK_POP_FRONT("foo"sv, ""sv, "foo"sv);
@@ -764,6 +768,18 @@ TEST_CASE("Test Basic", "[rule]") {
 #undef CHECK_POP_BACK
         }
 #undef CHECK_POP
+
+        SECTION("getAssignment") {
+            CHECK(atomView("foo(x,y)"sv).getAssignment(0, 1) == std::pair{"x"sv, "y"sv});
+            CHECK(atomView("foo(x,y)"sv).getAssignment(1, 0) == std::pair{"y"sv, "x"sv});
+            CHECK(atomView("tuple(foo,(1,2),(3,4),bar)"sv).getAssignment(1, 2) == std::pair{"(1,2)"sv, "(3,4)"sv});
+            CHECK(atomView("foo(x)").getAssignment(0, 0) == std::pair{"x"sv, "x"sv});
+            CHECK(atomView("(x,2,3)").getAssignment(0, 0) == std::pair{"x"sv, "x"sv});
+            CHECK(atomView("(x,2,3)").getAssignment(2, 2) == std::pair{"3"sv, "3"sv});
+            CHECK(atomView("(x,2,3)").getAssignment(1, 1) == std::pair{"2"sv, "2"sv});
+            CHECK(atomView("(x,2,3)").getAssignment(0, 2) == std::pair{"x"sv, "3"sv});
+            CHECK(atomView("(x,2,3)").getAssignment(0, 3) == std::pair{""sv, ""sv});
+        }
     }
 
     SECTION("enumerate") {

@@ -316,6 +316,44 @@ auto AtomView::popBack() noexcept -> std::string_view {
     }
     return {};
 }
+auto AtomView::popStep(bool last) noexcept -> int {
+    auto popped = last ? popBack() : popFront();
+    if (int step = -1; matchNum(popped, nullptr, &step) && step >= 0) {
+        return step;
+    }
+    return -1;
+}
+auto AtomView::getAssignment(Id_t keyArg, Id_t valArg) const noexcept -> std::pair<std::string_view, std::string_view> {
+    auto [mn, mx] = std::minmax(keyArg, valArg);
+    auto res      = std::pair<std::string_view, std::string_view>{};
+    if (std::cmp_greater_equal(mx, arity)) {
+        return res;
+    }
+    auto copy = *this;
+    if (mx > 1u && mn != mx && std::cmp_equal(mn, 0) && std::cmp_equal(mx, arity - 1)) {
+        res.first  = copy.popFront();
+        res.second = copy.popBack();
+        if (keyArg > valArg) {
+            std::swap(res.first, res.second);
+        }
+        return res;
+    }
+    for (auto pos = 0u;; ++pos) {
+        auto arg = copy.popFront();
+        if (arg.empty()) {
+            return {};
+        }
+        if (pos == keyArg) {
+            res.first = arg;
+        }
+        if (pos == valArg) {
+            res.second = arg;
+        }
+        if (pos == mx) {
+            return res;
+        }
+    }
+}
 
 auto cmpAtom(std::string_view lhsAtom, std::string_view rhsAtom, AtomCompare cmp) noexcept -> std::strong_ordering {
     if (test(cmp, AtomCompare::cmp_arity)) {
