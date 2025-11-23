@@ -417,11 +417,13 @@ private:
 
 //! Default formatting for options.
 struct DefaultFormat {
+    enum class Element { caption, alias, name, arg, description };
+    using StyleCb = auto (*)(Element, bool) -> std::string_view;
     static std::size_t format(std::string&, const OptionContext&) { return 0; }
     //! Writes g.caption() to buffer.
-    static std::size_t format(std::string& buffer, const OptionGroup& g);
+    static std::size_t format(std::string& buffer, const OptionGroup& g, StyleCb = nullptr);
     //! Writes short, long, and argument name followed by option description to buffer.
-    static std::size_t format(std::string& buffer, const Option& o, std::size_t colWidth);
+    static std::size_t format(std::string& buffer, const Option& o, std::size_t colWidth, StyleCb = nullptr);
 };
 
 //! Base class for printing options.

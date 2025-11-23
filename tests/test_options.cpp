@@ -630,6 +630,44 @@ TEST_CASE("Test option format", "[options]") {
             DefaultFormat::format(out, Option("number", "a number", {}, 0), 20);
             REQUIRE(out == "  --number=<arg>    : a number\n");
         }
+        SECTION("styled") {
+            DefaultFormat::format(out, Option("number", "a number", ValueDesc{}.negatable(), 'n'), 0,
+                                  [](DefaultFormat::Element e, bool open) {
+                                      using enum DefaultFormat::Element;
+                                      switch (e) {
+                                          case alias      : return open ? "<alias>"sv : "</alias>"sv;
+                                          case name       : return open ? "<name>"sv : "</name>"sv;
+                                          case arg        : return open ? "<arg>"sv : "</arg>"sv;
+                                          case description: return open ? "<desc>"sv : "</desc>"sv;
+                                          default         : break;
+                                      }
+                                      FAIL("unexpected element");
+                                      return std::string_view{};
+                                  });
+            REQUIRE(out == "  <alias>-n</alias>,<name>--number</name> <arg><arg>|no</arg>: <desc>a number</desc>\n");
+        }
+    }
+    SECTION("default group caption format") {
+        std::string out;
+        SECTION("no caption") {
+            DefaultFormat::format(out, g);
+            REQUIRE(out.empty());
+            DefaultFormat::format(out, g, [](DefaultFormat::Element, bool) {
+                FAIL("must not be called;");
+                return ""sv;
+            });
+        }
+        SECTION("with caption") {
+            OptionGroup basic("Basic Options");
+            DefaultFormat::format(out, basic);
+            REQUIRE(out == "\nBasic Options:\n\n");
+            out.clear();
+            DefaultFormat::format(out, basic, [](DefaultFormat::Element e, bool open) {
+                REQUIRE(e == DefaultFormat::Element::caption);
+                return open ? "<cap>"sv : "</cap>"sv;
+            });
+            REQUIRE(out == "\n<cap>Basic Options:</cap>\n\n");
+        }
     }
 }
 

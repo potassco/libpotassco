@@ -38,6 +38,14 @@ public:
     static constexpr TextStyle col_warning = TextStyle::Emphasis::bold | TextStyle::Color::bright_yellow;
     static constexpr TextStyle col_info    = TextStyle::Emphasis::bold | TextStyle::Color::cyan;
     static constexpr TextStyle col_em      = TextStyle::Emphasis::bold;
+    //! Default color style for help output if enabled via `enableColoredHelp()`.
+    static constexpr TextStyle col_usage     = col_em;
+    static constexpr TextStyle col_program   = TextStyle::Emphasis::bold | TextStyle::Color::bright_yellow;
+    static constexpr TextStyle col_def_cmd   = TextStyle::Color::bright_magenta;
+    static constexpr TextStyle col_opt_group = TextStyle::Color::bright_blue | TextStyle::Emphasis::bold;
+    static constexpr TextStyle col_opt_short = TextStyle::Color::green | TextStyle::Emphasis::bold;
+    static constexpr TextStyle col_opt_long  = TextStyle::Emphasis::bold | TextStyle::Color::cyan;
+    static constexpr TextStyle col_opt_arg   = TextStyle::Emphasis::bold | TextStyle::Color::yellow;
 
     //! Description of and max value for the help option.
     struct HelpOpt {
@@ -134,6 +142,8 @@ public:
      * Additionally, any provided message is highlighted in col_em.
      */
     void enableColoredMessages(bool enable = true);
+    //! Enables formatting of help text with ansi colors.
+    void enableColoredHelp(bool enable = true);
 
     //@}
 protected:
@@ -170,7 +180,8 @@ protected:
 
     Application();
     virtual ~Application();
-    [[nodiscard]] bool hasColoredMessages() const { return color_; }
+    [[nodiscard]] bool hasColoredMessages() const { return colorMsg_; }
+    [[nodiscard]] bool hasColoredHelp() const { return colorHelp_; }
 
     void setVerbose(unsigned v);
     void setAlarm(unsigned sec);
@@ -216,13 +227,14 @@ private:
     static void       sigHandler(int sig);
     [[noreturn]] void exit(int exitCode);
 
-    int      exitCode_; // application's exit code
-    unsigned timeout_;  // active time limit or 0 for no limit
-    unsigned verbose_;  // active verbosity level
-    bool     fastExit_; // force fast exit?
-    int      blocked_;  // temporarily block signals?
-    int      pending_;  // pending signal or 0 if no pending signal
-    bool     color_;    // format messages with ansi colors?
+    int      exitCode_;  // application's exit code
+    unsigned timeout_;   // active time limit or 0 for no limit
+    unsigned verbose_;   // active verbosity level
+    bool     fastExit_;  // force fast exit?
+    int      blocked_;   // temporarily block signals?
+    int      pending_;   // pending signal or 0 if no pending signal
+    bool     colorMsg_;  // format messages with ansi colors?
+    bool     colorHelp_; // format help with ansi colors?
 };
 
 } // namespace Potassco

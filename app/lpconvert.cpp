@@ -179,5 +179,8 @@ int main(int argc, char** argv) {
     if (Potassco::enableAnsiColorSupport(stderr) == std::errc{}) {
         app.enableColoredMessages();
     }
+    if (Potassco::enableAnsiColorSupport(stdout) == std::errc{}) {
+        app.enableColoredHelp();
+    }
     return app.main(argc, argv);
 }

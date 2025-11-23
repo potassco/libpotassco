@@ -46,7 +46,7 @@ struct MyApp : Application {
     void                           setup() override {}
     void                           initOptions(OptionContext& root) override {
         OptionGroup g("Basic Options");
-        g.addOptions()("-@@1,foo", Po::storeTo(foo), "Option on level 1");
+        g.addOptions()("-x,foo", Po::storeTo(foo).defaultsTo("2"), "Some option with default [%D]");
         root.add(std::move(g));
         OptionGroup g2("E1 Options");
         g2.setDescriptionLevel(Po::desc_level_e1);
@@ -247,8 +247,11 @@ TEST_CASE("Test application formatting", "[app]") {
     }
 }
 TEST_CASE("Test application", "[app]") {
-    MyApp       app;
-    const char* args[] = {"-h", "-V3", "--vers", "hallo"};
+    MyApp          app;
+    const char*    args[]   = {"-h", "-V3", "--vers", "hallo"};
+    constexpr auto contains = [](std::string_view where, std::string_view what) {
+        return where.find(what) < where.size();
+    };
     SECTION("args") {
         REQUIRE(app.main(args) == EXIT_SUCCESS);
         REQUIRE(app.getVerbose() == 3);
@@ -256,7 +259,7 @@ TEST_CASE("Test application", "[app]") {
         REQUIRE_FALSE(app.messages["help"].empty());
         REQUIRE(app.messages["version"].empty()); // help processed first
         REQUIRE(app.messages["error"].empty());
-        std::string_view help(app.messages["help"]);
+        auto help = std::string_view(app.messages["help"]);
         CAPTURE(help);
         REQUIRE(help.starts_with("TestApp version 1.0\n"
                                  "usage: TestApp [options] [files]\n"));
@@ -264,18 +267,45 @@ TEST_CASE("Test application", "[app]") {
         help.remove_prefix(std::min(help.find("Basic Options:"), help.size()));
         REQUIRE(help.starts_with("Basic Options:\n"));
 
-        constexpr auto contains = [](std::string_view where, std::string_view what) {
-            return where.find(what) < where.size();
-        };
         CAPTURE(help);
         REQUIRE(contains(help, "-V,--verbose[=<n>]   : Set verbosity level to <n>"));
         REQUIRE(contains(help, "--time-limit=<n>"));
+        REQUIRE(contains(help, "Some option with default [2]"));
         REQUIRE(contains(help, "Default command-line:\n"
-                               "TestApp "));
+                               "TestApp --foo=2"));
         help.remove_suffix(help.find("usage"));
         REQUIRE_FALSE(contains(help, "file"));
         REQUIRE_FALSE(contains(help, "foo"));
         REQUIRE_FALSE(contains(help, "E1"));
+    }
+    SECTION("colored-help") {
+        app.enableColoredHelp(true);
+        args[0] = "-h";
+        REQUIRE(app.main(std::span(args).subspan(0, 1)) == EXIT_SUCCESS);
+        auto help = std::string_view(app.messages["help"]);
+        REQUIRE(contains(help, std::string("  ")
+                                   .append(style("-V", Application::col_opt_short))
+                                   .append(",")
+                                   .append(style("--verbose", Application::col_opt_long))
+                                   .append("[=")
+                                   .append(style("<n>", Application::col_opt_arg))
+                                   .append("]")));
+        REQUIRE(contains(help, std::string("  ")
+                                   .append(style("-x", Application::col_opt_short))
+                                   .append(",")
+                                   .append(style("--foo", Application::col_opt_long))
+                                   .append(" ")
+                                   .append(style("<arg>", Application::col_opt_arg))));
+        REQUIRE(contains(help, std::string("  ")
+                                   .append(style("-x", Application::col_opt_short))
+                                   .append(",")
+                                   .append(style("--foo", Application::col_opt_long))
+                                   .append(" ")
+                                   .append(style("<arg>", Application::col_opt_arg))));
+        REQUIRE(contains(help, std::string("")
+                                   .append(style("--time-limit", Application::col_opt_long))
+                                   .append("=")
+                                   .append(style("<n>", Application::col_opt_arg))));
     }
     SECTION("version") {
         args[0] = "--vers";

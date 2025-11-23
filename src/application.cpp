@@ -41,7 +41,6 @@ POTASSCO_WARNING_IGNORE_MSVC(4996)
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <sstream>
 
 using namespace Potassco::ProgramOptions;
 using namespace std;
@@ -85,7 +84,8 @@ Application::Application()
     , fastExit_(false)
     , blocked_(0)
     , pending_(0)
-    , color_(false) {}
+    , colorMsg_(false)
+    , colorHelp_(false) {}
 Application::~Application() { resetInstance(*this); }
 void Application::initInstance(Application& app) { g_instance = &app; }
 void Application::resetInstance(const Application& app) {
@@ -235,7 +235,8 @@ void Application::stop(int code) {
         Application::exit(code);
     }
 }
-void Application::enableColoredMessages(bool enable) { color_ = enable; }
+void Application::enableColoredMessages(bool enable) { colorMsg_ = enable; }
+void Application::enableColoredHelp(bool enable) { colorHelp_ = enable; }
 
 void Application::shutdown() {}
 
@@ -347,7 +348,7 @@ auto Application::colorize(Sink& sink, std::string_view msg, const TextStyle& co
 
 void Application::write(Sink s, const Prefix& p) const {
     std::string_view sep{};
-    const auto&      tc = color_ ? [](MessageType t) -> const TextStyle& {
+    const auto&      tc = colorMsg_ ? [](MessageType t) -> const TextStyle& {
         switch (t) {
             default             : return col_def;
             case message_error  : return col_error;
@@ -356,7 +357,7 @@ void Application::write(Sink s, const Prefix& p) const {
         }
     }(p.level)
         : col_def;
-    const auto& mc  = color_ && not p.msg.empty() ? col_em : col_def;
+    const auto& mc  = colorMsg_ && not p.msg.empty() ? col_em : col_def;
     auto        msg = p.msg;
     do {
         auto line = p.exception ? msg.substr(0, std::min(msg.find('\n'), msg.size())) : msg;
@@ -418,22 +419,64 @@ bool Application::applyOptions(std::span<const char* const> args) {
     allOpts.assignDefaults(parseContext.parsed());
     if (help || version) {
         exitCode_ = EXIT_SUCCESS;
-        std::stringstream msg;
-        msg << getName() << " version " << getVersion() << "\n";
+        std::string msg;
+        msg.reserve(1024);
+        static constexpr std::string_view nl("\n");
+        msg.append(getName()).append(" version ").append(getVersion()).append(nl);
         if (help) {
-            auto x = static_cast<DescriptionLevel>(help - 1);
+            static constexpr auto col_none = TextStyle();
+            struct Fmt {
+                explicit Fmt(bool col) : cb(col ? style : nullptr) {}
+                std::size_t format(std::string& s, const OptionContext& ctx) { // NOLINT
+                    return DefaultFormat::format(s, ctx);
+                }
+                std::size_t format(std::string& buffer, const OptionGroup& g) const {
+                    return DefaultFormat::format(buffer, g, cb);
+                }
+                std::size_t format(std::string& buffer, const Option& o, std::size_t colWidth) const {
+                    return DefaultFormat::format(buffer, o, colWidth, cb);
+                }
+                void formatUsage(std::string& buffer, std::string_view prg, std::string_view options,
+                                 std::string_view defaults) const {
+                    append(buffer, "usage:"sv, col_usage).append(1, ' ');
+                    append(buffer, prg, col_program).append(1, ' ').append(options).append(nl);
+                    if (not defaults.empty()) {
+                        append(buffer, "Default command-line:\n"sv, col_usage);
+                        append(buffer, prg, col_program).append(1, ' ');
+                        append(buffer, defaults, col_def_cmd);
+                    }
+                }
+                std::string& append(std::string& buffer, std::string_view txt, const TextStyle& ts) const {
+                    toChars(buffer, styled(txt, cb ? ts : col_none));
+                    return buffer;
+                }
+                static auto style(DefaultFormat::Element e, bool open) -> std::string_view {
+                    const auto& ts = [](DefaultFormat::Element elem) -> const TextStyle& {
+                        using enum DefaultFormat::Element;
+                        switch (elem) {
+                            case alias  : return col_opt_short;
+                            case name   : return col_opt_long;
+                            case arg    : return col_opt_arg;
+                            case caption: return col_opt_group;
+                            default     : return col_none;
+                        }
+                    }(e);
+                    return open ? ts.view() : ts.resetView();
+                }
+                DefaultFormat::StyleCb cb;
+            } fmt(hasColoredHelp());
+            auto prg = getName();
+            fmt.formatUsage(msg, prg, getUsage(), {});
+            auto printer = OptionOutputImpl(msg, fmt);
+            auto x       = static_cast<DescriptionLevel>(help - 1);
             allOpts.setActiveDescLevel(x);
-            msg << "usage: " << getName() << " " << getUsage() << "\n";
-            OptionPrinter printer(msg);
             allOpts.description(printer);
-            msg << "\n";
-            msg << "usage: " << getName() << " " << getUsage() << "\n";
-            msg << "Default command-line:\n" << getName() << " " << allOpts.defaults(getName().size() + 1);
-            onHelp(msg.str(), x);
+            fmt.formatUsage(msg.append(nl), prg, getUsage(), allOpts.defaults(prg.size() + 1));
+            onHelp(msg, x);
         }
         else {
-            msg << "Address model: " << static_cast<int>(sizeof(void*) * CHAR_BIT) << "-bit";
-            onVersion(msg.str());
+            toChars(msg.append("Address model: "), static_cast<int>(sizeof(void*) * CHAR_BIT)).append("-bit");
+            onVersion(msg);
         }
         return false;
     }

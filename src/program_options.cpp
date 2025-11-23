@@ -45,48 +45,61 @@ using namespace std::literals;
 // DefaultFormat
 ///////////////////////////////////////////////////////////////////////////////
 static std::string quote(std::string_view x) { return std::string(1, '\'').append(x).append(1, '\''); }
-std::size_t        DefaultFormat::format(std::string& buffer, const Option& o, std::size_t colWidth) {
-    auto bufSize = std::max(colWidth, o.maxColumn()) + 6 + o.description().size();
-    auto arg     = o.argName();
-    auto np      = ""sv;
-    auto ap      = ""sv;
-    if (o.negatable()) {
-        if (arg.empty()) {
-            np = "[no-]"sv;
-        }
-        else {
-            ap       = "|no"sv;
-            bufSize += ap.size();
-        }
-    }
+std::size_t        DefaultFormat::format(std::string& buffer, const Option& o, std::size_t colWidth, StyleCb cb) {
     const auto startSize = buffer.size();
-    buffer.reserve(startSize + bufSize);
+    const auto width     = o.maxColumn();
+    auto       arg       = o.argName();
+    auto       negName   = arg.empty() && o.negatable() ? "[no-]"sv : ""sv;
+    auto       open      = [cb](Element e) { return cb ? cb(e, true) : std::string_view{}; };
+    auto       close     = [cb](Element e) { return cb ? cb(e, false) : std::string_view{}; };
+    buffer.reserve(startSize + std::max(colWidth, width) + 6 + o.description().size());
     buffer.append("  "sv);
     if (o.alias()) {
-        buffer.append(1, '-').append(1, o.alias()).append(",");
+        buffer.append(open(Element::alias))
+            .append(1, '-')
+            .append(1, o.alias())
+            .append(close(Element::alias))
+            .append(",");
     }
-    buffer.append("--"sv).append(np).append(o.name());
-    if (o.implicit() && not arg.empty()) {
-        buffer.append("[="sv).append(arg).append(ap).append("]"sv);
+    buffer.append(open(Element::name)).append("--"sv).append(negName).append(o.name()).append(close(Element::name));
+    if (not arg.empty()) {
+        auto term = ""sv;
+        buffer.append(1, o.alias() ? ' ' : '=');
+        if (o.implicit()) {
+            buffer.back() = '[';
+            buffer.append(1, '=');
+            term = "]"sv;
+        }
+        buffer.append(open(Element::arg))
+            .append(arg)
+            .append(o.negatable() ? "|no"sv : ""sv)
+            .append(close(Element::arg))
+            .append(term);
     }
-    if (not o.implicit()) {
-        buffer.append(1, not o.alias() ? '=' : ' ').append(arg).append(ap);
-    }
-    if (auto sz = buffer.size() - startSize; sz < colWidth) {
-        buffer.append(colWidth - sz, ' ');
+    if (width < colWidth) {
+        buffer.append(colWidth - width, ' ');
     }
     if (not o.description().empty()) {
-        buffer.append(": "sv);
+        buffer.append(": "sv).append(open(Element::description));
         o.description(buffer);
+        buffer.append(close(Element::description));
     }
     buffer.push_back('\n');
     return buffer.size() - startSize;
 }
-std::size_t DefaultFormat::format(std::string& buffer, const OptionGroup& grp) {
+std::size_t DefaultFormat::format(std::string& buffer, const OptionGroup& g, StyleCb cb) {
     const auto startSize = buffer.size();
-    if (auto length = grp.caption().length(); length) {
+    if (auto length = g.caption().length(); length) {
         buffer.reserve(startSize + length + 4);
-        buffer.append(1, '\n').append(grp.caption()).append(1, ':').append(2, '\n');
+        buffer.append(1, '\n');
+        if (cb) {
+            buffer.append(cb(Element::caption, true));
+        }
+        buffer.append(g.caption()).append(1, ':');
+        if (cb) {
+            buffer.append(cb(Element::caption, false));
+        }
+        buffer.append(2, '\n');
     }
     return buffer.size() - startSize;
 }
