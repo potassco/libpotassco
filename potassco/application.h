@@ -192,6 +192,7 @@ protected:
     void processSignal(int sigNum);
 
 private:
+    using Sink = ProgramOptions::OutputSink;
     struct Stop;
     struct Prefix {
         const Application* app;
@@ -199,22 +200,13 @@ private:
         MessageType        level;
         uint8_t            exception;
     };
-    struct Sink {
-        Sink(void* o, void (*f)(void*, std::string_view)) : obj(o), writeFun(f) {}
-        void* obj{nullptr};
-        void (*writeFun)(void*, std::string_view){nullptr};
-        Sink& write(std::string_view s) {
-            writeFun(obj, s);
-            return *this;
-        }
-    };
     friend std::ostream& operator<<(std::ostream& os, const Prefix& p) {
-        p.app->write(Sink{&os, +[](void* o, std::string_view s) { (*static_cast<std::ostream*>(o)) << s; }}, p);
+        p.app->write(Sink{os}, p);
         return os;
     }
     template <CharBuffer B>
     friend B& operator<<(B& b, const Prefix& p) {
-        p.app->write(Sink{&b, +[](void* o, std::string_view s) { static_cast<B*>(o)->append(s); }}, p);
+        p.app->write(Sink{b}, p);
         return b;
     }
     void              write(Sink s, const Prefix& p) const;

@@ -63,7 +63,6 @@ public:
     [[nodiscard]] auto argName() const -> std::string_view { return str_[str_arg]; }
     [[nodiscard]] auto defaultValue() const -> std::string_view { return str_[str_def]; }
     [[nodiscard]] auto implicitValue() const -> std::string_view { return str_[str_imp]; }
-    [[nodiscard]] auto maxColumn() const -> std::size_t;
     [[nodiscard]] auto descLevel() const -> DescriptionLevel { return static_cast<DescriptionLevel>(level_); }
     [[nodiscard]] bool negatable() const { return negatable_ != 0; }
     [[nodiscard]] bool composing() const { return composing_ != 0; }
@@ -204,7 +203,7 @@ public:
     //! Creates a formatted description of all options with level() <= level in this group.
     void format(OptionOutput& out, size_t maxW, DescriptionLevel level = desc_level_default) const;
 
-    [[nodiscard]] std::size_t maxColumn(DescriptionLevel level) const;
+    [[nodiscard]] std::size_t maxColumn(OptionOutput& out, DescriptionLevel level) const;
 
 private:
     friend class OptionContext;
@@ -419,11 +418,13 @@ private:
 struct DefaultFormat {
     enum class Element { caption, alias, name, arg, description };
     using StyleCb = auto (*)(Element, bool) -> std::string_view;
-    static std::size_t format(std::string&, const OptionContext&) { return 0; }
+    static std::string& format(std::string& buffer, const OptionContext&) { return buffer; }
     //! Writes g.caption() to buffer.
-    static std::size_t format(std::string& buffer, const OptionGroup& g, StyleCb = nullptr);
-    //! Writes short, long, and argument name followed by option description to buffer.
-    static std::size_t format(std::string& buffer, const Option& o, std::size_t colWidth, StyleCb = nullptr);
+    static std::string& format(std::string& buffer, const OptionGroup& g, StyleCb = nullptr);
+    //! Writes long, short, and argument name followed by option description to buffer.
+    static std::string& format(std::string& buffer, const Option& o, std::size_t maxWidth, StyleCb = nullptr);
+    //! Returns the formatted column width for the given option.
+    static std::size_t columnWidth(const Option& o);
 };
 
 //! Base class for printing options.
@@ -434,27 +435,49 @@ public:
     virtual bool printContext(const OptionContext& ctx)           = 0;
     virtual bool printGroup(const OptionGroup& group)             = 0;
     virtual bool printOption(const Option& opt, std::size_t maxW) = 0;
+    virtual auto columnWidth(const Option& opt) -> std::size_t    = 0;
+};
+
+//! Type-erased output sink.
+class OutputSink {
+public:
+    //! Writes to the given FILE.
+    explicit OutputSink(FILE* f) : OutputSink(f, &writeFile) {}
+    //! Writes to the given stream.
+    explicit OutputSink(std::ostream& os) : OutputSink(&os, &writeStream) {}
+    //! Appends to the given string type.
+    template <typename Str>
+    requires requires(Str& s, std::string_view x) { s.append(x); }
+    explicit OutputSink(Str& str) : OutputSink(&str, &appendString<Str>) {}
+
+    auto write(std::string_view v) -> OutputSink& {
+        cb_(sink_, v);
+        return *this;
+    }
+
+private:
+    using SinkCb = void (*)(void*, std::string_view);
+    static void writeFile(void* f, std::string_view s) { fwrite(s.data(), 1, s.size(), static_cast<FILE*>(f)); }
+    static void writeStream(void* os, std::string_view s) { *static_cast<std::ostream*>(os) << s; }
+    template <typename Str>
+    static void appendString(void* str, std::string_view s) {
+        static_cast<Str*>(str)->append(s);
+    }
+    OutputSink(void* s, SinkCb cb) : sink_(s), cb_(cb) {}
+    void*  sink_ = nullptr;
+    SinkCb cb_   = nullptr;
 };
 
 //! Implementation class for printing options.
 template <typename Formatter = DefaultFormat>
 class OptionOutputImpl : public OptionOutput {
 public:
-    using Sink = std::function<void(std::string_view)>;
-    //! Writes formatted option descriptions to the given FILE.
-    explicit OptionOutputImpl(FILE* f, const Formatter& form = Formatter())
-        : OptionOutputImpl([f](std::string_view view) { fwrite(view.data(), 1, view.size(), f); }, form) {}
-    //! Writes formatted option descriptions to given std::string.
-    explicit OptionOutputImpl(std::string& str, const Formatter& form = Formatter())
-        : OptionOutputImpl([&str](std::string_view view) { str.append(std::data(view), std::size(view)); }, form) {}
-    //! Writes formatted option descriptions to given std::ostream.
-    explicit OptionOutputImpl(std::ostream& os, const Formatter& form = Formatter())
-        : OptionOutputImpl([&os](std::string_view view) { os.write(std::data(view), std::ssize(view)); }, form) {}
-    //! Writes formatted option descriptions to given sink.
-    explicit OptionOutputImpl(Sink sink, const Formatter& form = Formatter())
-        : sink_(std::move(sink))
+    //! Writes formatted option descriptions to the given sink.
+    template <typename SinkT>
+    requires(not std::is_same_v<std::remove_cvref<SinkT>, OptionOutputImpl>)
+    explicit OptionOutputImpl(SinkT&& sink, const Formatter& form = Formatter())
+        : sink_(std::forward<SinkT>(sink))
         , formatter_(form) {}
-
     bool printContext(const OptionContext& ctx) override {
         writeBuffer(formatter_.format(buffer_, ctx));
         return true;
@@ -467,16 +490,17 @@ public:
         writeBuffer(formatter_.format(buffer_, opt, maxW));
         return true;
     }
+    auto columnWidth(const Option& opt) -> std::size_t override { return formatter_.columnWidth(opt); }
 
 private:
-    void writeBuffer(std::size_t n) {
-        if (sink_ && n) {
-            sink_(std::string_view{buffer_.data(), n});
+    void writeBuffer(std::string&) {
+        if (not buffer_.empty()) {
+            sink_.write(std::string_view{buffer_});
+            buffer_.clear();
         }
-        buffer_.clear();
     }
+    OutputSink  sink_;
     std::string buffer_;
-    Sink        sink_;
     Formatter   formatter_;
 };
 using OptionPrinter = OptionOutputImpl<>;

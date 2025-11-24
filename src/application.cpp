@@ -427,15 +427,17 @@ bool Application::applyOptions(std::span<const char* const> args) {
             static constexpr auto col_none = TextStyle();
             struct Fmt {
                 explicit Fmt(bool col) : cb(col ? style : nullptr) {}
-                std::size_t format(std::string& s, const OptionContext& ctx) { // NOLINT
-                    return DefaultFormat::format(s, ctx);
+                static std::string& format(std::string& buffer, const OptionContext& ctx) {
+                    return DefaultFormat::format(buffer, ctx);
                 }
-                std::size_t format(std::string& buffer, const OptionGroup& g) const {
+                std::string& format(std::string& buffer, const OptionGroup& g) const {
                     return DefaultFormat::format(buffer, g, cb);
                 }
-                std::size_t format(std::string& buffer, const Option& o, std::size_t colWidth) const {
+                std::string& format(std::string& buffer, const Option& o, std::size_t colWidth) const {
                     return DefaultFormat::format(buffer, o, colWidth, cb);
                 }
+                static std::size_t columnWidth(const Option& o) { return DefaultFormat::columnWidth(o); }
+
                 void formatUsage(std::string& buffer, std::string_view prg, std::string_view options,
                                  std::string_view defaults) const {
                     append(buffer, "usage:"sv, col_usage).append(1, ' ');
@@ -467,7 +469,7 @@ bool Application::applyOptions(std::span<const char* const> args) {
             } fmt(hasColoredHelp());
             auto prg = getName();
             fmt.formatUsage(msg, prg, getUsage(), {});
-            auto printer = OptionOutputImpl(msg, fmt);
+            auto printer = OptionOutputImpl<Fmt>(msg, fmt);
             auto x       = static_cast<DescriptionLevel>(help - 1);
             allOpts.setActiveDescLevel(x);
             allOpts.description(printer);

@@ -45,23 +45,45 @@ using namespace std::literals;
 // DefaultFormat
 ///////////////////////////////////////////////////////////////////////////////
 static std::string quote(std::string_view x) { return std::string(1, '\'').append(x).append(1, '\''); }
-std::size_t        DefaultFormat::format(std::string& buffer, const Option& o, std::size_t colWidth, StyleCb cb) {
-    const auto startSize = buffer.size();
-    const auto width     = o.maxColumn();
-    auto       arg       = o.argName();
-    auto       negName   = arg.empty() && o.negatable() ? "[no-]"sv : ""sv;
-    auto       open      = [cb](Element e) { return cb ? cb(e, true) : std::string_view{}; };
-    auto       close     = [cb](Element e) { return cb ? cb(e, false) : std::string_view{}; };
-    buffer.reserve(startSize + std::max(colWidth, width) + 6 + o.description().size());
-    buffer.append("  "sv);
+static auto apply(std::string& buffer, DefaultFormat::StyleCb cb, DefaultFormat::Element e, bool open) -> std::string& {
+    return cb ? buffer.append(cb(e, open)) : buffer;
+}
+static auto styled(std::string& buffer, DefaultFormat::StyleCb cb, DefaultFormat::Element e,
+                   auto... args) -> std::string& {
+    apply(buffer, cb, e, true);
+    (buffer.append(args), ...);
+    return apply(buffer, cb, e, false);
+}
+std::size_t DefaultFormat::columnWidth(const Option& o) {
+    auto width = static_cast<std::size_t>(2); // indent
     if (o.alias()) {
-        buffer.append(open(Element::alias))
-            .append(1, '-')
-            .append(1, o.alias())
-            .append(close(Element::alias))
-            .append(",");
+        width += 3; // -o,
     }
-    buffer.append(open(Element::name)).append("--"sv).append(negName).append(o.name()).append(close(Element::name));
+    width += o.name().size() + 2; //  --name
+    if (auto arg = o.argName(); not arg.empty()) {
+        width += arg.size() + 1; // =arg
+        if (o.implicit()) {
+            width += 2; // []
+        }
+        if (o.negatable()) {
+            width += 3; // |no
+        }
+    }
+    else if (o.negatable()) {
+        width += 5; // [no-]
+    }
+    return width;
+}
+std::string& DefaultFormat::format(std::string& buffer, const Option& o, std::size_t maxWidth, StyleCb cb) {
+    const auto width   = columnWidth(o);
+    auto       arg     = o.argName();
+    auto       negName = arg.empty() && o.negatable() ? "[no-]"sv : ""sv;
+    buffer.reserve(buffer.size() + std::max(maxWidth, width) + 6 + o.description().size());
+    buffer.append("  "sv);
+    if (char alias[2] = {'-', o.alias()}; alias[1]) {
+        styled(buffer, cb, Element::alias, std::string_view{alias, 2}).append(1, ',');
+    }
+    styled(buffer, cb, Element::name, "--"sv, negName, o.name());
     if (not arg.empty()) {
         auto term = ""sv;
         buffer.append(1, o.alias() ? ' ' : '=');
@@ -70,38 +92,25 @@ std::size_t        DefaultFormat::format(std::string& buffer, const Option& o, s
             buffer.append(1, '=');
             term = "]"sv;
         }
-        buffer.append(open(Element::arg))
-            .append(arg)
-            .append(o.negatable() ? "|no"sv : ""sv)
-            .append(close(Element::arg))
-            .append(term);
+        styled(buffer, cb, Element::arg, arg, o.negatable() ? "|no"sv : ""sv).append(term);
     }
-    if (width < colWidth) {
-        buffer.append(colWidth - width, ' ');
+    if (width < maxWidth) {
+        buffer.append(maxWidth - width, ' ');
     }
     if (not o.description().empty()) {
-        buffer.append(": "sv).append(open(Element::description));
+        buffer.append(": "sv);
+        apply(buffer, cb, Element::description, true);
         o.description(buffer);
-        buffer.append(close(Element::description));
+        apply(buffer, cb, Element::description, false);
     }
-    buffer.push_back('\n');
-    return buffer.size() - startSize;
+    return buffer.append(1, '\n');
 }
-std::size_t DefaultFormat::format(std::string& buffer, const OptionGroup& g, StyleCb cb) {
-    const auto startSize = buffer.size();
+std::string& DefaultFormat::format(std::string& buffer, const OptionGroup& g, StyleCb cb) {
     if (auto length = g.caption().length(); length) {
-        buffer.reserve(startSize + length + 4);
-        buffer.append(1, '\n');
-        if (cb) {
-            buffer.append(cb(Element::caption, true));
-        }
-        buffer.append(g.caption()).append(1, ':');
-        if (cb) {
-            buffer.append(cb(Element::caption, false));
-        }
-        buffer.append(2, '\n');
+        buffer.reserve(buffer.size() + length + 4);
+        styled(buffer.append(1, '\n'), cb, Element::caption, g.caption(), ":"sv).append(2, '\n');
     }
-    return buffer.size() - startSize;
+    return buffer;
 }
 ///////////////////////////////////////////////////////////////////////////////
 // class Option
@@ -140,26 +149,6 @@ Option::~Option() {
             store_clear_bit(own_, t);
         }
     }
-}
-
-std::size_t Option::maxColumn() const {
-    auto col = 4 + name().size(); //  --name
-    if (alias()) {
-        col += 3; // ,-o
-    }
-    if (auto argN = argName().size()) {
-        col += (argN + 1); // =arg
-        if (implicit()) {
-            col += 2; // []
-        }
-        if (negatable()) {
-            col += 3; // |no
-        }
-    }
-    else if (negatable()) {
-        col += 5; // [no-]
-    }
-    return col;
 }
 
 bool Option::assignDefault() {
@@ -221,11 +210,12 @@ Option* OptionGroup::find(char alias) const {
     auto it = std::ranges::find_if(options_, [&](const SharedOption& opt) { return opt->alias() == alias; });
     return it != options_.end() ? it->get() : nullptr;
 }
-std::size_t OptionGroup::maxColumn(DescriptionLevel level) const {
+
+std::size_t OptionGroup::maxColumn(OptionOutput& out, DescriptionLevel level) const {
     std::size_t maxW = 0;
     for (const auto& opt : options_) {
         if (opt->descLevel() <= level) {
-            maxW = std::max(maxW, opt->maxColumn());
+            maxW = std::max(maxW, out.columnWidth(*opt));
         }
     }
     return maxW;
@@ -413,7 +403,7 @@ OptionOutput& OptionContext::description(OptionOutput& out) const {
     DescriptionLevel dl = descLevel_;
     if (out.printContext(*this) && not groups_.empty()) {
         std::size_t maxW = 23;
-        for (const auto& grp : groups_) { maxW = std::max(maxW, grp.maxColumn(dl)); }
+        for (const auto& grp : groups_) { maxW = std::max(maxW, grp.maxColumn(out, dl)); }
         // print all visible groups
         for (const auto& grp : std::span{groups_}.subspan(1)) {
             if (grp.descLevel() <= dl && out.printGroup(grp)) {
