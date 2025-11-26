@@ -24,7 +24,6 @@
 #pragma once
 
 #include <potassco/basic_types.h>
-#include <potassco/utils.h>
 
 #include <climits>
 #include <ios>
@@ -41,12 +40,6 @@ namespace Potassco {
 //! integers.
 class BufferedStream {
 public:
-    static constexpr auto buf_size = static_cast<std::streamsize>(4096);
-    //! Returns whether the given character is a decimal digit.
-    static constexpr bool isDigit(char c) { return c >= '0' && c <= '9'; }
-    //! Converts the given character to a decimal digit.
-    static constexpr int toDigit(char c) { return static_cast<int>(c - '0'); }
-
     //! Creates a new object wrapping the given stream.
     explicit BufferedStream(std::istream& str);
     ~BufferedStream();
@@ -79,16 +72,19 @@ public:
     [[nodiscard]] unsigned line() const;
 
 private:
-    static constexpr auto alloc_size = buf_size + 1;
-    using BufferType                 = char*;
+    static constexpr auto buf_size = static_cast<std::streamsize>(4095);
+
+    [[nodiscard]] auto avail() const -> std::size_t;
 
     char pop();
-    void underflow(bool up = true);
+    void underflow(uint32_t pos);
+    void advance(uint32_t n);
 
     std::istream& str_;
-    BufferType    buf_;
-    std::size_t   rpos_;
-    unsigned      line_;
+    char*         buf_;
+    uint32_t      rpos_{0};
+    uint32_t      rEnd_{0};
+    unsigned      line_{1};
 };
 
 //! Base class for input parsers.
@@ -198,6 +194,7 @@ protected:
     }
 
 private:
+    using StreamPtr = std::unique_ptr<StreamType>;
     //! Shall return true if this object supports the format of the input stream.
     /*!
      * \param[out] inc Whether the input stream represents an incremental program.
@@ -208,10 +205,14 @@ private:
     //! Shall reset any parsing state.
     virtual void doReset();
 
-    StreamType* str_    = nullptr;
-    Atom_t      varMax_ = atom_max;
-    bool        inc_    = false;
+    StreamPtr str_;
+    Atom_t    varMax_ = atom_max;
+    bool      inc_    = false;
 };
+//! Returns whether the given character is a decimal digit.
+constexpr bool isDigit(char c) { return c >= '0' && c <= '9'; }
+//! Converts the given character to a decimal digit.
+constexpr int toDigit(char c) { return static_cast<int>(c - '0'); }
 
 bool matchTerm(std::string_view& input, std::string_view& termOut);
 bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr);
@@ -223,15 +224,29 @@ bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr)
 auto predicate(std::string_view atom) -> std::pair<std::string_view, int>;
 struct AtomView {
     friend bool operator==(const AtomView&, const AtomView&) = default;
-    auto        popFront() noexcept -> std::string_view;
-    auto        popBack() noexcept -> std::string_view;
-    auto        popStep(bool last = true) noexcept -> int;
+    //! Removes and returns the first argument or an empty string_view if `arity <= 0`.
+    auto popFront() noexcept -> std::string_view;
+    //! Removes and returns the last argument or an empty string_view if `arity <= 0`.
+    auto popBack() noexcept -> std::string_view;
+    //! Depending on `last`, returns `toInt(popBack())` or `toInt(popFront())`.
+    /*!
+     * \note If the popped argument is not a non-negative (step) number, the function returns `-1`.
+     */
+    auto popStep(bool last = true) noexcept -> int;
     //! Returns arguments at positions `keyArg` and `valArg` or an empty pair if any position is out of bounds.
     [[nodiscard]] auto getAssignment(Id_t keyArg,
                                      Id_t valArg) const noexcept -> std::pair<std::string_view, std::string_view>;
-    std::string_view   id;
-    std::string_view   args;
-    int                arity;
+    //! Copies the arguments to the destination range starting at `outIt`.
+    template <typename OutIt>
+    void copyArgs(OutIt outIt) const {
+        for (std::string_view arg, argView = this->args; matchTerm(argView, arg);
+             argView.remove_prefix(not argView.empty()), ++outIt) {
+            *outIt = arg;
+        }
+    }
+    std::string_view id;    //!< Predicate id.
+    std::string_view args;  //!< Atom arguments.
+    int              arity; //!< Predicate arity.
 };
 //! Splits an atom name into predicate-id, arity, and arguments.
 /*!

@@ -139,6 +139,58 @@ POTASSCO_ENABLE_CMP_OPS(DummyEnum);
 
 } // namespace
 
+TEST_CASE("Test BufferedStream", "[input]") {
+    SECTION("read bug") {
+        std::stringstream data("Foo");
+        BufferedStream    str(data);
+        std::string       out(10, 'x');
+        auto              r = str.read(std::span{out.data(), out.size()});
+        out.resize(r);
+        CHECK(r == 3);
+        CHECK(out == "Foo");
+    }
+    SECTION("match") {
+        std::stringstream data("Hello World!");
+        BufferedStream    str(data);
+        CHECK(str.match("Hello"));
+        CHECK(str.get() == ' ');
+        CHECK_FALSE(str.match("World!!"));
+        CHECK(str.match("World!"));
+        CHECK_FALSE(str.peek());
+    }
+    SECTION("matchLong") {
+        std::stringstream data;
+        data.str(std::string(4050, 'x').append(200, 'y').append(100, 'z'));
+        BufferedStream str(data);
+        std::string    x(4020, '-');
+        REQUIRE(str.read(std::span{x.data(), x.size()}) == x.size());
+        REQUIRE(x == std::string(4020, 'x'));
+        x.assign(30, 'x').append(198, 'y');
+        REQUIRE(str.match(x));
+        x.assign(2, 'y').append(95, 'z');
+        REQUIRE(str.match(x));
+        x.assign(20, '-');
+        REQUIRE(str.read(std::span{x.data(), x.size()}) == 5);
+        x.resize(5);
+        REQUIRE(x.find_first_not_of('z') == std::string::npos);
+        REQUIRE_FALSE(str.peek());
+    }
+    SECTION("unget") {
+        std::stringstream data("Foo");
+        BufferedStream    str(data);
+        CHECK_FALSE(str.unget('x'));
+        CHECK(str.get() == 'F');
+        CHECK(str.unget('x'));
+        CHECK(str.get() == 'x');
+        CHECK(str.get() == 'o');
+        CHECK(str.unget('h'));
+        CHECK(str.unget('W'));
+        CHECK(str.match("Who"));
+        CHECK_FALSE(str.peek());
+        CHECK(str.unget('!'));
+        CHECK(str.peek() == '!');
+    }
+}
 TEST_CASE("Test DynamicBuffer", "[rule]") {
     SECTION("starts empty") {
         DynamicBuffer r;
@@ -779,6 +831,15 @@ TEST_CASE("Test Basic", "[rule]") {
             CHECK(atomView("(x,2,3)").getAssignment(1, 1) == std::pair{"2"sv, "2"sv});
             CHECK(atomView("(x,2,3)").getAssignment(0, 2) == std::pair{"x"sv, "3"sv});
             CHECK(atomView("(x,2,3)").getAssignment(0, 3) == std::pair{""sv, ""sv});
+        }
+        SECTION("copyArgs") {
+            auto atom = "tuple(foo,(1,2),(3,4),bar)"s;
+            auto vec  = std::vector<std::string_view>{};
+            atomView(atom).copyArgs(std::back_inserter(vec));
+            REQUIRE(vec.size() == 4);
+            for (auto i = 0u; auto expected : {"foo"sv, "(1,2)"sv, "(3,4)"sv, "bar"sv}) {
+                REQUIRE(vec.at(i++) == expected);
+            }
         }
     }
 

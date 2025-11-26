@@ -55,25 +55,27 @@ void AbstractProgram::endStep() {}
 /////////////////////////////////////////////////////////////////////////////////////////
 // BufferedStream
 /////////////////////////////////////////////////////////////////////////////////////////
-BufferedStream::BufferedStream(std::istream& str) : str_(str), buf_(nullptr), rpos_(0), line_(1) {
-    buf_ = new char[alloc_size];
-    underflow();
-}
+BufferedStream::BufferedStream(std::istream& str) : str_(str), buf_(new char[buf_size + 1]) { underflow(0); }
 BufferedStream::~BufferedStream() { delete[] buf_; }
+auto BufferedStream::avail() const -> std::size_t { return rEnd_ - rpos_; }
+void BufferedStream::advance(uint32_t n) {
+    POTASSCO_DEBUG_ASSERT(rpos_ + n <= rEnd_);
+    if (rpos_ += n; not buf_[rpos_]) {
+        underflow(1); // keep space for unget
+    }
+}
 char BufferedStream::pop() {
     auto c = peek();
-    if (not buf_[++rpos_]) {
-        underflow();
-    }
+    advance(1);
     return c;
 }
 char BufferedStream::get() {
     if (auto c = peek(); c) {
-        pop();
+        advance(1);
         if (c == '\r') {
             c = '\n';
             if (peek() == '\n') {
-                pop();
+                advance(1);
             }
         }
         if (c == '\n') {
@@ -87,19 +89,16 @@ void BufferedStream::skipWs() {
     for (char c; (c = peek()) >= 9 && c < 33;) { get(); }
 }
 
-void BufferedStream::underflow(bool upPos) {
+void BufferedStream::underflow(uint32_t pos) {
     if (not str_) {
+        buf_[rEnd_ = rpos_ = pos] = 0;
         return;
     }
-    if (upPos && rpos_) {
-        // keep last char for unget
-        buf_[0] = buf_[rpos_ - 1];
-        rpos_   = 1;
-    }
-    auto n = static_cast<std::streamsize>(alloc_size - (1 + rpos_));
-    str_.read(buf_ + rpos_, n);
-    auto r          = static_cast<std::size_t>(str_.gcount());
-    buf_[r + rpos_] = 0;
+    str_.read(buf_ + pos, static_cast<std::streamsize>(buf_size - pos));
+    rpos_ = pos;
+    rEnd_ = pos + static_cast<std::size_t>(str_.gcount());
+    POTASSCO_ASSERT(rEnd_ <= buf_size);
+    buf_[rEnd_] = 0;
 }
 bool BufferedStream::unget(char c) {
     if (not rpos_) {
@@ -110,18 +109,15 @@ bool BufferedStream::unget(char c) {
     }
     return true;
 }
-bool BufferedStream::match(std::string_view w) {
-    if (auto bLen = buf_size - rpos_; bLen < w.length()) {
-        POTASSCO_ASSERT(w.length() <= buf_size, "Token too long - Increase BUF_SIZE!");
+bool BufferedStream::match(std::string_view tok) {
+    if (auto bLen = avail(); bLen < tok.length()) {
+        POTASSCO_ASSERT(tok.length() <= buf_size, "Token too long - Increase BUF_SIZE!");
         std::memcpy(buf_, buf_ + rpos_, bLen);
-        rpos_ = bLen;
-        underflow(false);
+        underflow(bLen);
         rpos_ = 0;
     }
-    if (std::strncmp(w.data(), buf_ + rpos_, w.length()) == 0) {
-        if (rpos_ += w.length(); not buf_[rpos_]) {
-            underflow();
-        }
+    if (std::strncmp(tok.data(), buf_ + rpos_, tok.length()) == 0) {
+        advance(static_cast<uint32_t>(tok.length()));
         return true;
     }
     return false;
@@ -130,7 +126,7 @@ bool BufferedStream::readInt(int64_t& res) {
     skipWs();
     auto s = peek();
     if (s == '+' || s == '-') {
-        pop();
+        advance(1);
     }
     if (not isDigit(peek())) {
         return false;
@@ -144,30 +140,25 @@ bool BufferedStream::readInt(int64_t& res) {
     }
     return true;
 }
-std::size_t BufferedStream::read(std::span<char> outBuf) {
-    std::size_t os = 0;
-    for (auto n = outBuf.size(); n && peek();) {
-        auto  b   = (alloc_size - rpos_) - 1;
-        auto  m   = std::min(n, b);
-        auto* out = outBuf.data() + os;
-        std::copy_n(buf_ + rpos_, m, out);
-        n     -= m;
-        os    += m;
-        rpos_ += m;
-        if (not peek()) {
-            underflow();
-        }
+std::size_t BufferedStream::read(std::span<char> bufferOut) {
+    auto* out = bufferOut.data();
+    for (auto n = bufferOut.size(); n && peek();) {
+        auto b  = avail();
+        auto m  = std::min(n, b);
+        out     = std::copy_n(buf_ + rpos_, m, out);
+        n      -= m;
+        advance(m);
     }
-    return os;
+    return static_cast<std::size_t>(out - bufferOut.data());
 }
 unsigned BufferedStream::line() const { return line_; }
 /////////////////////////////////////////////////////////////////////////////////////////
 // ProgramReader
 /////////////////////////////////////////////////////////////////////////////////////////
-ProgramReader::~ProgramReader() { delete str_; }
+ProgramReader::~ProgramReader() = default;
 bool ProgramReader::accept(std::istream& str) {
     reset();
-    str_ = new StreamType(str);
+    str_ = std::make_unique<StreamType>(str);
     inc_ = false;
     skipWs();
     return doAttach(inc_);
@@ -187,11 +178,11 @@ bool ProgramReader::parse(ReadMode r) {
 bool ProgramReader::more() { return str_ && (str_->skipWs(), not str_->end()); }
 void ProgramReader::reset() {
     doReset();
-    delete std::exchange(str_, nullptr);
+    str_.reset();
 }
 void            ProgramReader::doReset() {}
 unsigned        ProgramReader::line() const { return str_ ? str_->line() : 1; }
-BufferedStream* ProgramReader::stream() const { return str_; }
+BufferedStream* ProgramReader::stream() const { return str_.get(); }
 void            ProgramReader::error(const char* msg) const {
     POTASSCO_FAIL(std::errc::operation_not_supported, "parse error in line %u: %s", str_->line(), msg);
 }
@@ -318,10 +309,8 @@ auto AtomView::popBack() noexcept -> std::string_view {
 }
 auto AtomView::popStep(bool last) noexcept -> int {
     auto popped = last ? popBack() : popFront();
-    if (int step = -1; matchNum(popped, nullptr, &step) && step >= 0) {
-        return step;
-    }
-    return -1;
+    int  step   = -1;
+    return matchNum(popped, nullptr, &step) && step >= 0 ? step : -1;
 }
 auto AtomView::getAssignment(Id_t keyArg, Id_t valArg) const noexcept -> std::pair<std::string_view, std::string_view> {
     auto [mn, mx] = std::minmax(keyArg, valArg);
@@ -370,7 +359,7 @@ auto cmpAtom(std::string_view lhsAtom, std::string_view rhsAtom, AtomCompare cmp
     }
     if (test(cmp, AtomCompare::cmp_natural)) {
         for (auto end = std::min(lhsAtom.size(), rhsAtom.size()), x = static_cast<decltype(end)>(0); x != end; ++x) {
-            if (auto l = lhsAtom[x], r = rhsAtom[x]; BufferedStream::isDigit(l) && BufferedStream::isDigit(r)) {
+            if (auto l = lhsAtom[x], r = rhsAtom[x]; isDigit(l) && isDigit(r)) {
                 auto lhsStart = lhsAtom.substr(x);
                 auto rhsStart = rhsAtom.substr(x);
                 int  lhsNum, rhsNum;

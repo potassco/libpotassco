@@ -62,7 +62,7 @@ SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts) : out_(out
 SmodelsInput::~SmodelsInput() = default;
 void SmodelsInput::doReset() {}
 bool SmodelsInput::doAttach(bool& inc) {
-    if (auto n = peek(); BufferedStream::isDigit(n) && (n != '9' || opts_.claspExt)) {
+    if (auto n = peek(); isDigit(n) && (n != '9' || opts_.claspExt)) {
         inc = n == '9';
         out_.initProgram(inc);
         return true;

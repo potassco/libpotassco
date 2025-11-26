@@ -124,7 +124,7 @@ void AspifTextInput::matchRule(char c) {
     }
     if (matchOpt(":-"sv)) {
         c = skipWs();
-        if (not StreamType::isDigit(c) && c != '-') {
+        if (not isDigit(c) && c != '-') {
             data_->rule.startBody();
             matchLits();
         }
@@ -301,7 +301,7 @@ Atom_t AspifTextInput::matchId() {
     auto n = peek();
     require(isLower(c), "<id> expected");
     require(not isLower(n), "<pos-integer> expected");
-    if (c == 'x' && (BufferedStream::isDigit(n) || n == '_')) {
+    if (c == 'x' && (isDigit(n) || n == '_')) {
         if (n == '_') {
             get();
         }

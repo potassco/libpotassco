@@ -26,6 +26,7 @@
 #include <potassco/error.h>
 #include <potassco/graph.h>
 #include <potassco/reify.h>
+#include <potassco/utils.h>
 
 #include <algorithm>
 #include <ostream>
