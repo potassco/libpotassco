@@ -565,7 +565,7 @@ private:
             if (curr.starts_with("--")) {
                 handleLongOpt(curr.substr(2));
             }
-            else if (curr.starts_with('-')) {
+            else if (curr.starts_with('-') && curr.size() > 1) {
                 handleShortOpt(curr.substr(1));
             }
             else {

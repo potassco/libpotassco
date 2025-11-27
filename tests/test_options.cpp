@@ -826,7 +826,7 @@ TEST_CASE("Test parser", "[options]") {
     }
     SECTION("parser supports quoting") {
         std::vector<std::string> tok;
-        g.addOptions()("+,path", Po::storeTo(tok), "An int");
+        g.addOptions()("+,path", Po::storeTo(tok), "A path");
         Po::OptionContext ctx;
         ctx.add(g);
         auto positional = [](std::string_view, std::string& o) {
@@ -865,6 +865,27 @@ TEST_CASE("Test parser", "[options]") {
         REQUIRE(flag1 == true);
         REQUIRE(flag2 == true);
         REQUIRE(i1 == 10);
+    }
+    SECTION("parser stops on dash dash") {
+        Po::OptionContext ctx;
+        ctx.add(g);
+        Po::DefaultParseContext po{ctx};
+        REQUIRE_THROWS_AS(Po::parseCommandString(po, "-i 10 --not-my-option=12"), Po::UnknownOption);
+        REQUIRE_NOTHROW(Po::parseCommandString(po, "-i 10 -- --not-my-option=12"));
+        REQUIRE(i1 == 10);
+    }
+    SECTION("parser treats single dash as positional") {
+        std::string file;
+        g.addOptions()("file", Po::storeTo(file), "A path");
+        Po::OptionContext ctx;
+        ctx.add(g);
+        Po::DefaultParseContext po{ctx};
+        REQUIRE_NOTHROW(Po::parseCommandString(po, "- -i 10", [](std::string_view in, std::string& out) {
+            out = "file";
+            return in == "-"sv;
+        }));
+        REQUIRE(i1 == 10);
+        REQUIRE(file == "-");
     }
 }
 

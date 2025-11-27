@@ -253,9 +253,12 @@ TEST_CASE("Test application", "[app]") {
         return where.find(what) < where.size();
     };
     SECTION("args") {
+        auto input = GENERATE("hallo", "-", "stdin");
+        CAPTURE(input);
+        *(std::end(args) - 1) = input;
         REQUIRE(app.main(args) == EXIT_SUCCESS);
         REQUIRE(app.getVerbose() == 3);
-        REQUIRE(app.input.at(0) == "hallo");
+        REQUIRE(app.input.at(0) == input);
         REQUIRE_FALSE(app.messages["help"].empty());
         REQUIRE(app.messages["version"].empty()); // help processed first
         REQUIRE(app.messages["error"].empty());
