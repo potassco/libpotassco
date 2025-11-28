@@ -312,7 +312,8 @@ auto AtomView::popStep(bool last) noexcept -> int {
     int  step   = -1;
     return matchNum(popped, nullptr, &step) && step >= 0 ? step : -1;
 }
-auto AtomView::getAssignment(Id_t keyArg, Id_t valArg) const noexcept -> std::pair<std::string_view, std::string_view> {
+auto AtomView::getAssignment(Id_t keyArg, Id_t valArg,
+                             ArgMode mode) const noexcept -> std::pair<std::string_view, std::string_view> {
     auto [mn, mx] = std::minmax(keyArg, valArg);
     auto res      = std::pair<std::string_view, std::string_view>{};
     if (std::cmp_greater_equal(mx, arity)) {
@@ -325,23 +326,29 @@ auto AtomView::getAssignment(Id_t keyArg, Id_t valArg) const noexcept -> std::pa
         if (keyArg > valArg) {
             std::swap(res.first, res.second);
         }
-        return res;
     }
-    for (auto pos = 0u;; ++pos) {
-        auto arg = copy.popFront();
-        if (arg.empty()) {
-            return {};
-        }
-        if (pos == keyArg) {
-            res.first = arg;
-        }
-        if (pos == valArg) {
-            res.second = arg;
-        }
-        if (pos == mx) {
-            return res;
+    else {
+        for (auto pos = 0u;; ++pos) {
+            auto arg = copy.popFront();
+            if (arg.empty()) {
+                return {};
+            }
+            if (pos == keyArg) {
+                res.first = arg;
+            }
+            if (pos == valArg) {
+                res.second = arg;
+            }
+            if (pos == mx) {
+                break;
+            }
         }
     }
+    if (mode == ArgMode::unquote) {
+        res.first  = unquote(res.first);
+        res.second = unquote(res.second);
+    }
+    return res;
 }
 
 auto cmpAtom(std::string_view lhsAtom, std::string_view rhsAtom, AtomCompare cmp) noexcept -> std::strong_ordering {

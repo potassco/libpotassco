@@ -223,6 +223,13 @@ bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr)
  */
 auto predicate(std::string_view atom) -> std::pair<std::string_view, int>;
 struct AtomView {
+    enum class ArgMode { raw, unquote };
+    static constexpr auto unquote(std::string_view arg) -> std::string_view {
+        if (arg.starts_with('"') && arg.ends_with('"')) {
+            return arg.substr(1, arg.size() - 2);
+        }
+        return arg; // NOLINT
+    }
     friend bool operator==(const AtomView&, const AtomView&) = default;
     //! Removes and returns the first argument or an empty string_view if `arity <= 0`.
     auto popFront() noexcept -> std::string_view;
@@ -234,14 +241,14 @@ struct AtomView {
      */
     auto popStep(bool last = true) noexcept -> int;
     //! Returns arguments at positions `keyArg` and `valArg` or an empty pair if any position is out of bounds.
-    [[nodiscard]] auto getAssignment(Id_t keyArg,
-                                     Id_t valArg) const noexcept -> std::pair<std::string_view, std::string_view>;
+    [[nodiscard]] auto getAssignment(Id_t keyArg, Id_t valArg, ArgMode mode = ArgMode::raw) const noexcept
+        -> std::pair<std::string_view, std::string_view>;
     //! Copies the arguments to the destination range starting at `outIt`.
     template <typename OutIt>
-    void copyArgs(OutIt outIt) const {
+    void copyArgs(OutIt outIt, ArgMode mode = ArgMode::raw) const {
         for (std::string_view arg, argView = this->args; matchTerm(argView, arg);
              argView.remove_prefix(not argView.empty()), ++outIt) {
-            *outIt = arg;
+            *outIt = mode == ArgMode::raw ? arg : unquote(arg);
         }
     }
     std::string_view id;    //!< Predicate id.

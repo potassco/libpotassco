@@ -820,7 +820,13 @@ TEST_CASE("Test Basic", "[rule]") {
 #undef CHECK_POP_BACK
         }
 #undef CHECK_POP
-
+        SECTION("unquote") {
+            CHECK(AtomView::unquote(""sv).empty());
+            CHECK(AtomView::unquote("foo"sv) == "foo"sv);
+            CHECK(AtomView::unquote("\"foo"sv) == "\"foo"sv);
+            CHECK(AtomView::unquote("\"foo\"s"sv) == "\"foo\"s"sv);
+            CHECK(AtomView::unquote("\"foo\""sv) == "foo"sv);
+        }
         SECTION("getAssignment") {
             CHECK(atomView("foo(x,y)"sv).getAssignment(0, 1) == std::pair{"x"sv, "y"sv});
             CHECK(atomView("foo(x,y)"sv).getAssignment(1, 0) == std::pair{"y"sv, "x"sv});
@@ -831,13 +837,21 @@ TEST_CASE("Test Basic", "[rule]") {
             CHECK(atomView("(x,2,3)").getAssignment(1, 1) == std::pair{"2"sv, "2"sv});
             CHECK(atomView("(x,2,3)").getAssignment(0, 2) == std::pair{"x"sv, "3"sv});
             CHECK(atomView("(x,2,3)").getAssignment(0, 3) == std::pair{""sv, ""sv});
+
+            CHECK(atomView("tuple(foo,\"(1,2)\",(3,4),\"bar\")"sv).getAssignment(1, 3, AtomView::ArgMode::unquote) ==
+                  std::pair{"(1,2)"sv, "bar"sv});
         }
         SECTION("copyArgs") {
-            auto atom = "tuple(foo,(1,2),(3,4),bar)"s;
+            auto atom = "tuple(foo,\"(1,2)\",(3,4),bar)"s;
             auto vec  = std::vector<std::string_view>{};
-            atomView(atom).copyArgs(std::back_inserter(vec));
+            auto mode = GENERATE(AtomView::ArgMode::raw, AtomView::ArgMode::unquote);
+            atomView(atom).copyArgs(std::back_inserter(vec), mode);
+            CAPTURE(mode);
             REQUIRE(vec.size() == 4);
-            for (auto i = 0u; auto expected : {"foo"sv, "(1,2)"sv, "(3,4)"sv, "bar"sv}) {
+            for (auto i = 0u; auto expected : {"foo"sv, "\"(1,2)\""sv, "(3,4)"sv, "bar"sv}) {
+                if (mode == AtomView::ArgMode::unquote) {
+                    expected = AtomView::unquote(expected);
+                }
                 REQUIRE(vec.at(i++) == expected);
             }
         }
