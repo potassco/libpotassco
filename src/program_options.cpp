@@ -157,6 +157,18 @@ bool Option::assignDefault() {
     }
     return true;
 }
+bool Option::assignDefault(Str defVal) {
+    if (defVal.str() != this->defaultValue()) {
+        if (auto prev = std::exchange(str_[str_def], ""); test_bit(own_, str_def)) {
+            store_clear_bit(own_, str_def);
+            delete[] prev;
+        }
+        defaulted_ = false;
+        init(str_def, defVal);
+        return assignDefault();
+    }
+    return true;
+}
 bool Option::assign(std::string_view value) { return assign(value, false); }
 bool Option::assign(std::string_view value, bool def) {
     if (value.empty() && implicit()) {
@@ -264,7 +276,8 @@ bool OptionGroup::Init::applySpec(std::string_view spec, ValueDesc& value, char&
     }
     return spec.empty();
 }
-OptionGroup::Init::Init(OptionGroup& owner) : owner_(&owner) {}
+OptionGroup::Init::Init(OptionGroup& owner) : group_(&owner) {}
+OptionGroup::Init::Init(OptionContext& owner, std::size_t groupId) : ctx_(&owner), id_(groupId) {}
 auto OptionGroup::Init::operator()(Str name, std::string_view spec, ValueDesc value, Str desc) -> Init& {
     if (name.empty()) {
         throw Error("Invalid empty option name");
@@ -276,7 +289,12 @@ auto OptionGroup::Init::operator()(Str name, std::string_view spec, ValueDesc va
     if (not applySpec(spec, value, alias)) {
         throw Error("Invalid option spec "s.append(quote(spec)).append(" for option ").append(quote(name.str())));
     }
-    owner_->addOption(std::make_unique<Option>(name, desc, std::move(value), alias));
+    if (auto opt = std::make_unique<Option>(name, desc, std::move(value), alias); not ctx_) {
+        group_->addOption(std::move(opt));
+    }
+    else {
+        ctx_->add(id_, std::move(opt));
+    }
     return *this;
 }
 auto OptionGroup::Init::operator()(Str name, ValueDesc value, Str desc) -> Init& {
@@ -298,7 +316,7 @@ auto OptionContext::findGroupKey(std::string_view name) const -> std::size_t {
     auto it = std::ranges::find_if(groups_, [&](const OptionGroup& grp) { return grp.caption() == name; });
     return it != groups_.end() ? static_cast<std::size_t>(it - groups_.begin()) : static_cast<std::size_t>(-1);
 }
-OptionGroup& OptionContext::addGroup(std::string_view name, DescriptionLevel level) {
+OptionGroup& OptionContext::addGroup(std::string_view name, DescriptionLevel level, std::size_t* idx) {
     auto k = findGroupKey(name);
     if (k >= groups_.size()) {
         // add as a new group
@@ -307,6 +325,9 @@ OptionGroup& OptionContext::addGroup(std::string_view name, DescriptionLevel lev
     }
     auto& myGroup = groups_[k];
     myGroup.setDescriptionLevel(std::min(level, myGroup.descLevel()));
+    if (idx) {
+        *idx = k;
+    }
     return myGroup;
 }
 
@@ -331,6 +352,18 @@ OptionContext& OptionContext::add(OptionGroup&& group) {
     }
     for (const auto& opt : std::span{myGroup.options_}.subspan(startPos)) { addToIndex(opt); }
     return *this;
+}
+OptionContext& OptionContext::add(std::size_t groupId, std::unique_ptr<Option> opt) {
+    auto& grp    = groups_.at(groupId);
+    auto  shared = OptionGroup::SharedOption{opt.release()};
+    addToIndex(shared);
+    grp.addOption(std::move(shared));
+    return *this;
+}
+auto OptionContext::addOptions(std::string_view caption, DescriptionLevel descLevel) -> OptionGroup::Init {
+    std::size_t idx;
+    std::ignore = addGroup(caption, descLevel, &idx);
+    return OptionGroup::Init{*this, idx};
 }
 
 OptionContext& OptionContext::addAlias(std::size_t idx, std::string_view aliasName) {

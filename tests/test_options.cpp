@@ -267,6 +267,23 @@ TEST_CASE("Test value desc", "[options]") {
             REQUIRE(x == 123);
             REQUIRE(o.defaulted());
         }
+        SECTION("explicit default") {
+            Po::Option o("some-int", "some integer", Po::storeTo(x).defaultsTo("123").arg("<n>"));
+            REQUIRE(o.defaultValue() == "123");
+            REQUIRE_FALSE(o.defaulted());
+            std::string newDef = "923";
+            REQUIRE(o.assignDefault(newDef));
+            REQUIRE(x == 923);
+            REQUIRE(o.defaulted());
+            REQUIRE(o.defaultValue() == newDef);
+            REQUIRE(o.assignDefault("20"));
+            REQUIRE(x == 20);
+            REQUIRE(o.defaulted());
+            REQUIRE(o.assignDefault(""));
+            REQUIRE(x == 20);
+            REQUIRE_FALSE(o.defaulted());
+            REQUIRE(o.defaultValue().empty());
+        }
         SECTION("can be defaulted on construction") {
             Po::Option o("some-int", "some integer", Po::storeTo(x).defaultsTo("123", true).arg("<n>"));
             REQUIRE(o.defaultValue() == "123");
@@ -554,6 +571,66 @@ TEST_CASE("Test context", "[options]") {
 
         ctx.addAlias(ctx.index("help"), "Hilfe");
         REQUIRE(&ctx.option("Hilfe") == &ctx.option("help"));
+    }
+    SECTION("option context supports add") {
+        Po::OptionContext ctx;
+        bool              b1, b2;
+        {
+            OptionGroup grp("Base", desc_level_e1);
+            ctx.add(grp);
+            REQUIRE(ctx.group("Base").empty());
+            REQUIRE(ctx.group("Base").descLevel() == desc_level_e1);
+        }
+        SECTION("append to group explicit") {
+            {
+                OptionGroup grp("Base", desc_level_e2);
+                grp.addOptions()("@2,opt1", Po::flag(b1), "option 1");
+                ctx.add(std::move(grp));
+            }
+            REQUIRE(ctx.groups() == 1);
+            REQUIRE(ctx.group("Base").size() == 1);
+            REQUIRE(ctx.group("Base").descLevel() == desc_level_e1);
+            {
+                OptionGroup grp("Base");
+                grp.addOptions()("-o,opt2", Po::flag(b2), "option 2");
+                ctx.add(std::move(grp));
+            }
+            REQUIRE(ctx.groups() == 1);
+            REQUIRE(ctx.group("Base").size() == 2);
+            REQUIRE(ctx.group("Base").descLevel() == desc_level_default);
+            REQUIRE_NOTHROW(ctx.option("-o", OptionContext::find_alias));
+            REQUIRE_NOTHROW(ctx.option("opt1"));
+        }
+        SECTION("create new group explicit") {
+            OptionGroup grp("New Group");
+            grp.addOptions()("-o,opt", Po::flag(b1), "option 1");
+            ctx.add(std::move(grp));
+            REQUIRE(ctx.groups() == 2);
+            REQUIRE(ctx.group("Base").empty());
+            REQUIRE(ctx.group("Base").descLevel() == desc_level_e1);
+            REQUIRE(ctx.group("New Group").size() == 1);
+            REQUIRE(ctx.group("New Group").descLevel() == desc_level_default);
+        }
+        SECTION("append to group implicit") {
+            ctx.addOptions("Base", desc_level_e2)("@2,opt1", Po::flag(b1), "option 1");
+            REQUIRE(ctx.groups() == 1);
+            REQUIRE(ctx.group("Base").size() == 1);
+            REQUIRE(ctx.group("Base").descLevel() == desc_level_e1);
+            ctx.addOptions("Base")("-o,opt2", Po::flag(b2), "option 2");
+            REQUIRE(ctx.groups() == 1);
+            REQUIRE(ctx.group("Base").size() == 2);
+            REQUIRE(ctx.group("Base").descLevel() == desc_level_default);
+            REQUIRE_NOTHROW(ctx.option("-o", OptionContext::find_alias));
+            REQUIRE_NOTHROW(ctx.option("opt1"));
+        }
+        SECTION("create new group implicit") {
+            ctx.addOptions("New Group")("-o,opt", Po::flag(b1), "option 1");
+            REQUIRE(ctx.groups() == 2);
+            REQUIRE(ctx.group("Base").empty());
+            REQUIRE(ctx.group("Base").descLevel() == desc_level_e1);
+            REQUIRE(ctx.group("New Group").size() == 1);
+            REQUIRE(ctx.group("New Group").descLevel() == desc_level_default);
+        }
     }
 }
 

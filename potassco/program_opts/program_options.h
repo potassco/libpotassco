@@ -80,6 +80,8 @@ public:
     [[nodiscard]] bool assign(std::string_view value);
     //! Assigns the option's default value if it has one.
     [[nodiscard]] bool assignDefault();
+    //! Sets and assigns the given value as the option's default value.
+    [[nodiscard]] bool assignDefault(Str defVal);
 
 private:
     friend int  intrusiveRelease(Option* o) { return --o->refCount_; }
@@ -106,6 +108,7 @@ private:
 class OptionParser;
 class ParsedOptions;
 class OptionOutput;
+class OptionContext;
 
 //! A list of options logically grouped under a caption.
 /*!
@@ -156,6 +159,7 @@ public:
         static bool applySpec(std::string_view spec, ValueDesc& value, char& alias);
 
         explicit Init(OptionGroup& owner);
+        explicit Init(OptionContext& owner, std::size_t groupId);
 
         //! Factory function for adding an option to the group given on construction.
         /*!
@@ -176,7 +180,11 @@ public:
         Init& operator()(Str name, ValueDesc value, Str desc);
 
     private:
-        OptionGroup* owner_;
+        OptionContext* ctx_{nullptr};
+        union {
+            OptionGroup* group_; // NOLINT
+            std::size_t  id_;    // NOLINT
+        };
     };
 
     //! Returns an object that can be used to add options.
@@ -225,7 +233,7 @@ class OptionContext {
 public:
     using OptionList = OptionGroup::OptionList;
 
-    explicit OptionContext(std::string_view caption = "", DescriptionLevel desc_default = desc_level_default);
+    explicit OptionContext(std::string_view caption = "", DescriptionLevel descDefault = desc_level_default);
 
     [[nodiscard]] std::string_view caption() const;
 
@@ -240,6 +248,19 @@ public:
      */
     OptionContext& add(const OptionGroup& group);
     OptionContext& add(OptionGroup&& group);
+    OptionContext& add(std::size_t groupId, std::unique_ptr<Option>);
+    //! Returns an object that can be used to add options to a group with the given caption.
+    /*!
+     * \note Given an OptionContext `ctx`, the function behaves like:
+     * \code{.cpp}
+     * OptionGroup g(caption, descLevel);
+     * g.addOptions()
+     *   // add options to g ...
+     * ctx.add(std::move(g));
+     * \endcode
+     * \see OptionGroup::addOptions().
+     */
+    auto addOptions(std::string_view caption, DescriptionLevel descLevel = desc_level_default) -> OptionGroup::Init;
 
     //! Adds an alias name for the option with the given index.
     /*!
@@ -317,10 +338,10 @@ private:
     using Name2Key  = std::map<std::string, KeyType, std::less<>>;
     using GroupList = std::vector<OptionGroup>;
 
-    [[nodiscard]] size_t findGroupKey(std::string_view name) const;
-    [[nodiscard]] size_t findOption(std::string_view name, FindType t) const;
-    void                 addToIndex(const OptionGroup::SharedOption& opt);
-    OptionGroup&         addGroup(std::string_view name, DescriptionLevel level);
+    [[nodiscard]] auto findGroupKey(std::string_view name) const -> std::size_t;
+    [[nodiscard]] auto findOption(std::string_view name, FindType t) const -> std::size_t;
+    void               addToIndex(const OptionGroup::SharedOption& opt);
+    OptionGroup&       addGroup(std::string_view name, DescriptionLevel level, std::size_t* idx = nullptr);
 
     Name2Key         index_;
     OptionList       options_;
