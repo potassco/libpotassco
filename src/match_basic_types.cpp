@@ -57,7 +57,7 @@ void AbstractProgram::endStep() {}
 /////////////////////////////////////////////////////////////////////////////////////////
 BufferedStream::BufferedStream(std::istream& str) : str_(str), buf_(new char[buf_size + 1]) { underflow(0); }
 BufferedStream::~BufferedStream() { delete[] buf_; }
-auto BufferedStream::avail() const -> std::size_t { return rEnd_ - rpos_; }
+auto BufferedStream::avail() const -> uint32_t { return rEnd_ - rpos_; }
 void BufferedStream::advance(uint32_t n) {
     POTASSCO_DEBUG_ASSERT(rpos_ + n <= rEnd_);
     if (rpos_ += n; not buf_[rpos_]) {
@@ -96,7 +96,7 @@ void BufferedStream::underflow(uint32_t pos) {
     }
     str_.read(buf_ + pos, static_cast<std::streamsize>(buf_size - pos));
     rpos_ = pos;
-    rEnd_ = pos + static_cast<std::size_t>(str_.gcount());
+    rEnd_ = pos + static_cast<uint32_t>(str_.gcount());
     POTASSCO_ASSERT(rEnd_ <= buf_size);
     buf_[rEnd_] = 0;
 }
@@ -143,11 +143,10 @@ bool BufferedStream::readInt(int64_t& res) {
 std::size_t BufferedStream::read(std::span<char> bufferOut) {
     auto* out = bufferOut.data();
     for (auto n = bufferOut.size(); n && peek();) {
-        auto b  = avail();
-        auto m  = std::min(n, b);
+        auto m  = std::min<std::size_t>(n, avail());
         out     = std::copy_n(buf_ + rpos_, m, out);
         n      -= m;
-        advance(m);
+        advance(static_cast<uint32_t>(m));
     }
     return static_cast<std::size_t>(out - bufferOut.data());
 }

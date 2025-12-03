@@ -74,7 +74,7 @@ public:
 private:
     static constexpr auto buf_size = static_cast<std::streamsize>(4095);
 
-    [[nodiscard]] auto avail() const -> std::size_t;
+    [[nodiscard]] auto avail() const -> uint32_t;
 
     char pop();
     void underflow(uint32_t pos);
@@ -82,9 +82,9 @@ private:
 
     std::istream& str_;
     char*         buf_;
+    unsigned      line_{1};
     uint32_t      rpos_{0};
     uint32_t      rEnd_{0};
-    unsigned      line_{1};
 };
 
 //! Base class for input parsers.
