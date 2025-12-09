@@ -37,12 +37,7 @@
 
 #include <algorithm>
 #include <sstream>
-
-namespace Potassco {
-static std::ostream& operator<<(std::ostream& os, const AtomView& atomView) {
-    return os << "{" << atomView.id << "/" << atomView.arity << ", " << atomView.args << "}";
-}
-} // namespace Potassco
+using namespace std::literals;
 namespace Potassco::Test::Aspif {
 constexpr Weight_t   bound_none = -1;
 static std::ostream& operator<<(std::ostream& os, const Heuristic& h);
@@ -758,7 +753,6 @@ TEST_CASE("Test Basic", "[rule]") {
     }
 
     SECTION("predicate") {
-        using namespace std::literals;
         CHECK(predicate({}) == std::pair(""sv, 0));
         CHECK(predicate("foo"sv) == std::pair("foo"sv, 0));
         CHECK(predicate("foo(x)"sv) == std::pair("foo"sv, 1));
@@ -771,92 +765,40 @@ TEST_CASE("Test Basic", "[rule]") {
         CHECK(predicate("tuple((1,2),(3,4)"sv) == std::pair("tuple"sv, -1));
         CHECK(predicate("foo(\"bla)"sv) == std::pair("foo"sv, -1));
     }
-    SECTION("atomView") {
-        using namespace std::literals;
-        CHECK(atomView("foo"sv) == AtomView{"foo"sv, ""sv, 0});
-        CHECK(atomView("foo(x)"sv) == AtomView("foo"sv, "x"sv, 1));
-        CHECK(atomView("foo(x,y)"sv) == AtomView("foo"sv, "x,y"sv, 2));
-        CHECK(atomView("foo(\"bla\",2)"sv) == AtomView("foo"sv, "\"bla\",2"sv, 2));
-        CHECK(atomView("tuple((1,2),(3,4))"sv) == AtomView("tuple"sv, "(1,2),(3,4)"sv, 2));
-        CHECK(atomView("(1,2,3)"sv) == AtomView(""sv, "1,2,3"sv, 3));
+    SECTION("atomSymbol") {
+        using AtomView = std::tuple<std::string_view, int, std::string_view>;
+        CHECK(atomSymbol("foo"sv) == AtomView{"foo"sv, 0, ""sv});
+        CHECK(atomSymbol("foo(x)"sv) == AtomView("foo"sv, 1, "x"sv));
+        CHECK(atomSymbol("foo(x,y)"sv) == AtomView("foo"sv, 2, "x,y"sv));
+        CHECK(atomSymbol("foo(\"bla\",2)"sv) == AtomView("foo"sv, 2, "\"bla\",2"sv));
+        CHECK(atomSymbol("tuple((1,2),(3,4))"sv) == AtomView("tuple"sv, 2, "(1,2),(3,4)"sv));
+        CHECK(atomSymbol("(1,2,3)"sv) == AtomView(""sv, 3, "1,2,3"sv));
         // invalid
-        CHECK(atomView({}) == AtomView(""sv, ""sv, 0));
-        CHECK(atomView("tuple((1,2),(3,4)"sv) == AtomView("tuple"sv, ""sv, -1));
-        CHECK(atomView("(1,2,3)").popStep() == 3);
-        CHECK(atomView("(1,2,3)").popStep(false) == 1);
-        CHECK(atomView("tuple((1,2),(3,4))"sv).popStep() == -1);
-#define CHECK_POP(OP, X, P, R)                                                                                         \
-    do {                                                                                                               \
-        auto av = atomView(X);                                                                                         \
-        CHECK(av.OP == std::string_view(P));                                                                           \
-        CHECK(av == atomView(R));                                                                                      \
-    } while (0)
-
-        SECTION("popFront") {
-#define CHECK_POP_FRONT(X, P, R) CHECK_POP(popFront(), X, P, R)
-            CHECK_POP_FRONT("foo"sv, ""sv, "foo"sv);
-            CHECK_POP_FRONT("foo(x)"sv, "x"sv, "foo"sv);
-            CHECK_POP_FRONT("foo(x,y)"sv, "x"sv, "foo(y)"sv);
-            CHECK_POP_FRONT("foo(\"bla\",2)"sv, "\"bla\""sv, "foo(2)"sv);
-            CHECK_POP_FRONT("tuple((1,2),(3,4))"sv, "(1,2)"sv, "tuple((3,4))"sv);
-            CHECK_POP_FRONT("(1,2,3)"sv, "1"sv, "(2,3)"sv);
-            // invalid
-            CHECK_POP_FRONT({}, ""sv, ""sv);
-            CHECK_POP_FRONT("tuple((1,2),(3,4)"sv, ""sv, "tuple((1,2),(3,4)"sv);
-#undef CHECK_POP_FRONT
-        }
-        SECTION("popBack") {
-#define CHECK_POP_BACK(X, P, R) CHECK_POP(popBack(), X, P, R)
-            CHECK_POP_BACK("foo"sv, ""sv, "foo"sv);
-            CHECK_POP_BACK("foo(x)"sv, "x"sv, "foo"sv);
-            CHECK_POP_BACK("foo(x,y)"sv, "y"sv, "foo(x)"sv);
-            CHECK_POP_BACK("foo(x,((1,2),\"J(2)\"))"sv, "((1,2),\"J(2)\")"sv, "foo(x)"sv);
-            CHECK_POP_BACK("foo(\"bla\",2)"sv, "2"sv, "foo(\"bla\")"sv);
-            CHECK_POP_BACK("tuple((1,2),(3,4))"sv, "(3,4)"sv, "tuple((1,2))"sv);
-            CHECK_POP_BACK("(1,2,3)", "3"sv, "(1,2)"sv);
-            // invalid
-            CHECK_POP_BACK({}, ""sv, ""sv);
-            CHECK_POP_BACK("tuple((1,2),(3,4)"sv, ""sv, "tuple((1,2),(3,4)"sv);
-#undef CHECK_POP_BACK
-        }
-#undef CHECK_POP
-        SECTION("unquote") {
-            CHECK(AtomView::unquote(""sv).empty());
-            CHECK(AtomView::unquote("foo"sv) == "foo"sv);
-            CHECK(AtomView::unquote("\"foo"sv) == "\"foo"sv);
-            CHECK(AtomView::unquote("\"foo\"s"sv) == "\"foo\"s"sv);
-            CHECK(AtomView::unquote("\"foo\""sv) == "foo"sv);
-        }
-        SECTION("getAssignment") {
-            CHECK(atomView("foo(x,y)"sv).getAssignment(0, 1) == std::pair{"x"sv, "y"sv});
-            CHECK(atomView("foo(x,y)"sv).getAssignment(1, 0) == std::pair{"y"sv, "x"sv});
-            CHECK(atomView("tuple(foo,(1,2),(3,4),bar)"sv).getAssignment(1, 2) == std::pair{"(1,2)"sv, "(3,4)"sv});
-            CHECK(atomView("foo(x)").getAssignment(0, 0) == std::pair{"x"sv, "x"sv});
-            CHECK(atomView("(x,2,3)").getAssignment(0, 0) == std::pair{"x"sv, "x"sv});
-            CHECK(atomView("(x,2,3)").getAssignment(2, 2) == std::pair{"3"sv, "3"sv});
-            CHECK(atomView("(x,2,3)").getAssignment(1, 1) == std::pair{"2"sv, "2"sv});
-            CHECK(atomView("(x,2,3)").getAssignment(0, 2) == std::pair{"x"sv, "3"sv});
-            CHECK(atomView("(x,2,3)").getAssignment(0, 3) == std::pair{""sv, ""sv});
-
-            CHECK(atomView("tuple(foo,\"(1,2)\",(3,4),\"bar\")"sv).getAssignment(1, 3, AtomView::ArgMode::unquote) ==
-                  std::pair{"(1,2)"sv, "bar"sv});
-        }
-        SECTION("copyArgs") {
-            auto atom = "tuple(foo,\"(1,2)\",(3,4),bar)"s;
-            auto vec  = std::vector<std::string_view>{};
-            auto mode = GENERATE(AtomView::ArgMode::raw, AtomView::ArgMode::unquote);
-            atomView(atom).copyArgs(std::back_inserter(vec), mode);
-            CAPTURE(mode);
-            REQUIRE(vec.size() == 4);
-            for (auto i = 0u; auto expected : {"foo"sv, "\"(1,2)\""sv, "(3,4)"sv, "bar"sv}) {
-                if (mode == AtomView::ArgMode::unquote) {
-                    expected = AtomView::unquote(expected);
-                }
-                REQUIRE(vec.at(i++) == expected);
-            }
-        }
+        CHECK(atomSymbol({}) == AtomView(""sv, 0, ""sv));
+        CHECK(atomSymbol("tuple((1,2),(3,4)"sv) == AtomView("tuple"sv, -1, ""sv));
     }
+    SECTION("popArg") {
+        auto pop = [](std::string_view in, AtomArg pos = AtomArg::first, AtomArgMode m = AtomArgMode::raw) {
+            return std::pair{popArg(in, pos, m), in};
+        };
+        CHECK(pop("1,2,3"sv) == std::pair("1"sv, "2,3"sv));
+        CHECK(pop("1,2,3"sv, AtomArg::last) == std::pair("3"sv, "1,2"sv));
+        CHECK(pop("0"sv, AtomArg::last) == std::pair("0"sv, ""sv));
+        CHECK(pop("(1,2),\"(3,4)\""sv, AtomArg::last, AtomArgMode::unquote) == std::pair("(3,4)"sv, "(1,2)"sv));
+        CHECK(pop("\"(1,2)\",\"(3,4)\""sv, AtomArg::first, AtomArgMode::unquote) ==
+              std::pair("(1,2)"sv, "\"(3,4)\""sv));
 
+        CHECK(pop("\"1,2\",3") == std::pair("\"1,2\""sv, "3"sv));
+        CHECK(pop("1,\"2,3\"", AtomArg::last) == std::pair("\"2,3\""sv, "1"sv));
+
+        CHECK(pop("(\"1,2\",3),4") == std::pair("(\"1,2\",3)"sv, "4"sv));
+        CHECK(pop("1,(\"1,2\",(3,4))", AtomArg::last) == std::pair("(\"1,2\",(3,4))"sv, "1"sv));
+
+        // Invalid
+        CHECK(pop({}) == std::pair(""sv, ""sv));
+        CHECK(pop("(1,2,(3,4)"sv) == std::pair("(1,2,(3,4)"sv, ""sv));
+        CHECK(pop("(1,2),1,2,3,4)"sv, AtomArg::last) == std::pair("(1,2),1,2,3,4)"sv, ""sv));
+    }
     SECTION("enumerate") {
         SECTION("lvalue") {
             std::vector       v{1, 2, 3};

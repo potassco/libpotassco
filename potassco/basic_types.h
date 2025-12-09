@@ -241,6 +241,22 @@ POTASSCO_ENABLE_BIT_OPS(AtomCompare);
 //! Returns whether lhsAtom is less than rhsAtom according to the compare flags.
 auto cmpAtom(std::string_view lhsAtom, std::string_view rhsAtom, AtomCompare cmp) noexcept -> std::strong_ordering;
 
+//! Returns predicate name, arity, and arguments for the given atom.
+/*!
+ * Given an atom `foo(x,y)`, the function returns the tuple ("foo"sv,2,"x,y"sv).
+ * If `atom` is not a valid atom name, the returned arity will be < 0.
+ */
+auto atomSymbol(std::string_view atom) -> std::tuple<std::string_view, int, std::string_view>;
+//! Returns predicate name and arity for the given atom.
+inline auto predicate(std::string_view atom) -> std::pair<std::string_view, int> {
+    auto [p, a, _] = atomSymbol(atom);
+    return std::pair{p, a};
+}
+enum class AtomArgMode { raw, unquote };
+enum class AtomArg { first, last };
+POTASSCO_SET_ENUM_ENTRIES(AtomArg, {first, "first"sv}, {last, "last"sv});
+//! Removes and returns the first/last atom argument from `args`.
+auto popArg(std::string_view& args, AtomArg argPos, AtomArgMode mode) -> std::string_view;
 ///@}
 
 ///@}

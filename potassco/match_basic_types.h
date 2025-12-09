@@ -216,52 +216,6 @@ constexpr int toDigit(char c) { return static_cast<int>(c - '0'); }
 
 bool matchTerm(std::string_view& input, std::string_view& termOut);
 bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr);
-//! Returns the predicate name and arity for the given atom.
-/*!
- * Given an atom `foo(x,y)`, the function returns the pair ("foo"sv,2).
- * If `atom` is not a valid atom name, the returned arity will be < 0.
- */
-auto predicate(std::string_view atom) -> std::pair<std::string_view, int>;
-struct AtomView {
-    enum class ArgMode { raw, unquote };
-    static constexpr auto unquote(std::string_view arg) -> std::string_view {
-        if (arg.starts_with('"') && arg.ends_with('"')) {
-            return arg.substr(1, arg.size() - 2);
-        }
-        return arg; // NOLINT
-    }
-    friend bool operator==(const AtomView&, const AtomView&) = default;
-    //! Removes and returns the first argument or an empty string_view if `arity <= 0`.
-    auto popFront() noexcept -> std::string_view;
-    //! Removes and returns the last argument or an empty string_view if `arity <= 0`.
-    auto popBack() noexcept -> std::string_view;
-    //! Depending on `last`, returns `toInt(popBack())` or `toInt(popFront())`.
-    /*!
-     * \note If the popped argument is not a non-negative (step) number, the function returns `-1`.
-     */
-    auto popStep(bool last = true) noexcept -> int;
-    //! Returns arguments at positions `keyArg` and `valArg` or an empty pair if any position is out of bounds.
-    [[nodiscard]] auto getAssignment(Id_t keyArg, Id_t valArg, ArgMode mode = ArgMode::raw) const noexcept
-        -> std::pair<std::string_view, std::string_view>;
-    //! Copies the arguments to the destination range starting at `outIt`.
-    template <typename OutIt>
-    void copyArgs(OutIt outIt, ArgMode mode = ArgMode::raw) const {
-        for (std::string_view arg, argView = this->args; matchTerm(argView, arg);
-             argView.remove_prefix(not argView.empty()), ++outIt) {
-            *outIt = mode == ArgMode::raw ? arg : unquote(arg);
-        }
-    }
-    std::string_view id;    //!< Predicate id.
-    std::string_view args;  //!< Atom arguments.
-    int              arity; //!< Predicate arity.
-};
-//! Splits an atom name into predicate-id, arity, and arguments.
-/*!
- * Given an atom `foo(x,y)`, the function returns {.id = "foo", .args = "x,y", .arity = 2}.
- * If `atom` is not a valid atom name, the returned arity will be < 0.
- */
-auto atomView(std::string_view atom) -> AtomView;
-
 //! Attaches the given stream to `r` and calls ProgramReader::parse() with the read mode set to
 //! ProgramReader::Complete.
 int readProgram(std::istream& str, ProgramReader& r);
