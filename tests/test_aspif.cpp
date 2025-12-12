@@ -719,13 +719,26 @@ TEST_CASE("Test Basic", "[rule]") {
 
         CHECK(std::is_gt(cmpAtom("10", "2", cmp)));
         CHECK(std::is_lt(cmpAtom("2", "10", cmp)));
+        CHECK(std::is_eq(cmpAtom("0", "0", cmp)));
 
         CHECK(std::is_gt(cmpAtom("a(10)", "a(2)", cmp)));
         CHECK(std::is_lt(cmpAtom("a(2,10,4)", "a(2,10,10)", cmp)));
         CHECK(std::is_eq(cmpAtom("a(2,10,4)", "a(2,10,4)", cmp)));
         CHECK(std::is_gt(cmpAtom("a(2,10,8)", "a(2,10,4)", cmp)));
 
+        CHECK(std::is_lt(cmpAtom("a(0)", "a(2)", cmp)));
+        CHECK(std::is_eq(cmpAtom("a(0)", "a(0)", cmp)));
         CHECK(std::is_lt(cmpAtom("a(001)", "a(2)", cmp)));
+
+        CHECK(std::is_eq(cmpAtom("a(00001)", "a(01)", cmp)));
+        CHECK(std::is_eq(cmpAtom("a(01)", "a(000001)", cmp)));
+        CHECK(std::is_lt(cmpAtom("a(01)", "a(000002)", cmp)));
+        CHECK(std::is_gt(cmpAtom("a(02)", "a(000001)", cmp)));
+
+        CHECK(std::is_gt(cmpAtom("a(184467440737095516150)", "a(2)", cmp)));
+        CHECK(std::is_eq(cmpAtom("a(184467440737095516150)", "a(184467440737095516150)", cmp)));
+        CHECK(std::is_lt(cmpAtom("a(2)", "a(184467440737095516150)", cmp)));
+        CHECK(std::is_lt(cmpAtom("a(-12)", "a(-11)", cmp)));
     }
 
     SECTION("cmpAtomArity") {

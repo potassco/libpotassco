@@ -214,8 +214,8 @@ constexpr bool isDigit(char c) { return c >= '0' && c <= '9'; }
 //! Converts the given character to a decimal digit.
 constexpr int toDigit(char c) { return static_cast<int>(c - '0'); }
 
-bool matchTerm(std::string_view& input, std::string_view& termOut);
-bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr);
+[[nodiscard]] bool matchTerm(std::string_view& input, std::string_view& termOut);
+[[nodiscard]] bool matchNum(std::string_view& in, std::string_view* sOut, int* nOut = nullptr);
 //! Attaches the given stream to `r` and calls ProgramReader::parse() with the read mode set to
 //! ProgramReader::Complete.
 int readProgram(std::istream& str, ProgramReader& r);

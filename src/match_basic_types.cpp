@@ -313,21 +313,40 @@ auto cmpAtom(std::string_view lhsAtom, std::string_view rhsAtom, AtomCompare cmp
         rhsAtom = rhsAtom.substr(rId.size());
     }
     if (test(cmp, AtomCompare::cmp_natural)) {
-        for (auto end = std::min(lhsAtom.size(), rhsAtom.size()), x = static_cast<decltype(end)>(0); x != end; ++x) {
+        for (std::size_t ls = lhsAtom.size(), rs = rhsAtom.size(), end = std::min(ls, rs), x = 0; x < end;) {
             if (auto l = lhsAtom[x], r = rhsAtom[x]; isDigit(l) && isDigit(r)) {
-                auto lhsStart = lhsAtom.substr(x);
-                auto rhsStart = rhsAtom.substr(x);
-                int  lhsNum, rhsNum;
-                auto skip = std::string_view{};
-                matchNum(lhsStart, &skip, &lhsNum);
-                matchNum(rhsStart, nullptr, &rhsNum);
-                if (lhsNum != rhsNum) {
-                    return lhsNum <=> rhsNum;
+                auto lhs = lhsAtom.substr(std::min(ls, lhsAtom.find_first_not_of('0', x)));
+                auto rhs = rhsAtom.substr(std::min(rs, rhsAtom.find_first_not_of('0', x)));
+                auto res = std::strong_ordering::equal;
+                ls = lhs.size(), rs = rhs.size();
+                for (std::size_t lp = 0, rp = 0;;) {
+                    l = lp < ls ? lhs[lp++] : 0;
+                    r = rp < rs ? rhs[rp++] : 0;
+                    if (auto ld = isDigit(l), rd = isDigit(r); not ld || not rd) {
+                        if (rd) {
+                            res = not ld ? std::strong_ordering::less : res;
+                        }
+                        else {
+                            res = ld ? std::strong_ordering::greater : res;
+                        }
+                        if (not std::is_eq(res)) {
+                            return x == 0 || lhsAtom[x - 1] != '-' ? res : 0 <=> res;
+                        }
+                        ls  = (lhsAtom = lhs.substr(lp)).size();
+                        rs  = (rhsAtom = rhs.substr(rp)).size();
+                        end = std::min(ls, rs);
+                        break;
+                    }
+                    if (res == std::strong_ordering::equal) {
+                        res = l <=> r;
+                    }
                 }
-                x += skip.size() - 1;
             }
-            else if (auto res = l <=> r; res != 0) {
+            else if (auto res = l <=> r; not std::is_eq(res)) {
                 return res;
+            }
+            else {
+                ++x;
             }
         }
         return lhsAtom.size() <=> rhsAtom.size();
