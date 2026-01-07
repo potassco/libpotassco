@@ -30,10 +30,6 @@
 #include <potassco/program_opts/errors.h>
 #include <potassco/program_opts/typed_value.h>
 
-#if __has_include(<unistd.h>)
-#include <unistd.h> // for _exit
-#endif
-
 POTASSCO_WARNING_IGNORE_MSVC(4996)
 #include <atomic>
 #include <climits>
@@ -152,7 +148,7 @@ int Application::main(std::span<const char* const> args) {
         handleException();
     }
     if (fastExit_) {
-        exit(exitCode_);
+        fastExit(exitCode_);
     }
     flush();
     return exitCode_;
@@ -199,11 +195,8 @@ void Application::handleException() {
         fastExit_ = true;
     }
     exitCode_ = exitCode_ == EXIT_SUCCESS ? code : exitCode_;
-    if (code != EXIT_SUCCESS && unhandledException(current, error, info)) {
-        fastExit_ = true;
-    }
-    if (fastExit_) {
-        exit(exitCode_);
+    if ((code != EXIT_SUCCESS && unhandledException(current, error, info)) || fastExit_) {
+        fastExit(exitCode_);
     }
 }
 bool Application::unhandledException(const std::exception_ptr& e, std::string_view error, std::string_view info) {
@@ -223,7 +216,7 @@ void Application::fail(int code, std::string_view message, std::string_view info
             throw std::runtime_error(std::string{message}.append(not info.empty(), '\n').append(info));
         }
         std::ignore = unhandledException(nullptr, message, info);
-        Application::exit(code);
+        fastExit(code);
     }
 }
 void Application::stop(int code) {
@@ -232,7 +225,7 @@ void Application::stop(int code) {
             setExitCode(code);
             throw Stop();
         }
-        Application::exit(code);
+        fastExit(code);
     }
 }
 void Application::enableColoredMessages(bool enable) { colorMsg_ = enable; }
@@ -241,9 +234,9 @@ void Application::enableColoredHelp(bool enable) { colorHelp_ = enable; }
 void Application::shutdown() {}
 
 // Force exit without calling destructors.
-void Application::exit(int exitCode) {
+void Application::fastExit(int exitCode) {
     flush();
-    _exit(exitCode);
+    std::_Exit(exitCode);
 }
 
 // Temporarily disable delivery of signals.
@@ -281,7 +274,7 @@ void Application::processSignal(int sigNum) {
         }
         catch (...) {
             handleException();
-            exit(exitCode_);
+            fastExit(exitCode_);
         }
     }
     else if (pending_ == 0) { // signals are currently blocked because output is active
@@ -290,7 +283,7 @@ void Application::processSignal(int sigNum) {
     fetchDec(blocked_);
 }
 
-bool Application::onSignal(int x) { exit(128 + x); }
+bool Application::onSignal(int x) { fastExit(128 + x); }
 
 static std::string_view prefix(Application::MessageType t) {
     switch (t) {

@@ -217,7 +217,7 @@ private:
     static void       initInstance(Application& app);
     static void       resetInstance(const Application& app);
     static void       sigHandler(int sig);
-    [[noreturn]] void exit(int exitCode);
+    [[noreturn]] void fastExit(int exitCode);
 
     int      exitCode_;  // application's exit code
     unsigned timeout_;   // active time limit or 0 for no limit
