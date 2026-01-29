@@ -179,8 +179,14 @@ auto setAlarm(uint32_t millis, AlarmFunc f) -> std::errc;
 auto killAlarm() -> bool;
 
 //! Gets the total (user + system) time in seconds spent by the current process.
+/*!
+ * \note The function returns a (quiet) NaN if the information is not available on the current platform.
+ */
 auto getProcessTime() -> double;
 //! Gets the total (user + system) time in seconds spent by the current thread.
+/*!
+ * \note The function returns a (quiet) NaN if the information is not available on the current platform.
+ */
 auto getThreadTime() -> double;
 
 } // namespace Potassco

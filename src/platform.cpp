@@ -131,7 +131,12 @@ static bool killAlarm() { return false; }
 ///////////////////////////////////////////////////////////////////////////
 // Timing stuff
 ///////////////////////////////////////////////////////////////////////////
-#if defined(RUSAGE_SELF)
+#if defined(__EMSCRIPTEN__)
+static auto getProcessTime() -> std::chrono::duration<double> {
+    return std::chrono::duration<double>(std::numeric_limits<double>::quiet_NaN());
+}
+static auto getThreadTime() -> std::chrono::duration<double> { return getProcessTime(); }
+#elif defined(RUSAGE_SELF)
 using DurationType = std::chrono::microseconds;
 static constexpr auto toDuration(const timeval& t) -> DurationType {
     return std::chrono::seconds(t.tv_sec) + std::chrono::microseconds(t.tv_usec);
