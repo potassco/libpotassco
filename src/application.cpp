@@ -93,7 +93,7 @@ void Application::resetInstance(const Application& app) {
 void Application::setAlarmMs(unsigned millis) {
     if (millis) {
         auto ec = Potassco::setAlarm(millis, &Application::sigHandler);
-        POTASSCO_CHECK(ec == std::errc{}, ec, "Could not set alarm: %s", std::strerror(static_cast<int>(ec)));
+        POTASSCO_CHECK(ec == std::errc{}, ec, "Could not set alarm");
     }
     timeout_ = millis;
 }
@@ -121,7 +121,16 @@ int Application::main(std::span<const char* const> args) {
                 }
             }
             if (timeout_) {
-                setAlarm(timeout_);
+                try {
+                    setAlarm(timeout_);
+                }
+                catch (const RuntimeError& e) {
+                    fail(EXIT_FAILURE, "Option '--time-limit': could not apply limit",
+                         static_cast<std::errc>(e.errc()) == std::errc::operation_not_supported
+                             ? "Operation not supported on this platform"
+                             : std::strerror(static_cast<int>(e.errc())));
+                    throw;
+                }
             }
             exitCode_       = EXIT_SUCCESS;
             auto exceptions = std::uncaught_exceptions();

@@ -353,6 +353,7 @@ TEST_CASE("Test application", "[app]") {
     }
 }
 TEST_CASE("Test alarm", "[app]") {
+#if !defined(__EMSCRIPTEN__)
     SECTION("platform") {
         static std::atomic<int> stop;
         stop = 0;
@@ -399,5 +400,27 @@ TEST_CASE("Test alarm", "[app]") {
         auto dur = std::chrono::steady_clock::now() - start;
         REQUIRE(dur < std::chrono::seconds(2));
     }
+#else
+    SECTION("platform") {
+        REQUIRE(
+            Potassco::setAlarm(100, +[](int) { FAIL("must not be called"); }) == std::errc::operation_not_supported);
+    }
+    SECTION("App") {
+        struct TimedApp : MyApp {
+            TimedApp() = default;
+            void run() override { FAIL("must not be called"); }
+            bool onUnhandledException(const std::exception_ptr&, std::string_view err) noexcept override {
+                error = err;
+                return false;
+            }
+            std::string error;
+        };
+        TimedApp    app;
+        const char* args[] = {"--time-limit=5"}; // NOLINT
+        REQUIRE(app.main(args) == EXIT_FAILURE);
+        REQUIRE(app.error.find("--time-limit") != std::string::npos);
+        REQUIRE(app.error.find("not supported") != std::string::npos);
+    }
+#endif
 }
 } // namespace Potassco::ProgramOptions::Test

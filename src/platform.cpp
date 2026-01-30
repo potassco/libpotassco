@@ -39,7 +39,7 @@
 #include <sys/time.h>
 #endif
 
-#if defined(_WIN32) && __has_include(<Windows.h>)
+#if defined(_WIN32) && !defined(__EMSCRIPTEN__) && __has_include(<Windows.h>)
 #define WINDOWS_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -65,7 +65,7 @@ namespace PlatformApi {
 ///////////////////////////////////////////////////////////////////////////
 // Alarm handling
 ///////////////////////////////////////////////////////////////////////////
-#if defined(SIGALRM)
+#if defined(SIGALRM) && !defined(__EMSCRIPTEN__)
 static auto orig_alarm_handler   = SIG_DFL;
 static auto active_alarm_handler = static_cast<Potassco::AlarmFunc>(nullptr);
 static auto setAlarm(uint32_t millis, Potassco::AlarmFunc func) -> std::errc {
