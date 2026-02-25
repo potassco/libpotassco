@@ -22,6 +22,8 @@
 // IN THE SOFTWARE.
 #include <potassco/clingo.h>
 
+#include <potassco/format.h>
+
 namespace Potassco {
 AbstractAssignment::~AbstractAssignment() = default;
 AbstractPropagator::~AbstractPropagator() = default;
@@ -35,5 +37,31 @@ auto AbstractAssignment::isFalse(Lit_t lit) const -> bool { return value(lit) ==
 auto AbstractAssignment::trailEnd(uint32_t lev) const -> uint32_t {
     return lev < level() ? trailBegin(lev + 1) : trailSize();
 }
-
+template <typename T>
+static constexpr auto q(const T& arg) -> Augmented<std::remove_cvref_t<T>> {
+    return {"'", arg};
+}
+template <typename E = std::logic_error, typename... Args>
+POTASSCO_ATTR_NORETURN static void throwStats(const Args&... args) {
+    BasicCharBufferT<1024> buffer;
+    buffer.appendSep(" ", "bad stats access:", args...);
+    throw E(buffer.c_str());
+}
+void AbstractStatistics::throwType(StatisticsType expected, StatisticsType got) {
+    throwStats(q(enum_name(expected)), "expected but got", q(enum_name(got)));
+}
+void AbstractStatistics::throwKey(Key_t key) { throwStats("invalid key", q(key)); }
+void AbstractStatistics::throwPath(std::string_view path, std::string_view at) {
+    if (not path.empty() && not at.empty()) {
+        throwStats<std::out_of_range>("invalid key", q(at), "in path", q(path));
+    }
+    at = at.empty() ? path : at;
+    throwStats<std::out_of_range>("invalid key", q(at));
+}
+void AbstractStatistics::throwWrite(Key_t key, Type type) {
+    throwStats("key", q(key), "is not a writable", enum_name(type));
+}
+void AbstractStatistics::throwRange(std::size_t idx, std::size_t size) {
+    throwStats<std::out_of_range>("index", q(idx), "is out of range for object of size", q(size));
+}
 } // namespace Potassco

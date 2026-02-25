@@ -289,18 +289,27 @@ enum class StatisticsType {
     array = 1, //!< Composite object mapping int keys to statistics types.
     map   = 2  //!< Composite object mapping string keys to statistics types.
 };
-
+POTASSCO_SET_ENUM_ENTRIES(StatisticsType, {value, "value"sv}, {array, "array"sv}, {map, "map"sv});
 //! Base class for providing (solver) statistics.
 /*!
- * Functions in this interface taking a key as a parameter
- * assume that the key is valid and throw a std::logic_error
- * if this assumption is violated.
+ * Functions in this interface taking a key as a parameter assume that the key is valid and
+ * throw a std::logic_error (or an exception derived from it) if this assumption is violated.
  */
 class AbstractStatistics {
 public:
     //! Opaque type for representing (sub) keys.
     using Key_t = uint64_t;
     using Type  = StatisticsType;
+    //! Throws a logic error indicating a statistics type mismatch.
+    POTASSCO_ATTR_NORETURN static void throwType(StatisticsType expected, StatisticsType got);
+    //! Throws a logic error indicating an invalid statistics key.
+    POTASSCO_ATTR_NORETURN static void throwKey(Key_t key);
+    //! Throws a logic error indicating an invalid statistics path.
+    POTASSCO_ATTR_NORETURN static void throwPath(std::string_view path, std::string_view at);
+    //! Throws a logic error indicating that the given key is not a writable statistics object of the given type.
+    POTASSCO_ATTR_NORETURN static void throwWrite(Key_t key, Type type);
+    //! Throws a logic error indicating that a given index is out of range for an object with given size.
+    POTASSCO_ATTR_NORETURN static void throwRange(std::size_t idx, std::size_t size);
 
     virtual ~AbstractStatistics();
 

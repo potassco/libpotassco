@@ -23,11 +23,14 @@
 //
 
 #include <potassco/error.h>
-#include <sstream>
+
+#include <potassco/clingo.h>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+
+#include <sstream>
 
 namespace User {
 struct Error_t {};
@@ -41,22 +44,37 @@ struct Error : public std::runtime_error {
 } // namespace User
 
 namespace Potassco::Test {
+static auto messageContains(const std::string& s) {
+    return Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring(s));
+}
+static auto messageEquals(const std::string& s) { return Catch::Matchers::MessageMatches(Catch::Matchers::Equals(s)); }
+static auto messageFmtEq(std::string_view fmt, const auto&... args) {
+    auto m = std::string{fmt};
+    auto r = std::initializer_list<std::string_view>{args...};
+    auto a = r.begin();
+    for (std::size_t p = 0;; p += a->length(), ++a) {
+        if (p = m.find("{}", p); p == std::string::npos) {
+            break;
+        }
+        REQUIRE(a != r.end());
+        m.replace(p, 2, *a);
+    }
+    REQUIRE(a == r.end());
+    return messageEquals(m);
+}
 POTASSCO_WARNING_PUSH()
 POTASSCO_WARNING_IGNORE_MSVC(4702) // unreachable code
 TEST_CASE("Assertion and Error", "[error]") {
-    namespace CM         = Catch::Matchers;
-    auto makeError       = [](std::errc ec = std::errc::invalid_argument) { return Detail::translateEc(ec); };
-    auto messageContains = [](const std::string& s) { return CM::MessageMatches(CM::ContainsSubstring(s)); };
-    auto messageEquals   = [](const std::string& s) { return CM::MessageMatches(CM::Equals(s)); };
-    auto makeLocation    = [](const std::source_location& loc, bool includeFile, const char* m = "") -> std::string {
+    auto makeError    = [](std::errc ec = std::errc::invalid_argument) { return Detail::translateEc(ec); };
+    auto makeLocation = [](const std::source_location& loc, bool includeFile, const char* m = "") -> std::string {
         std::ostringstream os;
         if (not includeFile) {
-            os << loc.function_name() << ':' << loc.line() << ": " << m;
+            os << loc.function_name() << ':' << loc.line();
         }
         else {
-            os << ExpressionInfo::relativeFileName(loc) << ':' << loc.line() << ": " << loc.function_name() << ": "
-               << m;
+            os << ExpressionInfo::relativeFileName(loc) << ':' << loc.line() << ": " << loc.function_name();
         }
+        os << ':' << (m && *m ? " " : "") << m;
         return std::move(os).str();
     };
 
@@ -68,22 +86,22 @@ TEST_CASE("Assertion and Error", "[error]") {
 
             SECTION("no message") {
                 CHECK_THROWS_MATCHES(Potassco::failThrow(makeError(), e), std::invalid_argument,
-                                     messageEquals(defMessage + "\n" + loc + "check 'expression' failed."));
+                                     messageFmtEq("{}\n{} check '{}' failed.", defMessage, loc, "expression"));
             }
             SECTION("no expression") {
                 e.expression = {};
                 CHECK_THROWS_MATCHES(Potassco::failThrow(makeError(), e), std::invalid_argument,
-                                     messageEquals(defMessage + "\n" + loc + "failed."));
+                                     messageFmtEq("{}\n{} failed.", defMessage, loc));
             }
             SECTION("with message") {
-                CHECK_THROWS_MATCHES(Potassco::failThrow(makeError(), e, "custom message"), std::invalid_argument,
-                                     messageEquals(std::string("custom message: ") + defMessage + "\n" + loc +
-                                                   "check 'expression' failed."));
+                CHECK_THROWS_MATCHES(
+                    Potassco::failThrow(makeError(), e, "custom message"), std::invalid_argument,
+                    messageFmtEq("{}: {}\n{} check '{}' failed.", "custom message", defMessage, loc, e.expression));
 
                 CHECK_THROWS_MATCHES(Potassco::failThrow(makeError(), e, "custom message with args %u %s", 1, "bla"),
                                      std::invalid_argument,
-                                     messageEquals(std::string("custom message with args 1 bla: ") + defMessage + "\n" +
-                                                   loc + "check 'expression' failed."));
+                                     messageFmtEq("{}: {}\n{} check '{}' failed.", "custom message with args 1 bla",
+                                                  defMessage, loc, e.expression));
             }
         }
 
@@ -91,24 +109,23 @@ TEST_CASE("Assertion and Error", "[error]") {
             auto loc = makeLocation(e.location, false);
             SECTION("no message") {
                 CHECK_THROWS_MATCHES(Potassco::failThrow(Errc::precondition_fail, e), std::invalid_argument,
-                                     messageEquals(loc + "Precondition 'expression' failed."));
+                                     messageFmtEq("{} Precondition '{}' failed.", loc, e.expression));
             }
             SECTION("no expression") {
                 e.expression = {};
                 CHECK_THROWS_MATCHES(Potassco::failThrow(Errc::precondition_fail, e), std::invalid_argument,
-                                     messageEquals(loc + "Precondition failed."));
+                                     messageFmtEq("{} Precondition failed.", loc));
             }
             SECTION("with message") {
-                CHECK_THROWS_MATCHES(Potassco::failThrow(Errc::precondition_fail, e, "custom message"),
-                                     std::invalid_argument,
-                                     messageEquals(loc + "Precondition 'expression' failed.\n"
-                                                         "message: custom message"));
+                CHECK_THROWS_MATCHES(
+                    Potassco::failThrow(Errc::precondition_fail, e, "custom message"), std::invalid_argument,
+                    messageFmtEq("{} Precondition '{}' failed.\nmessage: {}", loc, e.expression, "custom message"));
 
                 CHECK_THROWS_MATCHES(
                     Potassco::failThrow(Errc::precondition_fail, e, "custom message with args %u %s", 1, "bla"),
                     std::invalid_argument,
-                    messageEquals(loc + "Precondition 'expression' failed.\n"
-                                        "message: custom message with args 1 bla"));
+                    messageFmtEq("{} Precondition '{}' failed.\nmessage: {}", loc, e.expression,
+                                 "custom message with args 1 bla"));
             }
         }
 
@@ -120,22 +137,22 @@ TEST_CASE("Assertion and Error", "[error]") {
             auto loc = makeLocation(e.location, true);
             SECTION("no message") {
                 CHECK_THROWS_MATCHES(Potassco::failAbort(e), std::logic_error,
-                                     messageEquals(loc + "Assertion 'expression' failed."));
+                                     messageFmtEq("{} Assertion '{}' failed.", loc, e.expression));
             }
             SECTION("no expression") {
                 e.expression = {};
                 CHECK_THROWS_MATCHES(Potassco::failAbort(e), std::logic_error,
-                                     messageEquals(loc + "Assertion failed."));
+                                     messageFmtEq("{} Assertion failed.", loc));
             }
             SECTION("with message") {
-                CHECK_THROWS_MATCHES(Potassco::failAbort(e, "custom message"), std::logic_error,
-                                     messageEquals(loc + "Assertion 'expression' failed.\n"
-                                                         "message: custom message"));
+                CHECK_THROWS_MATCHES(
+                    Potassco::failAbort(e, "custom message"), std::logic_error,
+                    messageFmtEq("{} Assertion '{}' failed.\nmessage: {}", loc, e.expression, "custom message"));
 
                 CHECK_THROWS_MATCHES(Potassco::failAbort(e, "custom message with args %u %s", 1, "bla"),
                                      std::logic_error,
-                                     messageEquals(loc + "Assertion 'expression' failed.\n"
-                                                         "message: custom message with args 1 bla"));
+                                     messageFmtEq("{} Assertion '{}' failed.\nmessage: {}", loc, e.expression,
+                                                  "custom message with args 1 bla"));
             }
         }
     }
@@ -279,6 +296,57 @@ TEST_CASE("Scope exit", "[error]") {
             POTASSCO_SCOPE_EXIT({ s += "2"; });
         }
         CHECK(s == "211nest");
+    }
+}
+TEST_CASE("Statistics", "[error]") {
+    SECTION("type error") {
+        STATIC_CHECK(enum_name(StatisticsType::map) == "map");
+        STATIC_CHECK(enum_name(StatisticsType::array) == "array");
+        STATIC_CHECK(enum_name(StatisticsType::value) == "value");
+        auto typeError = [](StatisticsType e, StatisticsType g) {
+            return messageFmtEq("bad stats access: '{}' expected but got '{}'", enum_name(e), enum_name(g));
+        };
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwType(StatisticsType::map, StatisticsType::value),
+                             std::logic_error, typeError(StatisticsType::map, StatisticsType::value));
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwType(StatisticsType::value, StatisticsType::array),
+                             std::logic_error, typeError(StatisticsType::value, StatisticsType::array));
+    }
+    SECTION("key error") {
+        auto keyError = [](AbstractStatistics::Key_t k) {
+            return messageFmtEq("bad stats access: invalid key '{}'", std::to_string(k));
+        };
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwKey(123), std::logic_error, keyError(123));
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwKey(0xDEADBEEF), std::logic_error, keyError(0xDEADBEEF));
+    }
+    SECTION("path error") {
+        auto pathError = [](const auto&... args) {
+            std::string t("bad stats access: invalid key '{}'");
+            t.append(sizeof...(args) == 2 ? " in path '{}'" : "");
+            return messageFmtEq(t, args...);
+        };
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwPath("foo.bar.bla", "bla"), std::out_of_range,
+                             pathError("bla", "foo.bar.bla"));
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwPath("", "bla"), std::out_of_range, pathError("bla"));
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwPath("foo.bar.bla", ""), std::out_of_range,
+                             pathError("foo.bar.bla"));
+    }
+    SECTION("write error") {
+        auto writeError = [](AbstractStatistics::Key_t k, StatisticsType t) {
+            return messageFmtEq("bad stats access: key '{}' is not a writable {}", std::to_string(k), enum_name(t));
+        };
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwWrite(123, StatisticsType::map), std::logic_error,
+                             writeError(123, StatisticsType::map));
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwWrite(102040, StatisticsType::array), std::logic_error,
+                             writeError(102040, StatisticsType::array));
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwWrite(0xDEADBEEF, StatisticsType::value), std::logic_error,
+                             writeError(0xDEADBEEF, StatisticsType::value));
+    }
+    SECTION("range error") {
+        auto rangeError = [](std::size_t idx, std::size_t size) {
+            return messageFmtEq("bad stats access: index '{}' is out of range for object of size '{}'",
+                                std::to_string(idx), std::to_string(size));
+        };
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwRange(123, 120), std::out_of_range, rangeError(123, 120));
     }
 }
 
