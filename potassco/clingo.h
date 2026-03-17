@@ -292,56 +292,51 @@ enum class StatisticsType {
 POTASSCO_SET_ENUM_ENTRIES(StatisticsType, {value, "value"sv}, {array, "array"sv}, {map, "map"sv});
 //! Base class for providing (solver) statistics.
 /*!
- * Functions in this interface taking a key as a parameter assume that the key is valid and
+ * Functions in this interface taking a path as a parameter assume that the path is valid and
  * throw a std::logic_error (or an exception derived from it) if this assumption is violated.
  */
 class AbstractStatistics {
 public:
-    //! Opaque type for representing (sub) keys.
-    using Key_t = uint64_t;
-    using Type  = StatisticsType;
+    //! Path type for addressing statistics.
+    using Path_t = std::string_view;
+    using Type   = StatisticsType;
     //! Throws a logic error indicating a statistics type mismatch.
     POTASSCO_ATTR_NORETURN static void throwType(StatisticsType expected, StatisticsType got);
-    //! Throws a logic error indicating an invalid statistics key.
-    POTASSCO_ATTR_NORETURN static void throwKey(Key_t key);
     //! Throws a logic error indicating an invalid statistics path.
     POTASSCO_ATTR_NORETURN static void throwPath(std::string_view path, std::string_view at);
-    //! Throws a logic error indicating that the given key is not a writable statistics object of the given type.
-    POTASSCO_ATTR_NORETURN static void throwWrite(Key_t key, Type type);
+    //! Throws a logic error indicating that the addressed object is not a writable statistics object of the given type.
+    POTASSCO_ATTR_NORETURN static void throwWrite(Path_t path, Type type);
     //! Throws a logic error indicating that a given index is out of range for an object with given size.
     POTASSCO_ATTR_NORETURN static void throwRange(std::size_t idx, std::size_t size);
 
+    static auto appendPath(Path_t path, std::string_view element) -> std::string;
+    static auto appendPath(Path_t path, size_t idx) -> std::string;
+
     virtual ~AbstractStatistics();
 
-    //! Returns the root key of this statistic object.
-    [[nodiscard]] virtual Key_t root() const = 0;
-    //! Returns the type of the object with the given key.
-    [[nodiscard]] virtual Type type(Key_t key) const = 0;
-    //! Returns the child count of the object with the given key or 0 if it is a value.
-    [[nodiscard]] virtual size_t size(Key_t key) const = 0;
-    //! Returns whether the object with the given key can be updated.
-    [[nodiscard]] virtual bool writable(Key_t key) const = 0;
+    //! Returns the root path of this statistic object.
+    [[nodiscard]] virtual Path_t root() const = 0;
+    //! Returns the type of the object under the given path.
+    [[nodiscard]] virtual Type type(Path_t path) const = 0;
+    //! Returns the child count of the object under the given path or 0 if it is a value.
+    [[nodiscard]] virtual size_t size(Path_t path) const = 0;
+    //! Returns whether the object under the given path can be updated.
+    [[nodiscard]] virtual bool writable(Path_t path) const = 0;
 
     /*!
      * \name Array
      * Functions in this group shall only be called on StatisticsType::array objects.
      */
     //@{
-    //! Returns the element at the given zero-based index.
-    /*!
-     * \pre <tt>index \< size(key)</tt>
-     */
-    [[nodiscard]] virtual Key_t at(Key_t arr, size_t index) const = 0;
 
     //! Appends a statistic object to the end of the given array.
     /*!
      * \pre writable(arr).
      * \param arr The array object to which the statistic object should be added.
      * \param type The type of the statistic object to append.
-     * \return The key of the created statistic object.
-     *
+     * \return The index of the newly added object.
      */
-    virtual Key_t push(Key_t arr, Type type) = 0;
+    virtual size_t push(Path_t arr, Type type) = 0;
     //@}
 
     /*!
@@ -351,51 +346,47 @@ public:
     //@{
     //! Returns the name of the ith element in the given map.
     /*!
-     * \pre <tt>i \< size(mapK)</tt>
+     * \pre <tt>i \< size(map)</tt>
      * \note The order of elements in a map is unspecified and might change after a solve operation.
      */
-    [[nodiscard]] virtual std::string_view key(Key_t mapK, size_t i) const = 0;
-
-    //! Returns the element stored in the map under the given name.
-    [[nodiscard]] virtual Key_t get(Key_t mapK, std::string_view at) const = 0;
+    [[nodiscard]] virtual std::string_view key(Path_t map, size_t i) const = 0;
 
     //! Searches the given map for an element.
     /*!
-     * \param mapK    The map object to search.
+     * \param map     The map object to search.
      * \param element The element to search for.
-     * \param outKey  An optional out parameter for storing the key of the element if found.
      * \return Whether the element was found.
-     * \post !find(mapK, element, outKey) || !outKey || *outKey == get(mapK, element).
      */
-    [[nodiscard]] virtual bool find(Key_t mapK, std::string_view element, Key_t* outKey) const = 0;
+    [[nodiscard]] virtual bool find(Path_t map, std::string_view element) const = 0;
 
     //! Creates a statistic object under the given name in the given map.
     /*!
-     * \pre `writable(mapK)`.
-     * \param mapK The map object to which the statistic object should be added.
+     * \pre `writable(map)`.
+     * \param map  The map object to which the statistic object should be added.
      * \param name The name under which the statistic object should be added.
      * \param type The type of the statistic object to create.
-     * \return The key of the added statistic object.
+     * \return Whether a new element was added.
      *
      * \note If a statistic object with the given name already exists in the map,
-     *       the function either returns its key provided that the types match,
-     *       or otherwise signals failure by throwing a std::logic_error.
+     *       the behavior depends on the type of the existing object. If the types match,
+     *       the function returns false. Otherwise, the function fails by throwing
+     *       a `std::logic_error`.
      */
-    virtual Key_t add(Key_t mapK, std::string_view name, Type type) = 0;
+    virtual bool add(Path_t map, std::string_view name, Type type) = 0;
     //@}
     /*!
      * \name Value
      * Functions in this group shall only be called on StatisticsType::value objects.
      */
     //@{
-    //! Returns the statistic value associated with the given key.
-    [[nodiscard]] virtual double value(Key_t key) const = 0;
+    //! Returns the statistic value under the given path.
+    [[nodiscard]] virtual double value(Path_t value) const = 0;
 
-    //! Sets value as value for the given statistic object.
+    //! Sets value as value for the statistic object under the given path.
     /*!
      * \pre `writable(key)`.
      */
-    virtual void set(Key_t key, double value) = 0;
+    virtual void set(Path_t val, double value) = 0;
     //@}
 };
 ///@}

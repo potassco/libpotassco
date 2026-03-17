@@ -50,7 +50,6 @@ POTASSCO_ATTR_NORETURN static void throwStats(const Args&... args) {
 void AbstractStatistics::throwType(StatisticsType expected, StatisticsType got) {
     throwStats(q(enum_name(expected)), "expected but got", q(enum_name(got)));
 }
-void AbstractStatistics::throwKey(Key_t key) { throwStats("invalid key", q(key)); }
 void AbstractStatistics::throwPath(std::string_view path, std::string_view at) {
     if (not path.empty() && not at.empty()) {
         throwStats<std::out_of_range>("invalid key", q(at), "in path", q(path));
@@ -58,10 +57,18 @@ void AbstractStatistics::throwPath(std::string_view path, std::string_view at) {
     at = at.empty() ? path : at;
     throwStats<std::out_of_range>("invalid key", q(at));
 }
-void AbstractStatistics::throwWrite(Key_t key, Type type) {
-    throwStats("key", q(key), "is not a writable", enum_name(type));
+void AbstractStatistics::throwWrite(Path_t path, Type type) {
+    throwStats("path", q(path), "is not a writable", enum_name(type));
 }
 void AbstractStatistics::throwRange(std::size_t idx, std::size_t size) {
     throwStats<std::out_of_range>("index", q(idx), "is out of range for object of size", q(size));
+}
+auto AbstractStatistics::appendPath(Path_t path, std::string_view element) -> std::string {
+    return std::string{path}.append(not path.empty(), '.').append(element);
+}
+auto AbstractStatistics::appendPath(Path_t path, size_t idx) -> std::string {
+    BasicCharBufferT<32> buffer;
+    buffer.append(idx);
+    return appendPath(path, buffer.view());
 }
 } // namespace Potassco

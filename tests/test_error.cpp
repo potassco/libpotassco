@@ -299,6 +299,11 @@ TEST_CASE("Scope exit", "[error]") {
     }
 }
 TEST_CASE("Statistics", "[error]") {
+    SECTION("appendPath") {
+        CHECK(AbstractStatistics::appendPath("", "foo") == "foo");
+        CHECK(AbstractStatistics::appendPath("foo", "bar") == "foo.bar");
+        CHECK(AbstractStatistics::appendPath("foo.bar", 12) == "foo.bar.12");
+    }
     SECTION("type error") {
         STATIC_CHECK(enum_name(StatisticsType::map) == "map");
         STATIC_CHECK(enum_name(StatisticsType::array) == "array");
@@ -310,13 +315,6 @@ TEST_CASE("Statistics", "[error]") {
                              std::logic_error, typeError(StatisticsType::map, StatisticsType::value));
         CHECK_THROWS_MATCHES(AbstractStatistics::throwType(StatisticsType::value, StatisticsType::array),
                              std::logic_error, typeError(StatisticsType::value, StatisticsType::array));
-    }
-    SECTION("key error") {
-        auto keyError = [](AbstractStatistics::Key_t k) {
-            return messageFmtEq("bad stats access: invalid key '{}'", std::to_string(k));
-        };
-        CHECK_THROWS_MATCHES(AbstractStatistics::throwKey(123), std::logic_error, keyError(123));
-        CHECK_THROWS_MATCHES(AbstractStatistics::throwKey(0xDEADBEEF), std::logic_error, keyError(0xDEADBEEF));
     }
     SECTION("path error") {
         auto pathError = [](const auto&... args) {
@@ -331,15 +329,15 @@ TEST_CASE("Statistics", "[error]") {
                              pathError("foo.bar.bla"));
     }
     SECTION("write error") {
-        auto writeError = [](AbstractStatistics::Key_t k, StatisticsType t) {
-            return messageFmtEq("bad stats access: key '{}' is not a writable {}", std::to_string(k), enum_name(t));
+        auto writeError = [](AbstractStatistics::Path_t k, StatisticsType t) {
+            return messageFmtEq("bad stats access: path '{}' is not a writable {}", k, enum_name(t));
         };
-        CHECK_THROWS_MATCHES(AbstractStatistics::throwWrite(123, StatisticsType::map), std::logic_error,
-                             writeError(123, StatisticsType::map));
-        CHECK_THROWS_MATCHES(AbstractStatistics::throwWrite(102040, StatisticsType::array), std::logic_error,
-                             writeError(102040, StatisticsType::array));
-        CHECK_THROWS_MATCHES(AbstractStatistics::throwWrite(0xDEADBEEF, StatisticsType::value), std::logic_error,
-                             writeError(0xDEADBEEF, StatisticsType::value));
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwWrite("foo.bar", StatisticsType::map), std::logic_error,
+                             writeError("foo.bar", StatisticsType::map));
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwWrite("foo.bar", StatisticsType::array), std::logic_error,
+                             writeError("foo.bar", StatisticsType::array));
+        CHECK_THROWS_MATCHES(AbstractStatistics::throwWrite("x.y.1", StatisticsType::value), std::logic_error,
+                             writeError("x.y.1", StatisticsType::value));
     }
     SECTION("range error") {
         auto rangeError = [](std::size_t idx, std::size_t size) {
