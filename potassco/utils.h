@@ -24,12 +24,14 @@
 #pragma once
 #include <potassco/bits.h>
 
-#include <cstdint>
+#include <algorithm>
 #include <cstring>
+#include <memory>
 #include <span>
 #include <string_view>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 
 namespace Potassco {
 namespace Detail {
@@ -121,13 +123,13 @@ public:
     DynamicBuffer& operator=(const DynamicBuffer&);
 
     //! Returns the maximum size that the buffer may grow to without triggering reallocation.
-    [[nodiscard]] uint32_t capacity() const noexcept { return cap_; }
+    [[nodiscard]] auto capacity() const noexcept -> uint32_t { return cap_; }
     //! Returns the number of bytes used in this buffer.
-    [[nodiscard]] uint32_t size() const noexcept { return sizeOwn_ & size_mask; }
+    [[nodiscard]] auto size() const noexcept -> uint32_t { return sizeOwn_ & size_mask; }
     //! Returns a pointer to the beginning of the buffer.
-    [[nodiscard]] char*            data() const noexcept { return static_cast<char*>(beg_); }
-    [[nodiscard]] char*            data(std::size_t pos) const noexcept { return data() + pos; }
-    [[nodiscard]] std::string_view view(std::size_t pos = 0, std::size_t n = std::string_view::npos) const {
+    [[nodiscard]] char* data() const noexcept { return static_cast<char*>(beg_); }
+    [[nodiscard]] char* data(std::size_t pos) const noexcept { return data() + pos; }
+    [[nodiscard]] auto  view(std::size_t pos = 0, std::size_t n = std::string_view::npos) const -> std::string_view {
         return {data() + pos, std::min(n, size() - pos)};
     }
 
@@ -141,15 +143,15 @@ public:
      *
      * \post <tt>size() >= n</tt>
      */
-    [[nodiscard]] std::span<char> alloc(std::size_t n);
-    void                          append(const void* what, std::size_t n);
-    DynamicBuffer&                append(std::string_view str) {
+    [[nodiscard]] auto alloc(std::size_t n) -> std::span<char>;
+    void               append(const void* what, std::size_t n);
+    auto               append(std::string_view str) -> DynamicBuffer& {
         append(str.data(), str.size());
         return *this;
     }
     //! Appends the given character to the buffer.
-    void  push(char c) { append(&c, 1); }
-    char& back() { return data()[size() - 1]; }
+    void push(char c) { append(&c, 1); }
+    auto back() -> char& { return data()[size() - 1]; }
 
     //! Reduces the number of used bytes in this region by `n`.
     void pop(std::size_t n) { sizeOwn_ -= n <= size() ? static_cast<uint32_t>(n) : size(); }
@@ -280,11 +282,11 @@ public:
     //! Converts this string to a string_view.
     [[nodiscard]] constexpr explicit operator std::string_view() const { return {c_str(), size()}; }
     //! Returns this string as a null-terminated C string.
-    [[nodiscard]] constexpr const char* c_str() const { return small() ? storage_ : large()->str; }
+    [[nodiscard]] constexpr auto c_str() const -> const char* { return small() ? storage_ : large()->str; }
     //! Converts this string to a string_view.
-    [[nodiscard]] constexpr std::string_view view() const { return static_cast<std::string_view>(*this); }
+    [[nodiscard]] constexpr auto view() const -> std::string_view { return static_cast<std::string_view>(*this); }
     //! Returns the length of this string.
-    [[nodiscard]] constexpr std::size_t size() const { return small() ? c_max_small - tag() : large()->size; }
+    [[nodiscard]] constexpr auto size() const -> std::size_t { return small() ? c_max_small - tag() : large()->size; }
     //! Returns the character at the given position, which shall be \< `size()`.
     [[nodiscard]] constexpr char operator[](std::size_t pos) const { return c_str()[pos]; }
 
@@ -303,11 +305,11 @@ private:
         const char* str;
         std::size_t size;
     };
-    void                            init(std::string_view str);
-    [[nodiscard]] const Large*      large() const { return reinterpret_cast<const Large*>(storage_); }
-    [[nodiscard]] constexpr uint8_t tag() const { return static_cast<uint8_t>(storage_[c_max_small]); }
-    void                            release();
-    constexpr void                  reset() {
+    void                         init(std::string_view str);
+    [[nodiscard]] auto           large() const -> const Large* { return reinterpret_cast<const Large*>(storage_); }
+    [[nodiscard]] constexpr auto tag() const -> uint8_t { return static_cast<uint8_t>(storage_[c_max_small]); }
+    void                         release();
+    constexpr void               reset() {
         storage_[0]           = 0;
         storage_[c_max_small] = static_cast<char>(c_max_small);
     }
@@ -329,6 +331,149 @@ auto try_emplace(StringMap<ValueType>& map, std::string_view key,
     return map.try_emplace(k, std::forward<Args>(args)...);
 }
 
+namespace Detail {
+template <typename T>
+struct Temp {
+    Temp() = default;
+    ~Temp() {
+        if constexpr (not std::is_trivially_destructible_v<T>) {
+            std::destroy_n(data(), size());
+        }
+    }
+    void resize(std::size_t n, const T& v) {
+        Temp t;
+        std::uninitialized_fill_n(reinterpret_cast<T*>(t.buffer.alloc(n * sizeof(T)).data()), n, v);
+        t.buffer.swap(buffer);
+    }
+    auto               data() const -> T* { return reinterpret_cast<T*>(buffer.data()); }
+    [[nodiscard]] auto size() const -> std::size_t { return buffer.size() / sizeof(T); }
+    DynamicBuffer      buffer;
+};
+} // namespace Detail
+
+struct RadixConfig {
+    static constexpr auto def_threshold    = 32u;
+    std::size_t           stdSortThreshold = 0u;   //!< Threshold for std sort or 0u for default.
+    bool                  stdStable        = true; //!< Whether std sort must be stable.
+};
+constexpr inline auto radix_def     = RadixConfig{};
+constexpr inline auto radix_relaxed = RadixConfig{.stdSortThreshold = 0u, .stdStable = false};
+constexpr inline auto radix_only    = RadixConfig{.stdSortThreshold = 1u, .stdStable = true};
+
+//! Stable LSD radix sort for contiguous ranges using an unsigned rank key.
+/*!
+ * Sorts the elements in `rng` by the key returned from `rank` using radix sort.
+ *
+ * \tparam R      A \c std::ranges::contiguous_range;
+ * \tparam RankFn Callable returning an unsigned integral rank for elements of `rng`.
+ * \tparam Tb     Temporary buffer provider; must provide \c resize(std::size_t) and \c data()\->T\*.
+ *
+ * \param rng    The range to be sorted in place.
+ * \param rank   Projection returning the unsigned rank key for an element.
+ * \param config Threshold below which std sort is used and whether sort must be stable.
+ * \param tmp    Temporary buffer used for redistribution; allocated lazily on first needed pass.
+ *
+ * \note The rank function is evaluated multiple times per element and pass; it should be fast and free of side effects.
+ * \note If the size of the input range is smaller than the configured threshold, the function falls back to
+ *       std::ranges::sort or std::ranges::stable_sort depending on whether output must be stable.
+ * \note Use std::ref(buffer) to reuse an existing temporary buffer.
+ */
+template <std::ranges::contiguous_range R, typename RankFn, typename Tb = Detail::Temp<std::ranges::range_value_t<R>>>
+requires std::is_invocable_v<RankFn&, std::ranges::range_value_t<R>> &&
+         std::is_unsigned_v<std::remove_cvref_t<std::invoke_result_t<RankFn&, std::ranges::range_value_t<R>>>>
+constexpr void radixSort(R&& rng, RankFn rank, RadixConfig config = radix_def, Tb tmp = {}) {
+    using T    = std::ranges::range_value_t<R>;
+    using Rank = std::remove_cvref_t<std::invoke_result_t<RankFn&, T>>;
+    assert(std::size(rng) <= UINT32_MAX);
+    const auto n = static_cast<uint32_t>(std::size(rng));
+    if (n < 2) {
+        return;
+    }
+    if (n < config.stdSortThreshold || (config.stdSortThreshold == 0u && n < RadixConfig::def_threshold)) {
+        if (std::is_scalar_v<T> || not config.stdStable) {
+            std::ranges::sort(std::forward<R>(rng), [&](const T& a, const T& b) { return rank(a) < rank(b); });
+        }
+        else {
+            std::ranges::stable_sort(std::forward<R>(rng), [&](const T& a, const T& b) { return rank(a) < rank(b); });
+        }
+        return;
+    }
+    // Config
+    static_assert(CHAR_BIT == 8);
+    constexpr auto base   = uint32_t{256};
+    constexpr auto bits   = uint32_t{8};
+    constexpr auto mask   = base - 1;
+    constexpr auto passes = static_cast<uint32_t>(sizeof(Rank));
+    constexpr auto digit  = [](auto val, uint32_t shift) { return static_cast<uint32_t>((val >> shift) & mask); };
+    // Data
+    uint32_t count[base];
+    auto     bm = std::size_t{mask}, lb = static_cast<std::size_t>(-1), ub = std::size_t{0};
+    auto*    src  = std::data(rng);
+    auto*    dest = static_cast<T*>(nullptr);
+    // 1. Count digit occurrences and optionally compute bit envelope
+    auto countDigits = [&]<bool B>(std::integral_constant<bool, B>, uint32_t shift) {
+        auto sorted = uint32_t{0};
+        auto prev   = uint32_t{0};
+        for (uint32_t i = 0u; i < n; ++i) {
+            const auto r = rank(src[i]);
+            const auto d = digit(r, shift);
+            ++count[d];
+            sorted += (d >= prev);
+            prev    = d;
+            if constexpr (B) { // compute bit envelope
+                lb &= r;
+                ub |= r;
+            }
+        }
+        return sorted == n;
+    };
+    std::fill_n(count, base, 0);
+    auto sorted = countDigits(std::true_type{}, 0u);
+    for (uint32_t pass = 0u, minD = 0u, maxD = mask; pass < passes; ++pass, bm <<= bits) {
+        if ((lb & bm) == (ub & bm)) {
+            continue;
+        }
+        const auto shift = pass * bits;
+        if (pass > 0) {
+            std::fill_n(count + minD, maxD - minD + 1, 0);
+            sorted = countDigits(std::false_type{}, shift);
+        }
+        minD = digit(lb, shift);
+        maxD = digit(ub, shift);
+
+        if (sorted) {
+            continue;
+        }
+        // 2. Compute starting indices
+        for (auto i = minD, pos = uint32_t{0}; i <= maxD; ++i) { pos += std::exchange(count[i], pos); }
+
+        // 3. Redistribute
+        if (not dest) {
+            if constexpr (std::is_same_v<Tb, std::unwrap_reference_t<Tb>>) {
+                tmp.resize(n, *src);
+                dest = tmp.data();
+            }
+            else {
+                tmp.get().resize(n, *src);
+                dest = tmp.get().data();
+            }
+        }
+        for (uint32_t i = 0; i < n; ++i) {
+            const auto d = digit(rank(src[i]), shift);
+            const auto p = count[d]++;
+            assert(p < n);
+            dest[p] = std::move(src[i]);
+        }
+
+        // Swap source and destination for the next pass
+        std::swap(src, dest);
+    }
+    if (src != std::data(rng)) {
+        // Move result back to input
+        std::ranges::move(src, src + n, std::data(rng));
+    }
+}
+
 ///@}
 
 } // namespace Potassco
@@ -336,5 +481,5 @@ template <>
 struct std::hash<Potassco::ConstString> : std::hash<std::string_view> {
     using is_transparent = void; // NOLINT
     using std::hash<std::string_view>::operator();
-    std::size_t operator()(const Potassco::ConstString& str) const noexcept { return (*this)(str.view()); }
+    auto operator()(const Potassco::ConstString& str) const noexcept -> std::size_t { return (*this)(str.view()); }
 };

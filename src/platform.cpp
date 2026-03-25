@@ -40,7 +40,7 @@
 #endif
 
 #if defined(_WIN32) && !defined(__EMSCRIPTEN__) && __has_include(<Windows.h>)
-#define WINDOWS_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
 #endif
@@ -98,7 +98,7 @@ static bool killAlarm() {
     }
     return false;
 }
-#elif defined(WINDOWS_LEAN_AND_MEAN)
+#elif defined(WIN32_LEAN_AND_MEAN)
 static auto g_alarm_deleter = [](HANDLE h) { std::ignore = DeleteTimerQueueTimer(NULL, h, INVALID_HANDLE_VALUE); };
 static auto g_alarm_handle  = std::unique_ptr<std::remove_pointer_t<HANDLE>, decltype(g_alarm_deleter)>{};
 static auto g_alarm_active  = false;
@@ -151,7 +151,7 @@ static auto getThreadTime() -> DurationType {
     DurationType res{};
 #if defined(RUSAGE_THREAD)
     res = rusageTime(RUSAGE_THREAD);
-#elif __APPLE__
+#elif defined(__APPLE__) && __APPLE__
     struct thread_basic_info t_info;
     mach_msg_type_number_t   t_info_count = TASK_BASIC_INFO_COUNT;
     struct timeval           tv {};
@@ -164,7 +164,7 @@ static auto getThreadTime() -> DurationType {
 #endif
     return res;
 }
-#elif defined(WINDOWS_LEAN_AND_MEAN)
+#elif defined(WIN32_LEAN_AND_MEAN)
 using DurationType = std::chrono::duration<int64_t, std::ratio<1, std::nano::den / 100>>;
 static DurationType toDuration(const FILETIME& t) {
     union Convert {
@@ -195,7 +195,7 @@ static void lockfile(FILE* file) { _lock_file(file); }
 static void unlockfile(FILE* file) { _unlock_file(file); }
 static bool isTerminal(FILE* file) { return _isatty(_fileno(file)); }
 static bool isCygPty(FILE* file) {
-#if defined(WINDOWS_LEAN_AND_MEAN)
+#if defined(WIN32_LEAN_AND_MEAN)
     auto h = (HANDLE) _get_osfhandle(_fileno(file));
     auto t = GetFileType(h);
     if (t == FILE_TYPE_PIPE) {

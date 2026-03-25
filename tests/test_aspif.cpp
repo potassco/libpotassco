@@ -36,6 +36,7 @@
 #include <catch2/matchers/catch_matchers.hpp>
 
 #include <algorithm>
+#include <random>
 #include <sstream>
 using namespace std::literals;
 namespace Potassco::Test::Aspif {
@@ -186,7 +187,7 @@ TEST_CASE("Test BufferedStream", "[input]") {
         CHECK(str.peek() == '!');
     }
 }
-TEST_CASE("Test DynamicBuffer", "[rule]") {
+TEST_CASE("Test DynamicBuffer", "[util]") {
     SECTION("starts empty") {
         DynamicBuffer r;
         REQUIRE(r.size() == 0);
@@ -339,7 +340,7 @@ TEST_CASE("Test DynamicBuffer", "[rule]") {
         }
     }
 }
-TEST_CASE("Test ConstString", "[rule]") {
+TEST_CASE("Test ConstString", "[util]") {
     SECTION("empty") {
         static_assert(sizeof(ConstString) == 24);
         ConstString s;
@@ -478,6 +479,123 @@ TEST_CASE("Test ConstString", "[rule]") {
         StringMap<int> m;
         REQUIRE(try_emplace(m, "foo", 22).second);
         REQUIRE_FALSE(try_emplace(m, "foo", 23).second);
+    }
+}
+TEST_CASE("Test RadixSort", "[util]") {
+    SECTION("trivial") {
+        auto v = GENERATE(std::vector<unsigned>{}, std::vector({1u}));
+        auto e = v;
+        struct NotUsed {
+            void resize(std::size_t, unsigned) { FAIL("must not be called"); } // NOLINT
+            auto data() -> unsigned* { FAIL("must not be called"); }           // NOLINT
+        } tmp;
+        CAPTURE(v);
+        radixSort(v, std::identity{}, radix_def, tmp);
+        REQUIRE(v == e);
+    }
+    SECTION("small") {
+        auto v = std::vector<unsigned>{47, 86, 22, 93, 102, 1, 28, 17, 100};
+        auto e = v;
+        struct NotUsed {
+            void resize(std::size_t, unsigned) { FAIL("must not be called"); } // NOLINT
+            auto data() -> unsigned* { FAIL("must not be called"); }           // NOLINT
+        } tmp;
+        CAPTURE(v);
+        radixSort(v, std::identity{}, radix_def, tmp);
+        std::ranges::sort(e);
+        REQUIRE(v == e);
+    }
+    SECTION("sorted") {
+        auto v = GENERATE(std::vector{1u, 2u, 3u, 4u, 5u, 6u, 7u},
+                          std::vector{10u, 100u, 1000u, 10000u, 100000u, 1000000u, 10000000u});
+        auto e = v;
+        CAPTURE(v);
+        radixSort(v, std::identity{}, radix_only);
+        REQUIRE(v == e);
+        std::vector<unsigned> buf;
+        radixSort(v, std::identity{}, radix_only, std::ref(buf));
+        REQUIRE(v == e);
+        if (e.back() < 10u) {
+            REQUIRE(buf.empty());
+        }
+        else {
+            REQUIRE(buf.size() == v.size());
+        }
+    }
+    SECTION("random") {
+        std::vector<unsigned> v;
+        std::mt19937          rng(47110815);
+        auto                  size = GENERATE(10u, 50u, 100u, 1000u);
+        for (auto i = 0u; i != size; ++i) { v.push_back(rng()); }
+        auto e = v;
+        std::ranges::sort(e);
+        radixSort(v, std::identity{}, radix_only);
+        CAPTURE(size);
+        REQUIRE(v == e);
+    }
+    SECTION("domain") {
+        std::vector<uint64_t> v;
+        for (unsigned i = 1; i < 64; ++i) {
+            auto x = Potassco::bit_max<uint64_t>(i);
+            v.push_back(x + 1);
+            v.push_back(x);
+            v.push_back(x - 1);
+        }
+        std::mt19937 g(47110815);
+        auto         e = v;
+        std::ranges::sort(e);
+        for (auto i = 0; i != 10; ++i) {
+            CAPTURE(i);
+            std::ranges::shuffle(v, g);
+            radixSort(v, std::identity{}, radix_only);
+            REQUIRE(v == e);
+        }
+    }
+    SECTION("rankFun") {
+        using D = std::pair<std::string, unsigned>;
+        auto v  = std::vector<D>({{"I", 1u},
+                                  {"II", 2u},
+                                  {"V", 5u},
+                                  {"X", 10u},
+                                  {"XL", 40u},
+                                  {"L", 50u},
+                                  {"D", 500u},
+                                  {"M", 1000u},
+                                  {"large", 2151677984u}});
+        auto e  = v;
+        std::ranges::sort(e, std::less{}, [](const D& d) { return d.second; });
+        std::mt19937 g(47110815);
+        for (auto i = 0; i != 10; ++i) {
+            CAPTURE(i);
+            std::ranges::shuffle(v, g);
+            radixSort(v, [](const D& d) { return d.second; }, radix_only);
+            REQUIRE(v == e);
+        }
+    }
+    SECTION("tmpBuf") {
+        Detail::Temp<int> x;
+        REQUIRE(x.data() == nullptr);
+        x.resize(10, 3);
+        REQUIRE(x.data() != nullptr);
+        REQUIRE(*x.data() == 3);
+        struct NoDef {
+            explicit NoDef(int x) : i(x) {}
+            int i;
+        };
+        Detail::Temp<NoDef> y;
+        REQUIRE(y.data() == nullptr);
+        y.resize(10, NoDef{9});
+        REQUIRE(y.data() != nullptr);
+        REQUIRE(y.data()->i == 9);
+        y.resize(12, NoDef{19});
+        REQUIRE(y.data()->i == 19);
+        Detail::Temp<std::string> z;
+        z.resize(10, "Bla");
+        REQUIRE(*z.data() == "Bla"s);
+        z.data()[4] = std::string(256, 'x');
+        REQUIRE(z.data()[4] == std::string(256, 'x'));
+        z.resize(8, "Foo");
+        REQUIRE(z.data()[4] == "Foo"s);
     }
 }
 TEST_CASE("Test Basic", "[rule]") {

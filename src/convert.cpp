@@ -392,8 +392,10 @@ void SmodelsConvert::flushHeuristic() {
     }
 }
 void SmodelsConvert::flushSymbols() {
-    SmData::ScratchType scratch;
-    std::ranges::sort(data_->output, std::less{}, [](const SmData::Output& o) { return o.atom; });
-    for (const auto& sym : data_->output) { out_.outputAtom(sym.atom, sym.makePred(scratch)); }
+    if (not data_->output.empty()) {
+        radixSort(data_->output, [](const SmData::Output& o) { return o.atom; }, radix_relaxed);
+        SmData::ScratchType scratch;
+        for (const auto& sym : data_->output) { out_.outputAtom(sym.atom, sym.makePred(scratch)); }
+    }
 }
 } // namespace Potassco
