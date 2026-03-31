@@ -36,6 +36,7 @@
 #include <catch2/matchers/catch_matchers.hpp>
 
 #include <algorithm>
+#include <map>
 #include <random>
 #include <sstream>
 using namespace std::literals;
@@ -571,6 +572,23 @@ TEST_CASE("Test RadixSort", "[util]") {
             radixSort(v, [](const D& d) { return d.second; }, radix_only);
             REQUIRE(v == e);
         }
+    }
+    SECTION("stable") {
+        auto r = std::map<unsigned, unsigned>{
+            {75, 35722},  {262, 35548}, {289, 35550}, {150, 36466}, {151, 35532}, {80, 35530}, {112, 35567},
+            {61, 36414},  {51, 35588},  {49, 36425},  {105, 36513}, {196, 35559}, {20, 35570}, {233, 35567},
+            {109, 35531}, {21, 35529},  {232, 35540}, {17, 35566},  {170, 35565}, {54, 35537}, {56, 35549},
+            {245, 35547}, {282, 35568}, {143, 35546}, {159, 35545}, {85, 35532},  {74, 35554}, {156, 35557},
+            {148, 35579}, {250, 35553}, {15, 35552},
+        };
+        auto v = std::vector<unsigned>{
+            75,  262, 289, 150, 151, 80,  112, 61,  51,  49, 105, 196, 20,  233, 109, 21,
+            232, 17,  170, 54,  56,  245, 282, 143, 159, 85, 74,  156, 148, 250, 15,
+        };
+        auto c = v;
+        radixSort(v, [&](unsigned x) { return r.at(x); }, radix_def);
+        radixSort(c, [&](unsigned x) { return r.at(x); }, radix_only);
+        REQUIRE(v == c);
     }
     SECTION("tmpBuf") {
         Detail::Temp<int> x;

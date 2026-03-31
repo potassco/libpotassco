@@ -390,7 +390,7 @@ constexpr void radixSort(R&& rng, RankFn rank, RadixConfig config = radix_def, T
         return;
     }
     if (n < config.stdSortThreshold || (config.stdSortThreshold == 0u && n < RadixConfig::def_threshold)) {
-        if (std::is_scalar_v<T> || not config.stdStable) {
+        if (not config.stdStable) {
             std::ranges::sort(std::forward<R>(rng), [&](const T& a, const T& b) { return rank(a) < rank(b); });
         }
         else {
