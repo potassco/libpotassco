@@ -77,18 +77,20 @@ void DynamicBuffer::swap(DynamicBuffer& other) noexcept {
     std::swap(cap_, other.cap_);
     std::swap(sizeOwn_, other.sizeOwn_);
 }
-void DynamicBuffer::reserve(std::size_t n) {
-    if (n > capacity()) {
-        auto  newCap = safe_cast<uint32_t>(std::max(static_cast<std::size_t>(nextCapacity(capacity())), n));
-        void* t      = not test_bit(sizeOwn_, borrow_bit) ? std::realloc(beg_, newCap) : std::malloc(newCap);
-        POTASSCO_CHECK(t, Errc::bad_alloc);
-        if (test_bit(sizeOwn_, borrow_bit)) {
-            std::memcpy(t, beg_, size());
-            store_clear_bit(sizeOwn_, borrow_bit);
-        }
-        beg_ = t;
-        cap_ = newCap;
+void DynamicBuffer::grow(std::size_t n) {
+    auto nc = std::max<std::size_t>(nextCapacity(capacity()), n);
+    if (nc > maxSize()) {
+        POTASSCO_CHECK(n <= maxSize(), Errc::length_error);
+        nc = maxSize();
     }
+    auto* t = not test_bit(sizeOwn_, borrow_bit) ? std::realloc(beg_, nc) : std::malloc(nc);
+    POTASSCO_CHECK(t, Errc::bad_alloc);
+    if (test_bit(sizeOwn_, borrow_bit)) {
+        std::memcpy(t, beg_, size());
+        store_clear_bit(sizeOwn_, borrow_bit);
+    }
+    beg_ = t;
+    cap_ = static_cast<uint32_t>(nc);
 }
 std::span<char> DynamicBuffer::alloc(std::size_t n) {
     reserve(size() + n);

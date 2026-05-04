@@ -132,9 +132,14 @@ public:
     [[nodiscard]] auto  view(std::size_t pos = 0, std::size_t n = std::string_view::npos) const -> std::string_view {
         return {data() + pos, std::min(n, size() - pos)};
     }
+    [[nodiscard]] static auto maxSize() noexcept -> uint32_t { return size_mask; }
 
     //! Increases the capacity of the buffer to a value that is greater or equal to `n`.
-    void reserve(std::size_t n);
+    void reserve(std::size_t n) {
+        if (n > capacity()) {
+            grow(n);
+        }
+    }
 
     //! Resizes the buffer to accommodate an additional `n` bytes at the end.
     /*!
@@ -150,7 +155,12 @@ public:
         return *this;
     }
     //! Appends the given character to the buffer.
-    void push(char c) { append(&c, 1); }
+    void push(char c) {
+        auto sz = size();
+        reserve(size() + 1);
+        data()[sz] = c;
+        ++sizeOwn_;
+    }
     auto back() -> char& { return data()[size() - 1]; }
 
     //! Reduces the number of used bytes in this region by `n`.
@@ -170,9 +180,12 @@ public:
 private:
     static constexpr auto size_mask  = 0x7FFFFFFFu;
     static constexpr auto borrow_bit = 31u;
-    void*                 beg_{nullptr};
-    uint32_t              cap_{0};
-    uint32_t              sizeOwn_{0};
+    //
+    void grow(std::size_t n);
+
+    void*    beg_{nullptr};
+    uint32_t cap_{0};
+    uint32_t sizeOwn_{0};
 };
 inline void swap(DynamicBuffer& lhs, DynamicBuffer& rhs) noexcept { lhs.swap(rhs); }
 

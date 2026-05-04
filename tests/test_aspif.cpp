@@ -250,6 +250,10 @@ TEST_CASE("Test DynamicBuffer", "[util]") {
         auto old = r.capacity();
         r.push(c);
         REQUIRE(r.capacity() >= (old * 2.0));
+
+        REQUIRE_THROWS_AS(r.reserve(r.maxSize() + 1), std::length_error);
+        REQUIRE(r.capacity() >= (old * 2.0));
+        REQUIRE(r.back() == c);
     }
     SECTION("copies data on realloc") {
         DynamicBuffer r;
