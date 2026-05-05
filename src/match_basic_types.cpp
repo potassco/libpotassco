@@ -24,6 +24,7 @@
 #include <potassco/match_basic_types.h>
 
 #include <potassco/error.h>
+#include <potassco/utils.h>
 
 #include <algorithm>
 #include <charconv>
@@ -72,21 +73,38 @@ char BufferedStream::pop() {
 char BufferedStream::get() {
     if (auto c = peek(); c) {
         advance(1);
-        if (c == '\r') {
-            c = '\n';
-            if (peek() == '\n') {
+        if (c == cr) {
+            if (peek() == nl) {
                 advance(1);
             }
+            c = nl;
         }
-        if (c == '\n') {
-            ++line_;
-        }
+        line_ += (c == nl);
         return c;
     }
     return 0;
 }
 void BufferedStream::skipWs() {
     for (char c; (c = peek()) >= 9 && c < 33;) { get(); }
+}
+
+static constexpr auto findNewLine(const char* in) -> uint32_t {
+    for (const char* r = in;;) {
+        while (*r > '\r') { ++r; }
+        if ((0x2401u >> *r) & 1u) {
+            return static_cast<uint32_t>(r - in);
+        }
+        ++r;
+    }
+}
+
+void BufferedStream::skipLine() {
+    for (;;) {
+        advance(findNewLine(buf_ + rpos_));
+        if (auto n = get(); n == nl || n == 0) {
+            return;
+        }
+    }
 }
 
 void BufferedStream::underflow(uint32_t pos) {
@@ -104,7 +122,7 @@ bool BufferedStream::unget(char c) {
     if (not rpos_) {
         return false;
     }
-    if (buf_[--rpos_] = c; c == '\n') {
+    if (buf_[--rpos_] = c; c == nl) {
         --line_;
     }
     return true;
@@ -150,6 +168,19 @@ std::size_t BufferedStream::read(std::span<char> bufferOut) {
     }
     return static_cast<std::size_t>(out - bufferOut.data());
 }
+std::size_t BufferedStream::readLine(DynamicBuffer& bufferOut) {
+    for (auto sz = bufferOut.size();;) {
+        const char* in   = buf_ + rpos_;
+        const auto  read = findNewLine(in);
+        bufferOut.append(in, read);
+        advance(read);
+        auto n = get();
+        if (n == nl || n == 0) {
+            return bufferOut.size() - sz;
+        }
+        bufferOut.push(n);
+    }
+}
 unsigned BufferedStream::line() const { return line_; }
 /////////////////////////////////////////////////////////////////////////////////////////
 // ProgramReader
@@ -187,9 +218,7 @@ void            ProgramReader::error(const char* msg) const {
 }
 char ProgramReader::get() { return str_->get(); }
 char ProgramReader::peek() const { return str_->peek(); }
-void ProgramReader::skipLine() {
-    while (str_->peek() && str_->get() != '\n') {}
-}
+void ProgramReader::skipLine() { return str_->skipLine(); }
 char ProgramReader::skipWs() { return str_->skipWs(), str_->peek(); }
 void ProgramReader::matchChar(char c) {
     POTASSCO_CHECK(str_->get() == c, std::errc::operation_not_supported, "parse error in line %u: '%c' expected",

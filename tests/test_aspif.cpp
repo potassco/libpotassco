@@ -187,6 +187,96 @@ TEST_CASE("Test BufferedStream", "[input]") {
         CHECK(str.unget('!'));
         CHECK(str.peek() == '!');
     }
+    SECTION("translate newline") {
+        std::stringstream data;
+        SECTION("simple") {
+            auto nl   = GENERATE("\r", "\r\n");
+            auto term = GENERATE(false, true);
+            CAPTURE(nl);
+            CAPTURE(term);
+            data << "line1" << nl << "line2" << nl << "line3";
+            if (term) {
+                data << nl;
+            }
+            BufferedStream str(data);
+            for (auto x : "line1\nline2\nline3"s) { REQUIRE(str.get() == x); }
+            REQUIRE(str.line() == 3);
+            if (term) {
+                REQUIRE(str.get() == '\n');
+            }
+            REQUIRE_FALSE(str.peek());
+        }
+    }
+    SECTION("readLine") {
+        DynamicBuffer     buffer;
+        std::stringstream data;
+        SECTION("stop at any newline") {
+            auto nl = GENERATE("\n", "\r", "\r\n");
+            data << "Foo" << nl << "x";
+            BufferedStream str(data);
+            CAPTURE(nl);
+            CHECK(str.readLine(buffer) == 3u);
+            REQUIRE(buffer.view() == "Foo");
+            CHECK(str.line() == 2);
+            REQUIRE(str.get() == 'x');
+        }
+        SECTION("eof") {
+            data << "Foo";
+            BufferedStream str(data);
+            CHECK(str.readLine(buffer) == 3u);
+            REQUIRE(buffer.view() == "Foo");
+            CHECK(str.line() == 1);
+            CHECK_FALSE(str.peek());
+        }
+        SECTION("control") {
+            data << "Foo\t\tBar\nx";
+            BufferedStream str(data);
+            CHECK(str.readLine(buffer) == 8u);
+            REQUIRE(buffer.view() == "Foo\t\tBar");
+            CHECK(str.line() == 2);
+            CHECK(str.peek() == 'x');
+        }
+        SECTION("underflow") {
+            std::string expected(6000, 'x');
+            data << expected << "\nstop";
+            BufferedStream str(data);
+            CHECK(str.readLine(buffer) == expected.size());
+            REQUIRE(buffer.view() == expected);
+            CHECK(str.match("stop"));
+        }
+    }
+    SECTION("skipLine") {
+        std::stringstream data;
+        SECTION("stop at any newline") {
+            auto nl = GENERATE("\n", "\r", "\r\n");
+            data << "Foo" << nl << "x";
+            BufferedStream str(data);
+            CAPTURE(nl);
+            str.skipLine();
+            CHECK(str.line() == 2);
+            REQUIRE(str.get() == 'x');
+        }
+        SECTION("eof") {
+            data << "Foo";
+            BufferedStream str(data);
+            str.skipLine();
+            CHECK(str.line() == 1);
+            CHECK_FALSE(str.peek());
+        }
+        SECTION("control") {
+            data << "Foo\t\tBar\nx";
+            BufferedStream str(data);
+            str.skipLine();
+            CHECK(str.line() == 2);
+            CHECK(str.peek() == 'x');
+        }
+        SECTION("underflow") {
+            data << std::string(6000, 'x') << "\nstop";
+            BufferedStream str(data);
+            str.skipLine();
+            CHECK(str.match("stop"));
+        }
+    }
 }
 TEST_CASE("Test DynamicBuffer", "[util]") {
     SECTION("starts empty") {

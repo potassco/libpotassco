@@ -35,7 +35,7 @@ namespace Potassco {
  * \addtogroup ParseType
  */
 ///@{
-
+class DynamicBuffer;
 //! A wrapper around std::istream that provides buffering and a simple interface for extracting characters and
 //! integers.
 class BufferedStream {
@@ -63,16 +63,26 @@ public:
     bool match(std::string_view tok);
     //! Discards leading whitespace from the input stream.
     void skipWs();
+    //! Discards characters up to and including the next newline.
+    void skipLine();
     //! Extracts up to `bufferOut`.size() characters from the input stream and copies them into the given buffer.
     /*!
      * \return The number of characters copied to the given buffer.
      */
     std::size_t read(std::span<char> bufferOut);
-    //! Returns the current line number in the input stream, i.e., the number of '\n' characters extracted so far.
+    //! Extracts characters up to the next newline from the input stream and stores them in the given buffer.
+    /*!
+     * \note The extracted newline character, if any, is not added to the buffer.
+     * \return The number of characters copied to the given buffer.
+     */
+    std::size_t readLine(DynamicBuffer& bufferOut);
+    //! Returns the current line number in the input stream, i.e., the number of newline characters extracted so far.
     [[nodiscard]] unsigned line() const;
 
 private:
     static constexpr auto buf_size = static_cast<std::streamsize>(4095);
+    static constexpr auto nl       = '\n';
+    static constexpr auto cr       = '\r';
 
     [[nodiscard]] auto avail() const -> uint32_t;
 
@@ -82,7 +92,7 @@ private:
 
     std::istream& str_;
     char*         buf_;
-    unsigned      line_{1};
+    uint32_t      line_{1};
     uint32_t      rpos_{0};
     uint32_t      rEnd_{0};
 };

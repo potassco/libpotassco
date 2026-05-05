@@ -171,10 +171,7 @@ void SmodelsInput::readSymbols() {
     for (Atom_t atom; (atom = matchAtomOrZero()) != 0;) {
         scratch.clear();
         matchChar(' ');
-        for (char c; (c = get()) != '\n';) {
-            require(c != 0, "atom name expected!");
-            scratch.push(c);
-        }
+        stream()->readLine(scratch);
         scratch.push(0);
         auto name = scratch.view(0, scratch.size() - 1);
         if (not extra_ || not mapSymbol(atom, name)) {
