@@ -12,19 +12,24 @@ jobs:
       fail-fast: false
       matrix:
         os: ['ubuntu-latest', 'macos-latest', 'windows-latest']
+        cmake_extra : ["-Wno-dev"]
         include:
           - os: 'ubuntu-latest'
-            generator: 'Ninja'
+            generator: '-G Ninja'
             build_type: 'Debug'
+          - os: 'ubuntu-latest'
+            generator: '-G Ninja'
+            build_type: 'Debug'
+            cmake_extra: "-DCMAKE_CXX_FLAGS_INIT=-m32"
           - os: 'macos-latest'
-            generator: 'Ninja'
+            generator: '-G Ninja'
             build_type: 'Debug'
           - os: 'windows-latest'
-            generator: 'Visual Studio 17 2022'
+            generator: '' # use default
             build_type: 'Debug'
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: recursive
 
@@ -33,19 +38,25 @@ jobs:
       run:
         sudo apt install ninja-build
 
+    - name: install multi-lib on ubuntu
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.cmake_extra == '-DCMAKE_CXX_FLAGS_INIT=-m32' }}
+      run:
+        sudo apt-get install -y g++-multilib
+
     - name: install prerequisites on macos
       if: ${{ matrix.os == 'macos-latest' }}
       run: |
         brew update
-        brew install ninja
+        brew ls --versions ninja || brew install ninja
 
     - name: Configure CMake
       run: >
         cmake
-        -G "${{ matrix.generator }}"
+        "${{ matrix.generator }}"
         -B "${{github.workspace}}/build"
         -DCMAKE_BUILD_TYPE="${{matrix.build_type}}"
         -DLIB_POTASSCO_BUILD_TESTS="On"
+        "${{ matrix.cmake_extra }}"
 
     - name: Build
       run: >
