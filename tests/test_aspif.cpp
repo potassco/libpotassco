@@ -435,6 +435,245 @@ TEST_CASE("Test DynamicBuffer", "[util]") {
         }
     }
 }
+TEST_CASE("Test HashIndex", "[util]") {
+    static_assert(std::is_move_constructible_v<DynamicIndex>, "should be movable");
+    static_assert(std::is_move_assignable_v<DynamicIndex>, "should be movable");
+    static_assert(std::is_copy_assignable_v<DynamicIndex>, "should not be copyable");
+    static_assert(std::is_copy_constructible_v<DynamicIndex>, "should not be copyable");
+    static_assert(DynamicIndex::trivially_relocatable::value);
+
+    SECTION("empty") {
+        DynamicIndex index;
+        REQUIRE(index.size() == 0u); // NOLINT
+        REQUIRE(index.empty());
+        REQUIRE(index.buckets() == 0u);
+        REQUIRE(index.full());
+        REQUIRE_FALSE(index.contains(0u, 0u));
+    }
+    SECTION("supports initial capacity") {
+        auto x = GENERATE(3u, 16u, 32u, 256u, 1024u);
+        for (auto y : {x - 2, x, x + 1}) {
+            CAPTURE(x);
+            CAPTURE(y);
+            DynamicIndex index(y);
+            REQUIRE(index.buckets() == std::max(Potassco::bit_ceil(y), 8u));
+            REQUIRE(index.empty());
+        }
+        DynamicIndex index(0);
+        REQUIRE(index.buckets() == 0u);
+    }
+    SECTION("try_add") {
+        DynamicIndex index;
+        REQUIRE(index.try_add(0, 0));
+
+        REQUIRE(index.size() == 1u);
+        REQUIRE_FALSE(index.empty());
+        REQUIRE(index.contains(0, 0));
+        REQUIRE(index.find_if(0, 0).valid());
+
+        REQUIRE_FALSE(index.try_add(0, 0));
+    }
+
+    SECTION("add hint") {
+        DynamicIndex index;
+        auto         r = index.find_if(4711, 0);
+        REQUIRE_FALSE(r);
+        index.add(r, 4711, 0);
+        REQUIRE(index.find_if(4711, 0).valid());
+        REQUIRE_FALSE(index.try_add(4711, 0));
+    }
+
+    SECTION("add collision") {
+        DynamicIndex index(0, 0.5);
+        for (unsigned i = 0; i != 4; ++i) {
+            REQUIRE(index.try_add(0, i));
+            REQUIRE(index.find_if(0, i).valid());
+        }
+        REQUIRE(index.buckets() == 8u);
+        REQUIRE(index.size() == 4u);
+        REQUIRE(index.full());
+        SECTION("grow") {
+            REQUIRE(index.try_add(4711, 32u));
+            REQUIRE(index.size() == 5u);
+            REQUIRE(index.buckets() == 16u);
+            for (unsigned i = 0; i != 4; ++i) { REQUIRE_FALSE(index.try_add(0, i)); }
+        }
+    }
+
+    SECTION("add bucket collision") {
+        DynamicIndex index(0, 0.5);
+        REQUIRE(index.try_add(0u, 1u));
+        REQUIRE(index.try_add(8u, 2u));
+        REQUIRE(index.try_add(16u, 4u));
+        REQUIRE(index.try_add(0u, 5u));
+        REQUIRE(index.buckets() == 8u);
+        REQUIRE(index.size() == 4u);
+
+        bool ok = true;
+        REQUIRE(index.contains(0, [&ok](uint32_t id) {
+            ok = ok && test_bit(id, 0);
+            return id == 5u;
+        }));
+        REQUIRE(index.contains(0, [&ok](uint32_t id) {
+            ok = ok && test_bit(id, 0);
+            return id == 1u;
+        }));
+        REQUIRE(ok);
+    }
+    SECTION("find fails on wrong hash") {
+        DynamicIndex index;
+        REQUIRE(index.try_add(0u, 1u));
+        REQUIRE(index.contains(0u, 1u));
+        REQUIRE_FALSE(index.contains(4711u, 1u));
+    }
+    SECTION("full") {
+        DynamicIndex index(1, 0.99);
+        for (auto i = 0u; not index.full();) { REQUIRE(index.try_add(0u, i++)); }
+        REQUIRE(index.buckets() == 8u);
+        REQUIRE(index.size() == 7u);
+        REQUIRE(index.contains(0u, 1u));
+        REQUIRE_FALSE(index.contains(0u, 8u));
+    }
+    SECTION("copy and move") {
+        DynamicIndex index(64u);
+        for (unsigned i = 0; i != 10; ++i) { index.try_add(i, i); }
+        REQUIRE(index.size() == 10u);
+        REQUIRE(index.buckets() == 64u);
+        SECTION("copy") {
+            DynamicIndex rhs(index);
+            REQUIRE(rhs.buckets() == 16u);
+            REQUIRE(rhs.size() == 10u);
+            for (unsigned i = 0; i != 10; ++i) {
+                REQUIRE(index.contains(i, i));
+                REQUIRE(rhs.contains(i, i));
+            }
+        }
+        SECTION("move") {
+            DynamicIndex rhs(std::move(index));
+            REQUIRE(index.empty()); // NOLINT
+            REQUIRE(index.full());
+            REQUIRE(index.buckets() == 0u);
+
+            REQUIRE(rhs.buckets() == 64u);
+            REQUIRE(rhs.size() == 10u);
+            for (unsigned i = 0; i != 10; ++i) { REQUIRE(rhs.contains(i, i)); }
+        }
+        SECTION("assign") {
+            DynamicIndex rhs;
+            rhs.try_add(20, 20);
+            rhs.try_add(21, 21);
+            SECTION("copy") {
+                rhs = index;
+                REQUIRE(rhs.buckets() == 16u);
+                REQUIRE(rhs.size() == 10u);
+                for (unsigned i = 0; i != 10; ++i) {
+                    REQUIRE(index.contains(i, i));
+                    REQUIRE(rhs.contains(i, i));
+                }
+            }
+            SECTION("move") {
+                rhs = std::move(index);
+                REQUIRE(index.empty()); // NOLINT
+                REQUIRE(index.full());
+                REQUIRE(index.buckets() == 0u);
+                REQUIRE(rhs.buckets() == 64u);
+                REQUIRE(rhs.size() == 10u);
+                for (unsigned i = 0; i != 10; ++i) { REQUIRE(rhs.contains(i, i)); }
+            }
+            SECTION("self") {
+                POTASSCO_WARNING_PUSH()
+                POTASSCO_WARNING_IGNORE_CLANG("-Wself-assign-overloaded")
+                index = index; // NOLINT
+                REQUIRE(index.buckets() == 64u);
+                for (unsigned i = 0; i != 10; ++i) { REQUIRE(index.contains(i, i)); }
+                POTASSCO_WARNING_IGNORE_GNU("-Wself-move")
+                index = std::move(index); // NOLINT
+                REQUIRE(index.buckets() == 64u);
+                for (unsigned i = 0; i != 10; ++i) { REQUIRE(index.contains(i, i)); }
+                POTASSCO_WARNING_POP()
+            }
+        }
+    }
+    SECTION("erase") {
+        DynamicIndex index(0, 0.7);
+        REQUIRE(index.try_add(0, 0));
+        REQUIRE(index.erase(index.find_if(0, 0)));
+        REQUIRE(index.empty());
+        REQUIRE_FALSE(index.erase(index.find_if(0, 0)));
+
+        SECTION("reuse") {
+            REQUIRE(index.try_add(0u, 1u));
+            REQUIRE(index.try_add(0u, 2u));
+            REQUIRE(index.try_add(0u, 3u));
+            auto        r = index.find_if(0u, 2u);
+            const auto* b = r.bucket();
+            REQUIRE(r);
+            REQUIRE(index.erase(r));
+
+            REQUIRE(index.contains(0u, 1u));
+            REQUIRE(index.contains(0u, 3u));
+            r = index.find_if(0u, 2u);
+            REQUIRE_FALSE(r);
+            REQUIRE(r.bucket() == b);
+        }
+        SECTION("shrink") {
+            auto hash = [](uint32_t i) { return static_cast<uint32_t>(i * 11111111111u); };
+            for (unsigned i = 0; index.buckets() < 16 || not index.full(); ++i) { REQUIRE(index.try_add(hash(i), i)); }
+            REQUIRE(index.buckets() == 16u);
+            REQUIRE(index.size() == 11u);
+
+            REQUIRE(index.erase(index.find_if(hash(0), 0)));
+            REQUIRE(index.full());
+            REQUIRE(index.size() == 10u);
+
+            REQUIRE(index.erase(index.find_if(hash(2), 2)));
+            REQUIRE(index.full());
+            REQUIRE(index.size() == 9u);
+
+            REQUIRE(index.erase(index.find_if(hash(6), 6)));
+            REQUIRE(index.full());
+            REQUIRE(index.size() == 8u);
+
+            REQUIRE(index.erase(index.find_if(hash(1), 1)));
+            REQUIRE(index.full());
+            REQUIRE(index.size() == 7u);
+
+            REQUIRE(index.erase(index.find_if(hash(10), 10)));
+            REQUIRE(index.full());
+            REQUIRE(index.size() == 6u);
+            REQUIRE(index.buckets() == 16u);
+
+            for (auto i : {3u, 4u, 5u, 7u, 8u, 9u}) { REQUIRE(index.contains(hash(i), i)); }
+            REQUIRE(index.erase(index.find_if(hash(5), 5)));
+            REQUIRE(index.size() == 5u);
+            REQUIRE(index.buckets() == 8u);
+
+            for (auto i : {3u, 4u, 7u, 8u, 9u}) { REQUIRE(index.erase(index.find_if(hash(i), i))); }
+        }
+    }
+    SECTION("clear") {
+        DynamicIndex index;
+        index.try_add(0u, 0u);
+        index.try_add(10u, 10u);
+        REQUIRE(index.buckets() == 8u);
+        index.clear();
+        REQUIRE(index.empty());
+        REQUIRE(index.size() == 0u); // NOLINT
+        REQUIRE_FALSE(index.full());
+        REQUIRE(index.buckets() == 8u);
+        REQUIRE_FALSE(index.contains(0u, 0u));
+        REQUIRE_FALSE(index.contains(10u, 10u));
+
+        index.try_add(0u, 0u);
+        REQUIRE(index.contains(0u, 0u));
+        REQUIRE_FALSE(index.contains(10u, 10u));
+
+        index.discard();
+        REQUIRE(index.empty());
+        REQUIRE(index.full());
+        REQUIRE(index.buckets() == 0u);
+    }
+}
 TEST_CASE("Test ConstString", "[util]") {
     SECTION("empty") {
         static_assert(sizeof(ConstString) == 24);

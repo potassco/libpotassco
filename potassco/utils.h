@@ -22,7 +22,7 @@
 // IN THE SOFTWARE.
 //
 #pragma once
-#include <potassco/bits.h>
+#include <potassco/basic_types.h>
 
 #include <algorithm>
 #include <cstring>
@@ -35,7 +35,7 @@
 
 namespace Potassco {
 namespace Detail {
-//! (Forward) Iterator for enumerating over ranges.
+//! Forward iterator for enumerating over ranges.
 template <typename R, typename SizeT>
 class EnumIter {
 public:
@@ -56,7 +56,7 @@ public:
         ++*this;
         return tmp;
     }
-    //! Get current position and element.
+    //! Get the current position and element.
     constexpr auto operator*() const noexcept -> value_type { return {index_, *current_}; }
     //! Equality comparison.
     friend constexpr bool operator==(const EnumIter& lhs, const EnumIter& rhs) noexcept {
@@ -241,6 +241,178 @@ private:
     DynamicBuffer buffer_;
 };
 
+//! A (dynamically sized) id index implemented as an open-addressing hashtable.
+/*!
+ * \note The index does not store values, but instead is meant as an index atop an existing external data container.
+ * \note The index assumes that valid ids are < `id_max-1` and uses `id_max` and `id_max-1` as sentinel values.
+ * \note The index itself does not compute hash values. It is the responsibility of the owner of the external data
+ *       to compute hashes for elements to be indexed. However, the class stores the hashes so that it can
+ *       grow the index when it becomes too full. Furthermore, stored hashes are also used during lookup to skip
+ *       elements without having to recompute their hash.
+ */
+class DynamicIndex {
+    static constexpr auto id_empty = id_max;
+    static constexpr auto id_tomb  = id_empty - 1;
+    struct Bucket {
+        [[nodiscard]] constexpr auto used() const noexcept { return value < id_tomb; }
+
+        uint32_t hash{0u};
+        Id_t     value{id_empty};
+    };
+
+public:
+    using HashType = Id_t;
+
+    using trivially_relocatable = std::true_type; // NOLINT
+
+    //! Creates an empty index.
+    DynamicIndex() = default;
+    //! Destroys an index.
+    ~DynamicIndex();
+    //! Creates an index with at least `bucketCount` buckets using `lf` as the max load factor.
+    /*!
+     * \pre `lf >= 0.5` and `lf < 1.0`.
+     */
+    explicit DynamicIndex(uint32_t bucketCount, double lf = 0.85);
+    //! Creates a copy of `other`.
+    DynamicIndex(const DynamicIndex& other);
+    //! Move-constructs the index from `other`.
+    DynamicIndex(DynamicIndex&& other) noexcept;
+    //! Replaces this index with a copy of `other`.
+    DynamicIndex& operator=(const DynamicIndex& other);
+    //! Replaces this index with `other`.
+    DynamicIndex& operator=(DynamicIndex&& other) noexcept;
+
+    //! Returns the number of elements in the index.
+    [[nodiscard]] constexpr auto size() const noexcept -> uint32_t { return size_; }
+    //! Returns whether the index is empty.
+    [[nodiscard]] constexpr auto empty() const noexcept -> bool { return size_ == 0u; }
+    //! Returns whether the index is full and therefore will grow when the next element is added.
+    [[nodiscard]] constexpr auto full() const noexcept -> bool { return grow_ == 0u; }
+    //! Returns the number of buckets in the index.
+    [[nodiscard]] constexpr auto buckets() const noexcept -> uint32_t { return cap_; }
+
+    //! A type for storing the result of an index lookup.
+    class IndexRef {
+    public:
+        //! Creates an "invalid" reference.
+        constexpr IndexRef() = default;
+        //! Returns whether the object references a valid index entry.
+        [[nodiscard]] constexpr bool valid() const noexcept { return pos_ && pos_->used(); }
+        //! Returns the id of the referenced element or `id_max` if this reference is not valid.
+        [[nodiscard]] constexpr auto operator*() const noexcept -> Id_t { return valid() ? pos_->value : id_empty; }
+        //! Returns `valid()`.
+        constexpr explicit operator bool() const noexcept { return valid(); }
+        // For testing only
+        [[nodiscard]] constexpr auto bucket() const noexcept -> const Bucket* { return pos_; }
+
+    private:
+        friend class DynamicIndex;
+        constexpr explicit IndexRef(const Bucket* p) : pos_(p) {}
+        const Bucket* pos_{nullptr};
+    };
+
+    //! Returns a reference to the first element with the given hash for which the provided predicate returns true.
+    /*!
+     * If the index does not contain an element with the given hash or the provided predicate returns false for
+     * all elements with a matching hash, the function returns an "invalid" reference.
+     *
+     * \note An "invalid" result can later be used when adding the missing element.
+     */
+    template <typename CmpFunc>
+    requires(std::is_invocable_r_v<bool, CmpFunc, Id_t>)
+    [[nodiscard]] auto find_if(HashType hash, CmpFunc&& func) const noexcept -> IndexRef {
+        if (empty()) {
+            return {};
+        }
+        const Bucket* invalid = nullptr;
+        for (auto i = hash, mask = buckets() - 1;; ++i) {
+            auto b = i & mask;
+            if (const auto& e = table_[b]; not e.used()) {
+                if (not invalid) {
+                    invalid = &e;
+                }
+                if (e.value == id_empty) {
+                    return IndexRef{invalid};
+                }
+            }
+            else if (e.hash == hash && func(e.value)) {
+                return IndexRef{&e};
+            }
+        }
+    }
+    [[nodiscard]] auto find_if(HashType hash, Id_t id) const noexcept -> IndexRef {
+        return find_if(hash, [id](Id_t x) { return x == id; });
+    }
+
+    //! Returns whether the index contains an element with the given hash for which the provided predicate returns true.
+    template <typename CmpFunc>
+    requires(std::is_invocable_r_v<bool, CmpFunc, Id_t>)
+    [[nodiscard]] auto contains(HashType hash, CmpFunc&& func) const noexcept -> bool {
+        return find_if(hash, std::forward<CmpFunc>(func)).valid();
+    }
+    [[nodiscard]] auto contains(HashType hash, Id_t id) const noexcept -> bool { return find_if(hash, id).valid(); }
+
+    //! Adds a new entry to this index at the given position.
+    /*!
+     * \note The function assumes that a corresponding element is not yet in the index.
+     * \param pos An "invalid" reference obtained by a call to `find_if` for the element.
+     * \param hash The hash of the entry with the given id.
+     * \param id The id of the entry in the external container.
+     * \pre id < `id_max-1`.
+     */
+    void add(IndexRef pos, HashType hash, Id_t id) {
+        assert(not pos.valid() && (pos.pos_ == nullptr || static_cast<uint32_t>(pos.pos_ - table_) < buckets()));
+        if (full()) {
+            grow(buckets() * 2);
+            pos.pos_ = nullptr;
+        }
+        auto* bucket = pos.pos_ != nullptr ? const_cast<Bucket*>(pos.pos_) : next(hash, buckets() - 1);
+        assign(bucket, {hash, id});
+    }
+
+    //! Adds the given entry to the index provided that it does not yet exist.
+    bool try_add(HashType hash, Id_t id) {
+        if (auto found = find_if(hash, id); not found) {
+            add(found, hash, id);
+            return true;
+        }
+        return false;
+    }
+
+    //! Removes the element identified by `r` from the index or returns false if `r` does not reference an element.
+    bool erase(IndexRef r);
+    //! Removes all elements from the index but keeps the buckets.
+    void clear();
+    //! Removes all elements from the index and de-allocates all memory.
+    void discard();
+
+private:
+    [[nodiscard]] auto next(HashType hash, uint32_t mask) noexcept -> Bucket* {
+        for (auto i = hash;; ++i) {
+            if (auto pos = i & mask; not table_[pos].used()) {
+                return &table_[pos];
+            }
+        }
+    }
+    //
+    void grow(uint32_t nc);
+    void insert(std::span<Bucket> data);
+    void assign(Bucket* pos, Bucket value) {
+        auto prevId  = std::exchange(*pos, value).value;
+        grow_       -= (prevId == id_empty);
+        tombs_      -= (prevId == id_tomb);
+        ++size_;
+    }
+
+    Bucket*  table_{nullptr};
+    uint32_t cap_{0u};
+    uint32_t size_{0u};
+    uint32_t grow_{0u};
+    uint32_t tombs_{0u};
+    uint32_t lf_{8500u};
+};
+
 //! A trivially relocatable immutable string type with small buffer optimization.
 /*!
  * Not all std::string implementations are trivially relocatable. E.g., the SSO implemented in gcc (libstdc++) relies on
@@ -383,12 +555,12 @@ constexpr inline auto radix_only    = RadixConfig{.stdSortThreshold = 1u, .stdSt
  *
  * \param rng    The range to be sorted in place.
  * \param rank   Projection returning the unsigned rank key for an element.
- * \param config Threshold below which std sort is used and whether sort must be stable.
- * \param tmp    Temporary buffer used for redistribution; allocated lazily on first needed pass.
+ * \param config Threshold below which std sort is used and whether the operation must be stable.
+ * \param tmp    Temporary buffer used for redistribution; allocated lazily on the first necessary pass.
  *
  * \note The rank function is evaluated multiple times per element and pass; it should be fast and free of side effects.
  * \note If the size of the input range is smaller than the configured threshold, the function falls back to
- *       std::ranges::sort or std::ranges::stable_sort depending on whether output must be stable.
+ *       std::ranges::sort or std::ranges::stable_sort depending on whether the output must be stable.
  * \note Use std::ref(buffer) to reuse an existing temporary buffer.
  */
 template <std::ranges::contiguous_range R, typename RankFn, typename Tb = Detail::Temp<std::ranges::range_value_t<R>>>

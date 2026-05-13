@@ -198,14 +198,14 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(Potassco::toString(std::vector{1, 2, 3}) == "1,2,3");
     }
     SECTION("conversion works with long long") {
-        long long mx = LLONG_MAX, mn = LLONG_MIN, y;
+        long long mx = LLONG_MAX, mn = LLONG_MIN, y = 0;
         REQUIRE_PARSE(Potassco::stringTo(Potassco::toString(mx), y), y, mx);
         REQUIRE_PARSE(Potassco::stringTo(Potassco::toString(mn), y), y, mn);
     }
     SECTION("conversion works with long long even if errno is initially set") {
-        long long          mx  = LLONG_MAX, y;
-        unsigned long long umx = ULLONG_MAX, z;
-        errno                  = ERANGE;
+        long long          mx = LLONG_MAX, y = 0;
+        unsigned long long umx = ULLONG_MAX, z = 0;
+        errno = ERANGE;
         REQUIRE_PARSE(Potassco::stringTo(Potassco::toString(mx), y), y, mx);
 
         auto s = Potassco::toString(ULLONG_MAX);
