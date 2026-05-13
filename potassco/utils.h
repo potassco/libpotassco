@@ -395,8 +395,9 @@ template <std::ranges::contiguous_range R, typename RankFn, typename Tb = Detail
 requires std::is_invocable_v<RankFn&, std::ranges::range_value_t<R>> &&
          std::is_unsigned_v<std::remove_cvref_t<std::invoke_result_t<RankFn&, std::ranges::range_value_t<R>>>>
 constexpr void radixSort(R&& rng, RankFn rank, RadixConfig config = radix_def, Tb tmp = {}) {
-    using T    = std::ranges::range_value_t<R>;
-    using Rank = std::remove_cvref_t<std::invoke_result_t<RankFn&, T>>;
+    using T        = std::ranges::range_value_t<R>;
+    using Rank     = std::remove_cvref_t<std::invoke_result_t<RankFn&, T>>;
+    using SizeType = std::common_type_t<std::size_t, Rank>;
     assert(std::size(rng) <= UINT32_MAX);
     const auto n = static_cast<uint32_t>(std::size(rng));
     if (n < 2) {
@@ -420,7 +421,7 @@ constexpr void radixSort(R&& rng, RankFn rank, RadixConfig config = radix_def, T
     constexpr auto digit  = [](auto val, uint32_t shift) { return static_cast<uint32_t>((val >> shift) & mask); };
     // Data
     uint32_t count[base];
-    auto     bm = std::size_t{mask}, lb = static_cast<std::size_t>(-1), ub = std::size_t{0};
+    auto     bm = SizeType{mask}, lb = static_cast<SizeType>(-1), ub = SizeType{0};
     auto*    src  = std::data(rng);
     auto*    dest = static_cast<T*>(nullptr);
     // 1. Count digit occurrences and optionally compute bit envelope

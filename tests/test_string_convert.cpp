@@ -42,6 +42,14 @@ static std::optional<T> string_cast(const std::string& in) {
 }
 
 TEST_CASE("String conversion", "[string]") {
+#define REQUIRE_PARSE(EC, GOT, EXPECTED)                                                                               \
+    REQUIRE(Parse::ok(EC));                                                                                            \
+    REQUIRE((GOT) == (EXPECTED))
+
+#define REQUIRE_PARSE_FAIL(EC, GOT, EXPECTED)                                                                          \
+    REQUIRE_FALSE(Parse::ok(EC));                                                                                      \
+    REQUIRE((GOT) == (EXPECTED))
+
     errno = 0;
     SECTION("empty string is not an int") {
         int      iVal;
@@ -63,8 +71,7 @@ TEST_CASE("String conversion", "[string]") {
         const char*      source = "123";
         std::string_view in(source, 2);
         int              iVal{0};
-        REQUIRE(stringTo(in, iVal) == std::errc{});
-        REQUIRE(iVal == 12);
+        REQUIRE_PARSE(stringTo(in, iVal), iVal, 12);
     }
     SECTION("overflow is an error") {
         int64_t  iVal;
@@ -160,35 +167,29 @@ TEST_CASE("String conversion", "[string]") {
         REQUIRE(Potassco::Parse::ok(Potassco::stringTo("0.8", x)));
         REQUIRE(Potassco::toString(x) == "0.8");
     }
+
     SECTION("Pairs can be converted") {
         constexpr std::pair p(10, false);
         REQUIRE(Potassco::toString(p) == "10,false");
-        REQUIRE((string_cast<std::pair<int, bool>>("10,false") == p));
+        REQUIRE(string_cast<std::pair<int, bool>>("10,false") == p);
 
         using IntPair = std::pair<int, int>;
         IntPair     x;
         std::string value("(1,2)");
-        bool        ok = Potassco::stringTo(value, x) == std::errc{};
-        REQUIRE(ok);
-        REQUIRE(x == IntPair(1, 2));
-        REQUIRE(Potassco::stringTo("7", x) == std::errc{});
-        REQUIRE(x == IntPair(7, 2));
+        REQUIRE_PARSE(Potassco::stringTo(value, x), x, IntPair(1, 2));
+        REQUIRE_PARSE(Potassco::stringTo("7", x), x, IntPair(7, 2));
 
-        REQUIRE(Potassco::stringTo("9,", x) != std::errc{});
-        REQUIRE(x == IntPair(7, 2));
+        REQUIRE_PARSE_FAIL(Potassco::stringTo("9,", x), x, IntPair(7, 2));
     }
     SECTION("Pairs can be nested") {
         using IntPair = std::pair<int, int>;
         std::pair<IntPair, IntPair> x;
         std::string                 value("((1,2),(3,4))");
-        REQUIRE(Potassco::stringTo(value, x) == std::errc{});
-        REQUIRE((x.first == IntPair(1, 2) && x.second == IntPair(3, 4)));
+        REQUIRE_PARSE(Potassco::stringTo(value, x), x, std::pair(IntPair(1, 2), IntPair(3, 4)));
         value = "3,4,5,6";
-        REQUIRE(Potassco::stringTo(value, x) == std::errc{});
-        REQUIRE((x.first == IntPair(3, 4) && x.second == IntPair(5, 6)));
+        REQUIRE_PARSE(Potassco::stringTo(value, x), x, std::pair(IntPair(3, 4), IntPair(5, 6)));
         value = "99";
-        REQUIRE(Potassco::stringTo(value, x) == std::errc{});
-        REQUIRE((x.first == IntPair(99, 4) && x.second == IntPair(5, 6)));
+        REQUIRE_PARSE(Potassco::stringTo(value, x), x, std::pair(IntPair(99, 4), IntPair(5, 6)));
     }
     SECTION("Sequence can be converted") {
         REQUIRE(Potassco::toString(1, 2, 3) == "1,2,3");
@@ -198,27 +199,27 @@ TEST_CASE("String conversion", "[string]") {
     }
     SECTION("conversion works with long long") {
         long long mx = LLONG_MAX, mn = LLONG_MIN, y;
-        REQUIRE((Potassco::stringTo(Potassco::toString(mx), y) == std::errc{} && mx == y));
-        REQUIRE((Potassco::stringTo(Potassco::toString(mn), y) == std::errc{} && mn == y));
+        REQUIRE_PARSE(Potassco::stringTo(Potassco::toString(mx), y), y, mx);
+        REQUIRE_PARSE(Potassco::stringTo(Potassco::toString(mn), y), y, mn);
     }
     SECTION("conversion works with long long even if errno is initially set") {
         long long          mx  = LLONG_MAX, y;
         unsigned long long umx = ULLONG_MAX, z;
         errno                  = ERANGE;
-        REQUIRE((Potassco::stringTo(Potassco::toString(mx), y) == std::errc{} && mx == y));
+        REQUIRE_PARSE(Potassco::stringTo(Potassco::toString(mx), y), y, mx);
 
         auto s = Potassco::toString(ULLONG_MAX);
         errno  = ERANGE;
-        REQUIRE((Potassco::stringTo(s, z) == std::errc{} && umx == z));
+        REQUIRE_PARSE(Potassco::stringTo(s, z), z, umx);
     }
 
     SECTION("double parsing before local change") {
         double d  = 0;
         auto   in = "1233.22foo";
         auto   r  = fromChars(in, d);
-        CHECK(d == 1233.22);
-        CHECK(r.ec == std::errc{});
-        CHECK((r.ptr && *r.ptr == 'f'));
+        REQUIRE_PARSE(r, d, 1233.22);
+        REQUIRE(r.ptr);
+        CHECK(*r.ptr == 'f');
     }
 
     SECTION("double parsing is locale-independent") {
@@ -271,34 +272,26 @@ TEST_CASE("String conversion", "[string]") {
         }
         INFO(what);
         auto r = fromChars(what, d);
-        CHECK(d == expected);
-        CHECK(r.ec == std::errc{});
-        CHECK((r.ptr && *r.ptr == next));
+        REQUIRE_PARSE(r, d, expected);
+        REQUIRE(r.ptr);
+        CHECK(*r.ptr == next);
     }
 
     SECTION("double parsing supports zero and negative numbers") {
         double d = 2.0;
-        auto   r = fromChars("0", d);
-        REQUIRE((Parse::ok(r) && d == 0.0));
+        REQUIRE_PARSE(fromChars("0", d), d, 0.0);
         d = 20.0;
-        r = fromChars("0.000", d);
-        REQUIRE((Parse::ok(r) && d == 0.0));
-        r = fromChars("-12.32", d);
-        REQUIRE((Parse::ok(r) && d == -12.32));
+        REQUIRE_PARSE(fromChars("0.000", d), d, 0.0);
+        REQUIRE_PARSE(fromChars("-12.32", d), d, -12.32);
     }
 
     SECTION("vectors can be converted") {
         using Vec = std::vector<int>;
         Vec         x;
         std::string value("[1,2,3,4]");
-        REQUIRE(Potassco::stringTo(value, x) == std::errc{});
-        REQUIRE(x.size() == 4);
-        REQUIRE(x[0] == 1);
-        REQUIRE(x[1] == 2);
-        REQUIRE(x[2] == 3);
-        REQUIRE(x[3] == 4);
+        REQUIRE_PARSE(Potassco::stringTo(value, x), x, Vec({1, 2, 3, 4}));
         REQUIRE_NOTHROW(x = string_cast<Vec>("1,2,3").value());
-        REQUIRE(x.size() == 3);
+        REQUIRE(x == Vec({1, 2, 3}));
         REQUIRE(Potassco::stringTo("1,2,", x) != std::errc{});
     }
     SECTION("vectors can be nested") {
@@ -306,12 +299,7 @@ TEST_CASE("String conversion", "[string]") {
         using VecVec = std::vector<Vec>;
         VecVec      x;
         std::string value("[[1,2],[3,4]]");
-        REQUIRE(Potassco::stringTo(value, x) == std::errc{});
-        REQUIRE((x.size() == 2 && x[0].size() == 2 && x[1].size() == 2));
-        REQUIRE(x[0][0] == 1);
-        REQUIRE(x[0][1] == 2);
-        REQUIRE(x[1][0] == 3);
-        REQUIRE(x[1][1] == 4);
+        REQUIRE_PARSE(Potassco::stringTo(value, x), x, VecVec({{1, 2}, {3, 4}}));
     }
 
     SECTION("eqIgnoreCase") {
