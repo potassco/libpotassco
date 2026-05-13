@@ -1,6 +1,6 @@
 //
 // Copyright (c) 2017 - 2025, Roland Kaminski
-// Copyright (c) 2025 - present, Francois Laferriere
+// Copyright (c) 2025 - present, Francois Laferriere, Benjamin Kaufmann
 //
 // This file is part of Potassco.
 //
@@ -31,7 +31,7 @@
 #include <algorithm>
 #include <ostream>
 #include <ranges>
-#include <unordered_map>
+#include <tuple>
 #include <vector>
 
 namespace Potassco {
@@ -39,43 +39,36 @@ namespace {
 /////////////////////////////////////////////////////////////////////////////////////////
 // Helpers
 /////////////////////////////////////////////////////////////////////////////////////////
-struct Head {
-    HeadType type;
-    size_t   id;
-};
-
-struct Normal {
-    size_t id;
-};
-
-struct Sum {
-    size_t   id;
-    Weight_t bound;
-};
-
+constexpr auto headT(HeadType ht, std::size_t id) -> std::tuple<const char*, std::size_t> {
+    return std::make_tuple(ht == HeadType::disjunctive ? "disjunction" : "choice", id);
+}
+constexpr auto normalT(std::size_t id) -> std::tuple<const char*, std::size_t> { return std::make_tuple("normal", id); }
+constexpr auto sumT(std::size_t id, Weight_t bound) -> std::tuple<const char*, std::size_t, Weight_t> {
+    return std::make_tuple("sum", id, bound);
+}
 struct Quoted {
     std::string_view str;
 };
+template <typename T, typename... V>
+void printCommaSeparated(std::ostream& out, const T& t, const V&... v);
 
 template <typename T>
 void printValue(std::ostream& out, const T& value) {
     out << value;
 }
 
-void printValue(std::ostream& out, const WeightLit& value) {
-    printValue(out, value.lit);
-    out << ",";
-    printValue(out, value.weight);
+template <typename... Args>
+void printValue(std::ostream& out, const std::tuple<const char*, Args...>& value) {
+    std::apply(
+        [&](const char* name, const auto&... args) {
+            out << name << "(";
+            printCommaSeparated(out, args...);
+            out << ")";
+        },
+        value);
 }
 
-void printValue(std::ostream& out, const Head& h) {
-    const char* name = (h.type == HeadType::disjunctive ? "disjunction" : "choice");
-    out << name << "(" << h.id << ")";
-}
-
-void printValue(std::ostream& out, const Normal& n) { out << "normal(" << n.id << ")"; }
-
-void printValue(std::ostream& out, const Sum& s) { out << "sum(" << s.id << "," << s.bound << ")"; }
+void printValue(std::ostream& out, const WeightLit& value) { printCommaSeparated(out, value.lit, value.weight); }
 
 void printValue(std::ostream& out, const Quoted& q) {
     out.put('"');
@@ -95,47 +88,116 @@ void printCommaSeparated(std::ostream& out, const T& t, const V&... v) {
     printValue(out, t);
     ((out << ",", printValue(out, v)), ...);
 }
-template <typename T>
-struct VectorHash {
-    size_t operator()(const std::vector<T>& vec) const {
-        static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
-        auto* data = reinterpret_cast<const char*>(vec.data());
-        return std::hash<std::string_view>{}({data, vec.size() * sizeof(T)});
-    }
-};
-
-template <typename T>
-std::vector<T> toVec(std::span<const T> span) {
-    return {span.begin(), span.end()};
-}
-
 } // end unnamed namespace
-
 /////////////////////////////////////////////////////////////////////////////////////////
 // Reifier
 /////////////////////////////////////////////////////////////////////////////////////////
-template <typename T>
-using SeqMap = std::unordered_map<std::vector<T>, size_t, VectorHash<T>>;
-
 struct Reifier::StepData {
-    SeqMap<Id_t>      theoryTuples;
-    SeqMap<Id_t>      theoryElementTuples;
-    SeqMap<Lit_t>     litTuples;
-    SeqMap<Atom_t>    atomTuples;
-    SeqMap<WeightLit> weightLitTuples;
-
-    Graph<Atom_t>                        graph;
-    std::unordered_map<Atom_t, uint32_t> nodes;
-
-    void clear() {
-        theoryTuples.clear();
-        theoryElementTuples.clear();
-        litTuples.clear();
-        atomTuples.clear();
-        weightLitTuples.clear();
-        graph.clear();
-        nodes.clear();
+    static constexpr auto hash(std::integral auto x) -> uint32_t { return hashId(static_cast<uint32_t>(x)); }
+    static constexpr auto hash(WeightLit x) -> uint32_t { return hash(x.lit) + hash(x.weight); }
+    using TupleData = std::vector<std::byte>;
+    using Elements  = std::vector<std::size_t>;
+    template <typename T>
+    static auto pushTuple(TupleData& target, std::span<const T> tuple) -> std::span<T> {
+        auto start = target.size();
+        auto bytes = as_bytes(tuple);
+        auto size  = static_cast<uint32_t>(tuple.size());
+        target.insert(target.end(), reinterpret_cast<const std::byte*>(&size),
+                      reinterpret_cast<const std::byte*>(&size) + sizeof(uint32_t));
+        target.insert(target.end(), bytes.data(), bytes.data() + bytes.size());
+        return std::span{reinterpret_cast<T*>(target.data() + start + sizeof(uint32_t)), tuple.size()};
     }
+    template <typename T>
+    static auto getTuple(const TupleData& source, std::size_t start) -> std::span<const T> {
+        POTASSCO_ASSERT(start < source.size());
+        auto* data = source.data() + start;
+        auto  sz   = *reinterpret_cast<const uint32_t*>(data);
+        return std::span{reinterpret_cast<const T*>(data + sizeof(uint32_t)), sz};
+    }
+
+    struct TupleSet {
+        explicit TupleSet(const char* n) : name(n) {}
+        [[nodiscard]] constexpr auto get(uint32_t tId) const -> std::size_t { return elements.at(tId); }
+        auto                         add(std::size_t pos, DynamicIndex::IndexRef r, uint32_t hash) -> uint32_t {
+            auto nId = static_cast<uint32_t>(elements.size());
+            POTASSCO_CHECK_PRE(nId < UINT32_MAX, "too many %s tuples", name);
+            elements.push_back(pos);
+            index.add(r, hash, nId);
+            return nId;
+        }
+        const char*  name{nullptr};
+        Elements     elements;
+        DynamicIndex index;
+    };
+
+    template <typename C, typename T>
+    auto addTuple(Reifier& self, C& ts, std::span<const T> arg, bool canonical = true) -> uint32_t {
+        static_assert(alignof(T) <= alignof(uint32_t));
+        POTASSCO_CHECK_PRE(arg.size() < UINT32_MAX, "%s tuple too large", ts.name);
+        auto start = tupleData.size();
+        auto dirty = not canonical;
+        if (canonical) {
+            auto scratch = pushTuple(tupleData, arg);
+            std::ranges::sort(scratch);
+            if (auto rem = std::ranges::size(std::ranges::unique(scratch)); rem > 0) {
+                scratch = scratch.first(scratch.size() - rem);
+                dirty   = true;
+            }
+            arg = scratch;
+        }
+        auto abst = 0u;
+        for (auto x : arg) { abst += hash(x); }
+        auto r = ts.index.find_if(abst,
+                                  [&](Id_t id) { return std::ranges::equal(arg, getTuple<T>(tupleData, ts.get(id))); });
+        if (not r) {
+            auto nId = ts.add(start, r, abst);
+            if (dirty) {
+                tupleData.resize(start);
+                pushTuple(tupleData, arg);
+            }
+            self.printFact(ts.name, nId);
+            if (canonical) {
+                for (const auto& x : arg) { self.printFact(ts.name, nId, x); }
+            }
+            else {
+                for (auto [idx, x] : enumerate(arg)) { self.printFact(ts.name, nId, idx, x); }
+            }
+            return nId;
+        }
+        tupleData.resize(start);
+        return *r;
+    }
+    Id_t addNode(Atom_t atom) {
+        auto r = nodes.find_if(atom, [&](Id_t nId) { return graph.getData(nId) == atom; });
+        if (not r) {
+            auto id = graph.addNode(atom);
+            nodes.add(r, atom, id);
+            return id;
+        }
+        return *r;
+    }
+    template <typename T>
+    void addPositiveEdges(const AtomSpan& head, const std::span<const T>& body) {
+        for (auto atom : head) {
+            auto uId = addNode(atom);
+            for (const auto& elem : body) {
+                if (lit(elem) > 0) {
+                    auto vId = addNode(Potassco::atom(elem));
+                    graph.addEdge(uId, vId);
+                }
+            }
+        }
+    }
+
+    TupleData tupleData;
+    TupleSet  theoryTuples{"theory_tuple"};
+    TupleSet  theoryElementTuples{"theory_element_tuple"};
+    TupleSet  litTuples{"literal_tuple"};
+    TupleSet  atomTuples{"atom_tuple"};
+    TupleSet  weightLitTuples{"weighted_literal_tuple"};
+
+    Graph<Atom_t> graph;
+    DynamicIndex  nodes;
 };
 
 Reifier::Reifier(std::ostream& out, const Options& opts)
@@ -150,66 +212,27 @@ template <typename... T>
 void Reifier::printFact(const char* name, const T&... args) {
     out_ << name << "(";
     printCommaSeparated(out_, args...);
+    if (step_) {
+        out_ << "," << step_ - 1;
+    }
     out_ << ").\n";
 }
 
-template <typename... T>
-void Reifier::printStepFact(const char* name, const T&... args) {
-    if (reifyStep_) {
-        printFact(name, args..., step_);
-    }
-    else {
-        printFact(name, args...);
-    }
-}
-
-template <typename M, typename T>
-auto Reifier::tuple(M& map, const char* name, std::span<T> args) -> size_t {
-    auto owned = toVec(args);
-    std::ranges::sort(owned);
-    owned.erase(std::ranges::unique(owned).begin(), owned.end());
-    auto [it, isNew] = map.emplace(std::move(owned), map.size());
-    if (isNew) {
-        printStepFact(name, it->second);
-        for (const auto& x : it->first) { printStepFact(name, it->second, x); }
-    }
-    return it->second;
-}
-
 auto Reifier::theoryTuple(IdSpan args) -> size_t {
-    auto& map        = stepData_->theoryTuples;
-    auto  owned      = toVec(args);
-    auto [it, isNew] = map.emplace(std::move(owned), map.size());
-    if (isNew) {
-        printStepFact("theory_tuple", it->second);
-        int arg = 0;
-        for (const auto& x : it->first) {
-            printStepFact("theory_tuple", it->second, arg, x);
-            ++arg;
-        }
-    }
-    return it->second;
+    return stepData_->addTuple(*this, stepData_->theoryTuples, args, false);
 }
 
 auto Reifier::theoryElementTuple(IdSpan args) -> size_t {
-    return tuple(stepData_->theoryElementTuples, "theory_element_tuple", args);
+    return stepData_->addTuple(*this, stepData_->theoryElementTuples, args);
 }
 
-auto Reifier::litTuple(LitSpan args) -> size_t { return tuple(stepData_->litTuples, "literal_tuple", args); }
+auto Reifier::litTuple(LitSpan args) -> size_t { return stepData_->addTuple(*this, stepData_->litTuples, args); }
 
 auto Reifier::weightLitTuple(WeightLitSpan args) -> size_t {
-    return tuple(stepData_->weightLitTuples, "weighted_literal_tuple", args);
+    return stepData_->addTuple(*this, stepData_->weightLitTuples, args);
 }
 
-auto Reifier::atomTuple(AtomSpan args) -> size_t { return tuple(stepData_->atomTuples, "atom_tuple", args); }
-
-auto Reifier::addNode(Atom_t atom) -> uint32_t {
-    auto [it, isNew] = stepData_->nodes.try_emplace(atom, 0);
-    if (isNew) {
-        it->second = stepData_->graph.addNode(atom);
-    }
-    return it->second;
-}
+auto Reifier::atomTuple(AtomSpan args) -> size_t { return stepData_->addTuple(*this, stepData_->atomTuples, args); }
 
 void Reifier::initProgram(bool incremental) {
     if (incremental) {
@@ -217,70 +240,62 @@ void Reifier::initProgram(bool incremental) {
     }
 }
 
-void Reifier::beginStep() {}
+void Reifier::beginStep() {
+    if (reifyStep_) {
+        ++step_;
+    }
+}
 
 void Reifier::rule(HeadType ht, AtomSpan head, LitSpan body) {
     auto headId = atomTuple(head);
     auto bodyId = litTuple(body);
-    printStepFact("rule", Head{ht, headId}, Normal{bodyId});
+    printFact("rule", headT(ht, headId), normalT(bodyId));
     if (calculateSccs_) {
-        calculateSccs(head, body);
+        stepData_->addPositiveEdges(head, body);
     }
 }
 
 void Reifier::rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan body) {
     auto headId = atomTuple(head);
     auto bodyId = weightLitTuple(body);
-    printStepFact("rule", Head{ht, headId}, Sum{bodyId, bound});
+    printFact("rule", headT(ht, headId), sumT(bodyId, bound));
     if (calculateSccs_) {
-        calculateSccs(head, body);
+        stepData_->addPositiveEdges(head, body);
     }
 }
 
-template <typename L>
-void Reifier::calculateSccs(AtomSpan head, std::span<const L> body) {
-    for (const auto& atom : head) {
-        auto uId = addNode(atom);
-        for (const auto& elem : body) {
-            if (lit(elem) > 0) {
-                auto vId = addNode(Potassco::atom(elem));
-                stepData_->graph.addEdge(uId, vId);
-            }
-        }
-    }
-}
-
-void Reifier::minimize(Weight_t prio, WeightLitSpan lits) { printStepFact("minimize", prio, weightLitTuple(lits)); }
+void Reifier::minimize(Weight_t prio, WeightLitSpan lits) { printFact("minimize", prio, weightLitTuple(lits)); }
 
 void Reifier::project(AtomSpan atoms) {
-    for (const auto& x : atoms) { printStepFact("project", x); }
+    for (const auto& x : atoms) { printFact("project", x); }
 }
 
-void Reifier::outputAtom(Atom_t atom, std::string_view name) { printStepFact("outputAtom", name, atom); }
+void Reifier::outputAtom(Atom_t atom, std::string_view name) { printFact("outputAtom", name, atom); }
 
-void Reifier::outputTerm(Id_t termId, std::string_view name) { printStepFact("outputTerm", name, termId); }
+void Reifier::outputTerm(Id_t termId, std::string_view name) { printFact("outputTerm", name, termId); }
 
-void Reifier::output(Id_t termId, LitSpan condition) { printStepFact("output", termId, litTuple(condition)); }
+void Reifier::output(Id_t termId, LitSpan condition) { printFact("output", termId, litTuple(condition)); }
 
-void Reifier::external(Atom_t a, TruthValue v) { printStepFact("external", a, enum_name(v)); }
+void Reifier::external(Atom_t a, TruthValue v) { printFact("external", a, enum_name(v)); }
 
 void Reifier::assume(LitSpan lits) {
-    for (const auto& x : lits) { printStepFact("assume", x); }
+    for (const auto& x : lits) { printFact("assume", x); }
 }
 
 void Reifier::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan condition) {
-    printStepFact("heuristic", a, enum_name(t), bias, prio, litTuple(condition));
+    printFact("heuristic", a, enum_name(t), bias, prio, litTuple(condition));
 }
 
-void Reifier::acycEdge(int s, int t, LitSpan condition) { printStepFact("edge", s, t, litTuple(condition)); }
+void Reifier::acycEdge(int s, int t, LitSpan condition) { printFact("edge", s, t, litTuple(condition)); }
 
-void Reifier::theoryTerm(Id_t termId, int number) { printStepFact("theory_number", termId, number); }
+void Reifier::theoryTerm(Id_t termId, int number) { printFact("theory_number", termId, number); }
 
-void Reifier::theoryTerm(Id_t termId, std::string_view name) { printStepFact("theory_string", termId, Quoted{name}); }
+void Reifier::theoryTerm(Id_t termId, std::string_view name) { printFact("theory_string", termId, Quoted{name}); }
 
 void Reifier::theoryTerm(Id_t termId, int cId, IdSpan args) {
+    auto tId = theoryTuple(args);
     if (cId >= 0) {
-        printStepFact("theory_function", termId, cId, theoryTuple(args));
+        printFact("theory_function", termId, cId, tId);
     }
     else {
         const char* type;
@@ -290,31 +305,30 @@ void Reifier::theoryTerm(Id_t termId, int cId, IdSpan args) {
             case -3: type = "list"; break;
             default: POTASSCO_ASSERT_NOT_REACHED("unexpected tuple type");
         }
-        printStepFact("theory_sequence", termId, type, theoryTuple(args));
+        printFact("theory_sequence", termId, type, tId);
     }
 }
 
 void Reifier::theoryElement(Id_t elementId, IdSpan terms, LitSpan cond) {
     auto tt = theoryTuple(terms);
     auto lt = litTuple(cond);
-    printStepFact("theory_element", elementId, tt, lt);
+    printFact("theory_element", elementId, tt, lt);
 }
 
 void Reifier::theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements) {
-    printStepFact("theory_atom", atomOrZero, termId, theoryElementTuple(elements));
+    printFact("theory_atom", atomOrZero, termId, theoryElementTuple(elements));
 }
 
 void Reifier::theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements, Id_t op, Id_t rhs) {
-    printStepFact("theory_atom", atomOrZero, termId, theoryElementTuple(elements), op, rhs);
+    printFact("theory_atom", atomOrZero, termId, theoryElementTuple(elements), op, rhs);
 }
 
 void Reifier::endStep() {
     for (auto [i, scc] : enumerate(stepData_->graph.computeNonTrivialSccs())) {
-        for (auto x : std::views::reverse(scc)) { printStepFact("scc", i, x); }
+        for (auto x : std::views::reverse(scc)) { printFact("scc", i, x); }
     }
     if (reifyStep_) {
-        stepData_->clear();
-        ++step_;
+        std::exchange(stepData_, std::make_unique<StepData>()).reset();
     }
 }
 

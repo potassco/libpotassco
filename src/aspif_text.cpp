@@ -386,7 +386,6 @@ struct AspifTextOutput::Data {
     using LitVec = amc::SmallVector<Lit_t, 64>;
     using RawVec = amc::SmallVector<uint32_t, 4096>;
     using StrVec = amc::vector<ConstString>;
-    using IdVec  = amc::SmallVector<Id_t, 64>;
     using StrMap = StringMap<Id_t>;
     using OutVec = amc::vector<const ConstString*>;
 

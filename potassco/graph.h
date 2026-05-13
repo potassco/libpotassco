@@ -1,6 +1,6 @@
 //
 // Copyright (c) 2017 - 2025, Roland Kaminski
-// Copyright (c) 2025 - present, Francois Laferriere
+// Copyright (c) 2025 - present, Francois Laferriere, Benjamin Kaufmann
 //
 // This file is part of Potassco.
 //
@@ -43,6 +43,7 @@ public:
         return id;
     }
     auto addEdge(IdType from, IdType to) -> void { nodes_.at(from).edges.push_back(to); }
+    auto getData(IdType nId) const -> DataType { return nodes_.at(nId).data; }
     void clear() { nodes_.clear(); }
 
     using Scc    = std::vector<DataType>;

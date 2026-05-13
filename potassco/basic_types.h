@@ -234,6 +234,16 @@ constexpr Weight_t weight(Atom_t) { return 1; }
 constexpr Weight_t weight(Lit_t) { return 1; }
 //! Returns the weight of the given weight literal.
 constexpr Weight_t weight(const WeightLit& w) { return w.weight; }
+//! A 32-bit integer hash function inspired by Wang/Jenkin.
+constexpr Id_t hashId(Id_t key) {
+    key  = ~key + (key << 15);
+    key ^= (key >> 11);
+    key += (key << 3);
+    key ^= (key >> 5);
+    key += (key << 10);
+    key ^= (key >> 16);
+    return key;
+}
 
 //! Atom comparison flags.
 enum class AtomCompare : uint8_t { cmp_default = 0, cmp_natural = 1, cmp_arity = 2 };

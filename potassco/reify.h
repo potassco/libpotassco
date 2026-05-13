@@ -97,18 +97,9 @@ private:
     //! Stores step-specific tuples and graph nodes.
     struct StepData;
     using StepDataPtr = std::unique_ptr<StepData>;
-    //! Compute SCCs for a given head and body literals.
-    template <typename L>
-    void calculateSccs(AtomSpan head, std::span<const L> body);
     //! Print a fact to the output stream.
     template <typename... T>
     void printFact(const char* name, const T&... args);
-    //! Print a fact for the current step if step reification is enabled.
-    template <typename... T>
-    void printStepFact(const char* name, const T&... args);
-    //! Insert a tuple into a map and print a fact if it was not already present.
-    template <typename M, typename T>
-    auto tuple(M& map, const char* name, std::span<T> args) -> size_t;
     //! Insert a theory tuple and return its ID.
     auto theoryTuple(IdSpan args) -> size_t;
     //! Insert a literal tuple and return its ID.
@@ -119,8 +110,6 @@ private:
     auto theoryElementTuple(IdSpan args) -> size_t;
     //! Insert a weighted literal tuple and return its ID.
     auto weightLitTuple(WeightLitSpan args) -> size_t;
-    //! Add a node for the given atom to the graph.
-    auto addNode(Atom_t atom) -> uint32_t;
 
     std::ostream& out_;
     StepDataPtr   stepData_;
