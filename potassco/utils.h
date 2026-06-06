@@ -241,6 +241,117 @@ private:
     DynamicBuffer buffer_;
 };
 
+//! Enumeration type for guiding hash probe lookup.
+enum class HashProbeResult {
+    success,  //!< Element found - stop probing.
+    fail,     //!< Empty element found - stop probing.
+    removed,  //!< Probe hit a removed element, which might be returned if no other element is found.
+    collision //!< Probe hit a valid element, but probing should continue.
+};
+//! A (dynamically sized) array type intended to be used as a foundation for linear probing hash tables.
+template <typename T, std::unsigned_integral SizeT = std::size_t>
+class DynamicHashArray {
+public:
+    using pointer   = T*;    // NOLINT
+    using size_type = SizeT; // NOLINT
+
+    DynamicHashArray() = default;
+    explicit DynamicHashArray(size_type bucketCount) {
+        if (bucketCount) {
+            if (auto cap = std::bit_ceil(std::max(bucketCount, static_cast<size_type>(8u))); cap >= bucketCount) {
+                auto t = std::make_unique<T[]>(cap);
+                arr_   = {t.release(), cap};
+            }
+            else {
+                throw std::length_error{"DynamicHashArray"};
+            }
+        }
+    }
+    DynamicHashArray(DynamicHashArray&& other) noexcept : arr_(std::exchange(other.arr_, {})) {}
+    DynamicHashArray& operator=(DynamicHashArray&& other) noexcept {
+        if (data() != other.data()) {
+            Deleter{}(arr_.data());
+            arr_ = std::exchange(other.arr_, {});
+        }
+        return *this;
+    }
+    ~DynamicHashArray() noexcept { Deleter{}(arr_.data()); }
+
+    //! Returns the array's current capacity.
+    [[nodiscard]] constexpr auto capacity() const noexcept -> size_type {
+        return static_cast<size_type>(std::size(arr_));
+    }
+    //! Returns the number of remaining elements assuming the given max load factor and "in-use" elements.
+    [[nodiscard]] constexpr auto avail(size_type used, double lf) const noexcept -> size_type {
+        return static_cast<size_type>(capacity() * lf) - used;
+    }
+    //! Returns a pointer to the internal array.
+    [[nodiscard]] constexpr auto data() const noexcept -> pointer { return arr_.data(); }
+    //! Returns the array's current hash mask.
+    [[nodiscard]] constexpr auto mask() const noexcept -> size_type { return capacity() - 1; }
+    //! Returns the element at the given array index.
+    [[nodiscard]] constexpr auto operator[](size_type i) -> T& { return arr_[i]; }
+
+    //! Returns the first position in the array that could store an element with the given hash.
+    /*!
+     * \pre capacity() > 0
+     * \param hash The hash to lookup.
+     * \param pred The search predicate to apply on each visited element.
+     * \note Search is stopped once the given predicate returns a "terminating" probe result, i.e.,
+     *       HashProbeResult::success, or HashProbeResult::fail.
+     * \return The position where an entry with the given hash should be stored according to the provided predicate.
+     */
+    template <std::unsigned_integral HashT, typename Pred>
+    requires(std::is_invocable_r_v<HashProbeResult, Pred, T>)
+    [[nodiscard]] auto lookup(HashT hash, const Pred& pred) const -> pointer {
+        assert(capacity());
+        const auto m = mask();
+        for (pointer pos = nullptr, data = arr_.data();; ++hash) {
+            auto b = hash & m;
+            if (auto r = pred(data[b]); r != HashProbeResult::collision) {
+                if (not pos || r == HashProbeResult::success) {
+                    pos = &data[b];
+                }
+                if (r != HashProbeResult::removed) {
+                    return pos;
+                }
+            }
+        }
+    }
+    //! Doubles the capacity of this array and relocates all "relevant" elements.
+    /*!
+     * \param hasher The hash function to apply, which shall return the hash for a given entry.
+     * \param pred   The "filter" predicate used to determine "relevant" elements.
+     * \note The given predicate shall return true for "relevant" and false for empty/removed entries.
+     * \return The number of "relevant" elements in the array.
+     */
+    template <typename H, typename Pred>
+    requires(std::is_invocable_r_v<bool, Pred, T>)
+    auto grow(const H& hasher, const Pred& pred) -> size_type {
+        auto       tmp  = DynamicHashArray(std::max(capacity() * 2u, static_cast<size_type>(1u)));
+        auto       used = static_cast<size_type>(0);
+        const auto m    = tmp.mask();
+        for (auto& b : arr_) {
+            if (pred(b)) {
+                ++used;
+                for (auto k = hasher(b);; ++k) {
+                    if (auto& p = tmp[k & m]; not pred(p)) {
+                        p = std::move(b);
+                        break;
+                    }
+                }
+            }
+        }
+        std::swap(arr_, tmp.arr_);
+        return used;
+    }
+
+private:
+    using Deleter   = typename std::unique_ptr<T[]>::deleter_type;
+    using ArrayType = std::span<T>;
+    ArrayType arr_;
+};
+
 //! A (dynamically sized) id index implemented as an open-addressing hashtable.
 /*!
  * \note The index does not store values, but instead is meant as an index atop an existing external data container.
@@ -290,7 +401,7 @@ public:
     //! Returns whether the index is full and therefore will grow when the next element is added.
     [[nodiscard]] constexpr auto full() const noexcept -> bool { return grow_ == 0u; }
     //! Returns the number of buckets in the index.
-    [[nodiscard]] constexpr auto buckets() const noexcept -> uint32_t { return cap_; }
+    [[nodiscard]] constexpr auto buckets() const noexcept -> uint32_t { return table_.capacity(); }
 
     //! A type for storing the result of an index lookup.
     class IndexRef {
@@ -325,21 +436,12 @@ public:
         if (empty()) {
             return {};
         }
-        const Bucket* invalid = nullptr;
-        for (auto i = hash, mask = buckets() - 1;; ++i) {
-            auto b = i & mask;
-            if (const auto& e = table_[b]; not e.used()) {
-                if (not invalid) {
-                    invalid = &e;
-                }
-                if (e.value == id_empty) {
-                    return IndexRef{invalid};
-                }
+        return IndexRef{table_.lookup(hash, [&](const Bucket& e) {
+            if (not e.used()) {
+                return e.value == id_empty ? HashProbeResult::fail : HashProbeResult::removed;
             }
-            else if (e.hash == hash && func(e.value)) {
-                return IndexRef{&e};
-            }
-        }
+            return e.hash == hash && func(e.value) ? HashProbeResult::success : HashProbeResult::collision;
+        })};
     }
     [[nodiscard]] auto find_if(HashType hash, Id_t id) const noexcept -> IndexRef {
         return find_if(hash, [id](Id_t x) { return x == id; });
@@ -362,13 +464,15 @@ public:
      * \pre id < `id_max-1`.
      */
     void add(IndexRef pos, HashType hash, Id_t id) {
-        assert(not pos.valid() && (pos.pos_ == nullptr || static_cast<uint32_t>(pos.pos_ - table_) < buckets()));
         if (full()) {
-            grow(buckets() * 2);
+            grow();
             pos.pos_ = nullptr;
         }
-        auto* bucket = pos.pos_ != nullptr ? const_cast<Bucket*>(pos.pos_) : next(hash, buckets() - 1);
-        assign(bucket, {hash, id});
+        auto* bucket  = pos.pos_ != nullptr ? const_cast<Bucket*>(pos.pos_) : next(hash);
+        grow_        -= (bucket->value == id_empty);
+        tombs_       -= (bucket->value == id_tomb);
+        ++size_;
+        *bucket = {hash, id};
     }
 
     //! Adds the given entry to the index provided that it does not yet exist.
@@ -388,29 +492,20 @@ public:
     void discard();
 
 private:
-    [[nodiscard]] auto next(HashType hash, uint32_t mask) noexcept -> Bucket* {
-        for (auto i = hash;; ++i) {
-            if (auto pos = i & mask; not table_[pos].used()) {
+    [[nodiscard]] auto next(HashType hash) noexcept -> Bucket* {
+        for (const auto& m = table_.mask();; ++hash) {
+            if (auto pos = hash & m; not table_[pos].used()) {
                 return &table_[pos];
             }
         }
     }
-    //
-    void grow(uint32_t nc);
-    void insert(std::span<Bucket> data);
-    void assign(Bucket* pos, Bucket value) {
-        auto prevId  = std::exchange(*pos, value).value;
-        grow_       -= (prevId == id_empty);
-        tombs_      -= (prevId == id_tomb);
-        ++size_;
-    }
-
-    Bucket*  table_{nullptr};
-    uint32_t cap_{0u};
-    uint32_t size_{0u};
-    uint32_t grow_{0u};
-    uint32_t tombs_{0u};
-    uint32_t lf_{8500u};
+    void grow();
+    using BucketArray = DynamicHashArray<Bucket, uint32_t>;
+    BucketArray table_;
+    uint32_t    size_{0u};
+    uint32_t    grow_{0u};
+    uint32_t    tombs_{0u};
+    uint32_t    lf_{8500u};
 };
 
 //! A trivially relocatable immutable string type with small buffer optimization.

@@ -173,19 +173,27 @@ void DynamicBitset::compact() {
 // DynamicIndex
 /////////////////////////////////////////////////////////////////////////////////////////
 static constexpr auto permy = 10000u;
-DynamicIndex::DynamicIndex(uint32_t bucketCount, double lf) : lf_(static_cast<uint32_t>(lf * permy)) {
+DynamicIndex::DynamicIndex(uint32_t bucketCount, double lf)
+    : table_(bucketCount)
+    , lf_(static_cast<uint32_t>(lf * permy)) {
     POTASSCO_CHECK_PRE(lf >= 0.5 && lf < 1.0);
-    if (bucketCount) {
-        grow(std::bit_ceil(bucketCount));
-    }
+    grow_ = table_.avail(0, lf);
 }
 DynamicIndex::DynamicIndex(const DynamicIndex& other)
     : DynamicIndex(other.size(), static_cast<double>(other.lf_) / permy) {
-    insert(std::span{other.table_, other.buckets()});
+    POTASSCO_ASSERT(grow_ >= other.size());
+    auto todo = other.size();
+    for (const auto* x = other.table_.data(); todo; ++x) {
+        if (x->used()) {
+            *next(x->hash) = *x;
+            --todo;
+        }
+    }
+    grow_ -= other.size();
+    size_  = other.size();
 }
 DynamicIndex::DynamicIndex(DynamicIndex&& other) noexcept
-    : table_(std::exchange(other.table_, nullptr))
-    , cap_(other.cap_)
+    : table_(std::move(other.table_))
     , size_(other.size_)
     , grow_(other.grow_)
     , tombs_(other.tombs_)
@@ -204,8 +212,7 @@ DynamicIndex& DynamicIndex::operator=(const DynamicIndex& other) {
 
 DynamicIndex& DynamicIndex::operator=(DynamicIndex&& other) noexcept {
     if (this != &other) {
-        table_ = std::exchange(other.table_, table_);
-        cap_   = other.cap_;
+        table_ = std::move(other.table_);
         size_  = other.size_;
         grow_  = other.grow_;
         tombs_ = other.tombs_;
@@ -215,34 +222,34 @@ DynamicIndex& DynamicIndex::operator=(DynamicIndex&& other) noexcept {
     return *this;
 }
 
-void DynamicIndex::grow(uint32_t nc) {
-    auto cap = buckets();
-    nc       = std::max(8u, nc);
-    POTASSCO_CHECK(nc >= cap, Potassco::Errc::bad_alloc, "DynamicIndex: can't grow from %u to %u", cap, nc);
-    auto prev = std::span(std::exchange(table_, new Bucket[nc]), cap);
-    cap_      = nc;
-    grow_     = static_cast<uint32_t>(nc * (static_cast<double>(lf_) / permy));
-    size_ = tombs_ = 0u;
-    insert(prev);
-    delete[] prev.data();
-}
-void DynamicIndex::insert(std::span<Bucket> data) {
-    const auto mask = cap_ - 1;
-    for (const auto& x : data) {
-        if (x.used()) {
-            POTASSCO_ASSERT(not full());
-            assign(next(x.hash, mask), x);
-        }
-    }
+void DynamicIndex::grow() {
+    auto used = table_.grow([](const Bucket& e) { return e.hash; }, [](const Bucket& e) { return e.used(); });
+    assert(size_ == used);
+    grow_  = table_.avail(used, static_cast<double>(lf_) / permy);
+    tombs_ = 0u;
 }
 bool DynamicIndex::erase(IndexRef r) {
     if (r.valid()) {
-        assert(static_cast<uint32_t>(r.bucket() - table_) < buckets());
+        assert(static_cast<uint32_t>(r.bucket() - table_.data()) < buckets());
         *const_cast<Bucket*>(r.bucket()) = Bucket{.hash = 0u, .value = id_tomb};
         ++tombs_;
         --size_;
         if (full() && tombs_ >= size_) {
-            *this = DynamicIndex(*this);
+            // Consolidate - turn tombs into free and re-hash used elements.
+            // NB: This algo only works because we always start with at least one free slot.
+            // NB: Used elements might move to the right, but in that case, such elements keep their position when
+            //     they are touched again in a subsequent iteration.
+            auto nFree = 0u;
+            for (auto& x : std::span{table_.data(), buckets()}) {
+                // temporarily remove x (thereby clearing any tomb)...
+                auto t  = std::exchange(x, {});
+                nFree  += x.value == id_empty;
+                if (t.used()) { // ...and re-insert if relevant
+                    *next(t.hash) = t;
+                }
+            }
+            POTASSCO_ASSERT(nFree > 0, "broken probing invariant");
+            grow_ += std::exchange(tombs_, 0u);
         }
         return true;
     }
@@ -251,11 +258,11 @@ bool DynamicIndex::erase(IndexRef r) {
 void DynamicIndex::clear() {
     grow_ += (size_ + tombs_);
     size_ = tombs_ = 0u;
-    std::fill_n(table_, cap_, Bucket{});
+    std::fill_n(table_.data(), buckets(), Bucket{});
 }
 void DynamicIndex::discard() {
-    size_ = tombs_ = cap_ = grow_ = 0u;
-    delete[] std::exchange(table_, nullptr);
+    size_ = tombs_ = grow_ = 0u;
+    table_                 = {};
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 // ConstString

@@ -438,9 +438,62 @@ TEST_CASE("Test DynamicBuffer", "[util]") {
 TEST_CASE("Test HashIndex", "[util]") {
     static_assert(std::is_move_constructible_v<DynamicIndex>, "should be movable");
     static_assert(std::is_move_assignable_v<DynamicIndex>, "should be movable");
-    static_assert(std::is_copy_assignable_v<DynamicIndex>, "should not be copyable");
-    static_assert(std::is_copy_constructible_v<DynamicIndex>, "should not be copyable");
-    static_assert(DynamicIndex::trivially_relocatable::value);
+    static_assert(std::is_copy_assignable_v<DynamicIndex>, "should be copyable");
+    static_assert(std::is_copy_constructible_v<DynamicIndex>, "should be copyable");
+    static_assert(DynamicIndex::trivially_relocatable::value, "should be trivially relocatable");
+
+    static_assert(std::is_move_constructible_v<DynamicHashArray<int>>, "should be movable");
+    static_assert(std::is_move_assignable_v<DynamicHashArray<int>>, "should be movable");
+    static_assert(not std::is_copy_assignable_v<DynamicHashArray<int>>, "should not be copyable");
+    static_assert(not std::is_copy_constructible_v<DynamicHashArray<int>>, "should not be copyable");
+
+    SECTION("HashArray") {
+        SECTION("Init") {
+            DynamicHashArray<unsigned> ha(1);
+            REQUIRE(ha.capacity() == 8u);
+        }
+        DynamicHashArray<unsigned> ha;
+        REQUIRE(ha.capacity() == 0u);
+        REQUIRE(ha.grow(std::identity{}, [](unsigned) { return false; }) == 0u);
+        REQUIRE(ha.capacity() == 8u);
+        auto* p = ha.lookup(10u, [](unsigned) { return HashProbeResult::fail; });
+        REQUIRE(*p == 0u);
+        REQUIRE(p - ha.data() == 2);
+        *p = 2u;
+        p  = ha.lookup(3u, [](unsigned x) { return x == 2u ? HashProbeResult::success : HashProbeResult::fail; });
+        REQUIRE(p - ha.data() != 2);
+        *p        = 3u;
+        auto used = ha.grow(
+            [](unsigned x) {
+                REQUIRE(x != 0u);
+                return x == 2u ? 10u : x;
+            },
+            [](unsigned x) { return x != 0u; });
+        REQUIRE(used == 2u);
+        REQUIRE(ha.capacity() == 16u);
+
+        REQUIRE(*ha.lookup(10u, [](unsigned x) { return x ? HashProbeResult::success : HashProbeResult::fail; }) == 2u);
+        REQUIRE(*ha.lookup(3u, [](unsigned x) { return x ? HashProbeResult::success : HashProbeResult::fail; }) == 3u);
+
+        auto* d = ha.data();
+        auto  m = std::move(ha);
+        REQUIRE(ha.capacity() == 0u);
+        REQUIRE(m.capacity() == 16u);
+        REQUIRE(m.data() == d);
+        ha = std::move(m);
+        REQUIRE(ha.capacity() == 16u);
+        REQUIRE(m.capacity() == 0u);
+        REQUIRE(ha.data() == d);
+
+        m = DynamicHashArray<unsigned>{23u};
+        REQUIRE(m.capacity() == 32u);
+        REQUIRE(m.mask() == 31u);
+        REQUIRE(m.data() != d);
+        m = std::move(ha);
+        REQUIRE(m.data() == d);
+        REQUIRE(m.capacity() == 16u);
+        REQUIRE(m.mask() == 15u);
+    }
 
     SECTION("empty") {
         DynamicIndex index;
@@ -547,6 +600,10 @@ TEST_CASE("Test HashIndex", "[util]") {
                 REQUIRE(index.contains(i, i));
                 REQUIRE(rhs.contains(i, i));
             }
+            DynamicIndex empty;
+            DynamicIndex alsoEmpty(empty);
+            REQUIRE(empty.size() == alsoEmpty.size());
+            REQUIRE(empty.buckets() == alsoEmpty.buckets());
         }
         SECTION("move") {
             DynamicIndex rhs(std::move(index));
@@ -616,9 +673,12 @@ TEST_CASE("Test HashIndex", "[util]") {
             REQUIRE_FALSE(r);
             REQUIRE(r.bucket() == b);
         }
-        SECTION("shrink") {
+        SECTION("consolidate") {
             auto hash = [](uint32_t i) { return static_cast<uint32_t>(i * 11111111111u); };
-            for (unsigned i = 0; index.buckets() < 16 || not index.full(); ++i) { REQUIRE(index.try_add(hash(i), i)); }
+            for (unsigned i = 0; index.buckets() < 16 || not index.full(); ++i) {
+                //
+                REQUIRE(index.try_add(hash(i), i));
+            }
             REQUIRE(index.buckets() == 16u);
             REQUIRE(index.size() == 11u);
 
@@ -646,9 +706,59 @@ TEST_CASE("Test HashIndex", "[util]") {
             for (auto i : {3u, 4u, 5u, 7u, 8u, 9u}) { REQUIRE(index.contains(hash(i), i)); }
             REQUIRE(index.erase(index.find_if(hash(5), 5)));
             REQUIRE(index.size() == 5u);
-            REQUIRE(index.buckets() == 8u);
+            REQUIRE_FALSE(index.full());
 
             for (auto i : {3u, 4u, 7u, 8u, 9u}) { REQUIRE(index.erase(index.find_if(hash(i), i))); }
+        }
+        SECTION("consolidatePermute") {
+            index      = DynamicIndex(0u, 0.99);
+            auto elems = std::vector<std::pair<uint32_t, uint32_t>>{{2, 'a'}, {2, 'b'}, {3, 'x'}, {4, 'c'},
+                                                                    {5, 'd'}, {6, 'e'}, {7, 'f'}};
+
+            SECTION("moveRight") {
+                // F F a b c d e f-> x
+                for (auto [hash, val] : elems) {
+                    if (val != 'x') {
+                        REQUIRE(index.try_add(hash, val));
+                    }
+                }
+                // x F a b c d e f
+                REQUIRE(index.try_add(3, 'x'));
+                REQUIRE(index.buckets() == 8u);
+                REQUIRE(index.size() == 7u);
+                REQUIRE(index.full());
+                auto* xSlot = index.find_if(3, 'x').bucket();
+
+                // x F a b c d e f -> erase
+                // x F a b c T T T
+                for (auto [hash, val] : std::span(elems).last(3)) { REQUIRE(index.erase(index.find_if(hash, val))); }
+                REQUIRE(index.full());
+
+                // x F a b T T T T -> consolidate
+                REQUIRE(index.erase(index.find_if(elems[3].first, elems[3].second)));
+                REQUIRE(index.size() == 3u);
+                REQUIRE_FALSE(index.full());
+
+                // F F a b x F F F
+                REQUIRE(index.find_if(3, 'x').bucket() > xSlot);
+            }
+            REQUIRE(std::ranges::is_sorted(elems));
+            do {
+                CAPTURE(elems);
+                index.clear();
+                for (auto [hash, val] : elems) { REQUIRE(index.try_add(hash, val)); }
+                REQUIRE(index.buckets() == 8u);
+                REQUIRE(index.size() == 7u);
+                REQUIRE(index.full());
+
+                for (auto [hash, val] : std::span(elems).last(3)) { REQUIRE(index.erase(index.find_if(hash, val))); }
+                REQUIRE(index.full());
+                REQUIRE(index.erase(index.find_if(elems[3].first, elems[3].second)));
+                REQUIRE(index.size() == 3u);
+                REQUIRE_FALSE(index.full());
+                for (auto [hash, val] : std::span(elems).first(3)) { REQUIRE(index.find_if(hash, val)); }
+                for (auto [hash, val] : std::span(elems).last(4)) { REQUIRE_FALSE(index.find_if(hash, val)); }
+            } while (std::ranges::next_permutation(elems).found);
         }
     }
     SECTION("clear") {
