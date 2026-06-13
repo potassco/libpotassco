@@ -217,6 +217,7 @@ bool SmodelsInput::mapSymbol(Atom_t atom, std::string_view name) {
         else {
             extra_->addDom(&it->second, heuType, bias, prio, atomLit);
         }
+        return opts_.filter;
     }
     return false;
 }

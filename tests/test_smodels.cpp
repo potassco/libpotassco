@@ -21,13 +21,13 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 //
-
 #include "test_common.h"
 
 #include <potassco/convert.h>
 #include <potassco/smodels.h>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
 #include <cstring>
@@ -694,6 +694,11 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
         writer.outputAtom(b, R"(_edge("1,2","2,1"))");
         writer.outputAtom(c, R"(_edge("2,1","1,2"))");
         writer.endStep();
+        auto keep = GENERATE(true, false);
+        CAPTURE(keep);
+        if (not keep) {
+            opts.dropConverted();
+        }
         REQUIRE(readSmodels(str, observer, opts) == 0);
         REQUIRE(observer.edges.size() == 3);
         REQUIRE(observer.edges[0].cond == toCond(a));
@@ -702,6 +707,15 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
         REQUIRE(observer.edges[1].cond == toCond(b));
         REQUIRE(observer.edges[1].s == observer.edges[2].t);
         REQUIRE(observer.edges[2].cond == toCond(c));
+        if (keep) {
+            REQUIRE(observer.atoms.size() == 3);
+            REQUIRE(observer.atoms[1] == "_edge(1,2)");
+            REQUIRE(observer.atoms[2] == R"(_edge("1,2","2,1"))");
+            REQUIRE(observer.atoms[3] == R"(_edge("2,1","1,2"))");
+        }
+        else {
+            REQUIRE(observer.atoms.empty());
+        }
     }
     SECTION("Test acyc") {
         Atom_t a = 1, b = 2;
@@ -722,14 +736,21 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
         REQUIRE(observer.edges[0].t == observer.edges[1].s);
     }
     SECTION("_heuristic atoms are converted to heuristic directive") {
-        Atom_t a = 1, b = 2, h1 = 3, h2 = 4, h3 = 5, h4 = 6;
+        Atom_t a = 1, b = 2, h1 = 3, h2 = 4, h3 = 5, h4 = 6, h5 = 7;
         writer.outputAtom(a, "f(a,b,c,d(q(r(s))))");
         writer.outputAtom(h1, "_heuristic(f(a,b,c,d(q(r(s)))),sign,-1)");
         writer.outputAtom(h2, "_heuristic(f(a,b,c,d(q(r(s)))),true,1)");
         writer.outputAtom(h3, "_heuristic(f(\"a,b(c,d)\"),level,-1,10)");
         writer.outputAtom(h4, "_heuristic(f(\"a,b(c,d)\"),factor,2,1)");
+        writer.outputAtom(h5, "_heuristic(no_such_atom,factor,2,1)");
         writer.outputAtom(b, "f(\"a,b(c,d)\")");
         writer.endStep();
+        auto keep = GENERATE(true, false);
+        CAPTURE(keep);
+        if (not keep) {
+            opts.dropConverted();
+        }
+
         REQUIRE(readSmodels(str, observer, opts) == 0);
 
         REQUIRE(observer.heuristics.size() == 4);
@@ -739,6 +760,17 @@ TEST_CASE("Test Atom to directive conversion", "[clasp]") {
                            {b, DomModifier::level, -1, 10, toCond(h3)},
                            {b, DomModifier::factor, 2, 1, toCond(h4)}};
         REQUIRE(std::equal(std::begin(exp), std::end(exp), observer.heuristics.begin()) == true);
+        if (keep) {
+            REQUIRE(observer.atoms.size() == 7);
+            REQUIRE(observer.atoms[lit(a)] == "f(a,b,c,d(q(r(s))))");
+            REQUIRE(observer.atoms[lit(h3)] == "_heuristic(f(\"a,b(c,d)\"),level,-1,10)");
+            REQUIRE(observer.atoms[lit(h5)] == "_heuristic(no_such_atom,factor,2,1)");
+        }
+        else {
+            REQUIRE(observer.atoms.size() == 2);
+            REQUIRE(observer.atoms[lit(a)] == "f(a,b,c,d(q(r(s))))");
+            REQUIRE(observer.atoms[lit(b)] == "f(\"a,b(c,d)\")");
+        }
     }
 }
 
