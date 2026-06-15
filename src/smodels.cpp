@@ -28,7 +28,6 @@
 
 #include <cstring>
 #include <ostream>
-#include <unordered_map>
 
 #include <amc/vector.hpp>
 
@@ -39,23 +38,48 @@ using namespace std::literals;
 /////////////////////////////////////////////////////////////////////////////////////////
 struct SmodelsInput::Extra {
     struct Dom {
-        Dom(const Id_t* a, DomModifier m, int b, unsigned p, Lit_t c) : atomId(a), mod(m), bias(b), prio(p), cond(c) {}
-        const Id_t* atomId;
+        Dom(Id_t ref, DomModifier m, int b, unsigned p, Lit_t c) : atomIdx(ref), mod(m), bias(b), prio(p), cond(c) {}
+        Id_t        atomIdx;
         DomModifier mod;
         int         bias;
         unsigned    prio;
         Lit_t       cond;
     };
-    void addDom(const Id_t* atomId, DomModifier mod, int bias, unsigned prio, Lit_t cond) {
-        dom.emplace_back(atomId, mod, bias, prio, cond);
+    auto addAtom(std::string_view name, Atom_t atom) -> std::pair<Id_t, bool> {
+        auto [idx, added] = atoms.add(name);
+        if (added) {
+            POTASSCO_ASSERT(idx == name2Atom.size());
+            name2Atom.emplace_back(atom);
+            added = atom != 0u;
+        }
+        else if (atom && name2Atom[idx] == 0u) {
+            name2Atom[idx] = atom;
+            added          = true;
+        }
+        return {idx, added};
     }
-    auto addAtom(std::string_view name, Id_t id) { return try_emplace(atoms, name, id); }
-    Id_t addNode(std::string_view name) {
-        return try_emplace(nodes, name, static_cast<Id_t>(nodes.size())).first->second;
+    void addDom(AbstractProgram& out, std::string_view name, DomModifier mod, int bias, unsigned prio, Lit_t cond) {
+        auto idx = addAtom(name, 0u).first;
+        if (auto atom = name2Atom[idx]; atom) {
+            out.heuristic(atom, mod, bias, prio, toSpan(cond));
+        }
+        else {
+            dom.emplace_back(idx, mod, bias, prio, cond);
+        }
     }
-    StringMap<Id_t>  atoms;
-    StringMap<Id_t>  nodes;
-    amc::vector<Dom> dom;
+    void flushDom(AbstractProgram& out) {
+        for (const auto& [idx, mod, bias, prio, cond] : dom) {
+            if (auto atom = name2Atom[idx]; atom) {
+                out.heuristic(atom, mod, bias, prio, toSpan(cond));
+            }
+        }
+        dom.clear();
+    }
+    Id_t                addNode(std::string_view name) { return nodes.add(name).first; }
+    OrderedStringSet    atoms;
+    OrderedStringSet    nodes;
+    amc::vector<Atom_t> name2Atom;
+    amc::vector<Dom>    dom;
 };
 
 SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts) : out_(out), opts_(opts) {}
@@ -178,19 +202,12 @@ void SmodelsInput::readSymbols() {
             out_.outputAtom(atom, name);
         }
         if (opts_.cHeuristic) {
-            if (auto [it, added] = extra_->addAtom(name, atom); not added) {
-                POTASSCO_CHECK_PRE(it->second == 0, "Redefinition: atom '%s' already exists", scratch.data());
-                it->second = atom;
-            }
+            POTASSCO_CHECK_PRE(extra_->addAtom(name, atom).second, "Redefinition: atom '%s' already exists",
+                               scratch.data());
         }
     }
     if (extra_) {
-        for (const auto& [atomId, mod, bias, prio, cond] : extra_->dom) {
-            if (*atomId) {
-                out_.heuristic(*atomId, mod, bias, prio, toSpan(cond));
-            }
-        }
-        extra_->dom.clear();
+        extra_->flushDom(out_);
     }
     if (not incremental()) {
         extra_.reset();
@@ -210,13 +227,7 @@ bool SmodelsInput::mapSymbol(Atom_t atom, std::string_view name) {
     auto bias    = 0;
     auto prio    = 0u;
     if (opts_.cHeuristic && matchDomHeuPred(name, n0, heuType, bias, prio)) {
-        auto [it, added] = extra_->addAtom(n0, 0);
-        if (not added && it->second != 0) {
-            out_.heuristic(it->second, heuType, bias, prio, toSpan(atomLit));
-        }
-        else {
-            extra_->addDom(&it->second, heuType, bias, prio, atomLit);
-        }
+        extra_->addDom(out_, n0, heuType, bias, prio, atomLit);
         return opts_.filter;
     }
     return false;

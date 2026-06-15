@@ -30,7 +30,6 @@
 #include <span>
 #include <string_view>
 #include <type_traits>
-#include <unordered_map>
 #include <utility>
 
 namespace Potassco {
@@ -67,6 +66,24 @@ private:
     IterType current_;
     IdxType  index_ = 0;
 };
+
+template <std::integral K, K Empty>
+struct NumHashTraits {
+    using key_type = K; // NOLINT
+    static auto empty() noexcept -> key_type { return Empty; }
+    static auto hashKey(key_type key) noexcept -> uint32_t {
+        if constexpr (sizeof(key_type) <= sizeof(uint32_t)) {
+            return static_cast<uint32_t>(static_cast<std::make_unsigned_t<key_type>>(key) * 37u);
+        }
+        else {
+            auto x  = static_cast<uint64_t>(key);
+            x      *= 0xbf58476d1ce4e5b9u;
+            x      ^= x >> 31;
+            return static_cast<uint32_t>(x);
+        }
+    }
+};
+
 } // namespace Detail
 //! Returns a range adaptor similar to C++23's std::views::enumerate.
 /*!
@@ -243,17 +260,26 @@ private:
 
 //! Enumeration type for guiding hash probe lookup.
 enum class HashProbeResult {
-    success,  //!< Element found - stop probing.
-    fail,     //!< Empty element found - stop probing.
-    removed,  //!< Probe hit a removed element, which might be returned if no other element is found.
-    collision //!< Probe hit a valid element, but probing should continue.
+    success,   //!< Element found - stop probing.
+    fail,      //!< Empty element found - stop probing.
+    collision, //!< Probe hit a valid element, but probing should continue.
+    removed,   //!< Probe hit a removed element, which might be returned if no other element is found.
+};
+
+template <typename TraitsT, typename T>
+concept HashArrayTraits = requires(const T& x) {
+    typename TraitsT::size_type;
+    typename TraitsT::hash_type;
+    { TraitsT::used(x) } -> std::convertible_to<bool>;
+    { TraitsT::hashKey(x) } -> std::same_as<typename TraitsT::hash_type>;
 };
 //! A (dynamically sized) array type intended to be used as a foundation for linear probing hash tables.
-template <typename T, std::unsigned_integral SizeT = std::size_t>
+template <typename T, HashArrayTraits<T> TraitsT>
 class DynamicHashArray {
 public:
-    using pointer   = T*;    // NOLINT
-    using size_type = SizeT; // NOLINT
+    using pointer   = T*;                          // NOLINT
+    using size_type = typename TraitsT::size_type; // NOLINT
+    using hash_type = typename TraitsT::hash_type; // NOLINT
 
     DynamicHashArray() = default;
     explicit DynamicHashArray(size_type bucketCount) {
@@ -277,13 +303,12 @@ public:
     }
     ~DynamicHashArray() noexcept { Deleter{}(arr_.data()); }
 
+    //! Clears the array while keeping its capacity().
+    void clear() { std::fill_n(data(), capacity(), T{}); }
+
     //! Returns the array's current capacity.
     [[nodiscard]] constexpr auto capacity() const noexcept -> size_type {
         return static_cast<size_type>(std::size(arr_));
-    }
-    //! Returns the number of remaining elements assuming the given max load factor and "in-use" elements.
-    [[nodiscard]] constexpr auto avail(size_type used, double lf) const noexcept -> size_type {
-        return static_cast<size_type>(capacity() * lf) - used;
     }
     //! Returns a pointer to the internal array.
     [[nodiscard]] constexpr auto data() const noexcept -> pointer { return arr_.data(); }
@@ -292,58 +317,78 @@ public:
     //! Returns the element at the given array index.
     [[nodiscard]] constexpr auto operator[](size_type i) -> T& { return arr_[i]; }
 
-    //! Returns the first position in the array that could store an element with the given hash.
-    /*!
-     * \pre capacity() > 0
-     * \param hash The hash to lookup.
-     * \param pred The search predicate to apply on each visited element.
-     * \note Search is stopped once the given predicate returns a "terminating" probe result, i.e.,
-     *       HashProbeResult::success, or HashProbeResult::fail.
-     * \return The position where an entry with the given hash should be stored according to the provided predicate.
-     */
-    template <std::unsigned_integral HashT, typename Pred>
-    requires(std::is_invocable_r_v<HashProbeResult, Pred, T>)
-    [[nodiscard]] auto lookup(HashT hash, const Pred& pred) const -> pointer {
-        assert(capacity());
-        const auto m = mask();
-        for (pointer pos = nullptr, data = arr_.data();; ++hash) {
-            auto b = hash & m;
-            if (auto r = pred(data[b]); r != HashProbeResult::collision) {
-                if (not pos || r == HashProbeResult::success) {
-                    pos = &data[b];
-                }
-                if (r != HashProbeResult::removed) {
-                    return pos;
-                }
+    //! Doubles the capacity of this array and relocates all "used" elements.
+    auto grow() -> void {
+        auto tmp = DynamicHashArray(std::max(capacity() * 2u, static_cast<size_type>(1u)));
+        for (auto& b : arr_) {
+            if (TraitsT::used(b)) {
+                *tmp.nextUnused(TraitsT::hashKey(b)) = std::move(b);
             }
         }
+        Deleter{}(arr_.data());
+        arr_ = std::exchange(tmp.arr_, {});
     }
-    //! Doubles the capacity of this array and relocates all "relevant" elements.
+
+    //! Returns the first position in the array that could store an element with the given hash.
     /*!
-     * \param hasher The hash function to apply, which shall return the hash for a given entry.
-     * \param pred   The "filter" predicate used to determine "relevant" elements.
-     * \note The given predicate shall return true for "relevant" and false for empty/removed entries.
-     * \return The number of "relevant" elements in the array.
+     * \note If capacity() is 0, the function returns (nullptr, false).
+     * \param hash The hash to lookup.
+     * \param pred The probe predicate to apply on each visited element. Search is stopped once this predicate returns
+     *             a "terminating" probe result, i.e., HashProbeResult::success, or HashProbeResult::fail.
+     * \return A pair storing the position where an entry with the given hash should be stored according to the provided
+     *         predicate and a boolean indicating whether the search stopped with HashProbeResult::success.
      */
-    template <typename H, typename Pred>
-    requires(std::is_invocable_r_v<bool, Pred, T>)
-    auto grow(const H& hasher, const Pred& pred) -> size_type {
-        auto       tmp  = DynamicHashArray(std::max(capacity() * 2u, static_cast<size_type>(1u)));
-        auto       used = static_cast<size_type>(0);
-        const auto m    = tmp.mask();
-        for (auto& b : arr_) {
-            if (pred(b)) {
-                ++used;
-                for (auto k = hasher(b);; ++k) {
-                    if (auto& p = tmp[k & m]; not pred(p)) {
-                        p = std::move(b);
+    template <typename Pred>
+    requires(std::is_invocable_r_v<HashProbeResult, Pred, T>)
+    [[nodiscard]] auto lookup(hash_type hash, const Pred& pred) const -> std::pair<pointer, bool> {
+        auto ret = std::pair<pointer, bool>{nullptr, false};
+        if (capacity()) {
+            const auto m = mask();
+            for (pointer data = arr_.data();; ++hash) {
+                auto b = hash & m;
+                if (auto r = pred(data[b]); r != HashProbeResult::collision) {
+                    if (not ret.first || r == HashProbeResult::success) {
+                        ret = {&data[b], r == HashProbeResult::success};
+                    }
+                    if (r != HashProbeResult::removed) {
                         break;
                     }
                 }
             }
         }
-        std::swap(arr_, tmp.arr_);
-        return used;
+        return ret;
+    }
+
+    //! Returns the first unused position in the array starting from the home position for the given hash.
+    /*!
+     * \pre capacity() > 0
+     */
+    [[nodiscard]] auto nextUnused(hash_type hash) noexcept -> pointer {
+        for (const auto& m = mask();; ++hash) {
+            if (auto pos = hash & m; not TraitsT::used(arr_[pos])) {
+                return &arr_[pos];
+            }
+        }
+    }
+
+    //! Erases the given element via "Deletion with linear probing" (Algorithm R) from Knuth's TAOCP.
+    void erase(pointer pos) {
+        assert(pos != nullptr);
+        auto hole = static_cast<uint32_t>(pos - data());
+        assert(hole < capacity());
+        const auto m = mask();
+        for (auto j = hole + 1; TraitsT::used(arr_[j &= m]); ++j) {
+            const auto home = TraitsT::hashKey(arr_[j]);
+            const auto lhs  = ((hole - home) & m);
+            const auto rhs  = ((j - home) & m);
+            // If hole precedes j on j's linear probe chain starting from its home position, we
+            // move j to the hole and make j's old position the new hole.
+            if (lhs < rhs) {
+                arr_[hole] = std::move(arr_[j]);
+                hole       = j;
+            }
+        }
+        arr_[hole] = {};
     }
 
 private:
@@ -365,14 +410,18 @@ class DynamicIndex {
     static constexpr auto id_empty = id_max;
     static constexpr auto id_tomb  = id_empty - 1;
     struct Bucket {
-        [[nodiscard]] constexpr auto used() const noexcept { return value < id_tomb; }
+        using size_type = uint32_t; // NOLINT
+        using hash_type = uint32_t; // NOLINT
+        [[nodiscard]] constexpr auto        used() const noexcept { return value < id_tomb; }
+        [[nodiscard]] static constexpr auto used(const Bucket& b) noexcept -> bool { return b.used(); }
+        [[nodiscard]] static constexpr auto hashKey(const Bucket& b) noexcept -> uint32_t { return b.hash; }
 
         uint32_t hash{0u};
         Id_t     value{id_empty};
     };
 
 public:
-    using HashType = Id_t;
+    using HashType = Bucket::hash_type;
 
     using trivially_relocatable = std::true_type; // NOLINT
 
@@ -433,15 +482,17 @@ public:
     template <typename CmpFunc>
     requires(std::is_invocable_r_v<bool, CmpFunc, Id_t>)
     [[nodiscard]] auto find_if(HashType hash, CmpFunc&& func) const noexcept -> IndexRef {
-        if (empty()) {
-            return {};
-        }
-        return IndexRef{table_.lookup(hash, [&](const Bucket& e) {
-            if (not e.used()) {
-                return e.value == id_empty ? HashProbeResult::fail : HashProbeResult::removed;
-            }
-            return e.hash == hash && func(e.value) ? HashProbeResult::success : HashProbeResult::collision;
-        })};
+        return IndexRef{table_
+                            .lookup(hash,
+                                    [&](const Bucket& e) {
+                                        if (not e.used()) {
+                                            return e.value == id_empty ? HashProbeResult::fail
+                                                                       : HashProbeResult::removed;
+                                        }
+                                        return e.hash == hash && func(e.value) ? HashProbeResult::success
+                                                                               : HashProbeResult::collision;
+                                    })
+                            .first};
     }
     [[nodiscard]] auto find_if(HashType hash, Id_t id) const noexcept -> IndexRef {
         return find_if(hash, [id](Id_t x) { return x == id; });
@@ -468,7 +519,7 @@ public:
             grow();
             pos.pos_ = nullptr;
         }
-        auto* bucket  = pos.pos_ != nullptr ? const_cast<Bucket*>(pos.pos_) : next(hash);
+        auto* bucket  = pos.pos_ != nullptr ? const_cast<Bucket*>(pos.pos_) : table_.nextUnused(hash);
         grow_        -= (bucket->value == id_empty);
         tombs_       -= (bucket->value == id_tomb);
         ++size_;
@@ -492,41 +543,226 @@ public:
     void discard();
 
 private:
-    [[nodiscard]] auto next(HashType hash) noexcept -> Bucket* {
-        for (const auto& m = table_.mask();; ++hash) {
-            if (auto pos = hash & m; not table_[pos].used()) {
-                return &table_[pos];
-            }
-        }
-    }
     void grow();
-    using BucketArray = DynamicHashArray<Bucket, uint32_t>;
+    using BucketArray = DynamicHashArray<Bucket, Bucket>;
     BucketArray table_;
     uint32_t    size_{0u};
     uint32_t    grow_{0u};
     uint32_t    tombs_{0u};
-    uint32_t    lf_{8500u};
+    float       lf_{0.85f};
 };
+
+template <typename TraitsT, typename K>
+concept HashTableKeyTraits = requires(const K& x) {
+    { TraitsT::hashKey(x) } -> std::unsigned_integral;
+    { TraitsT::empty() } -> std::same_as<K>;
+};
+
+//! A simple (linear-probing) hash table.
+/*!
+ * \note Entries are stored as (key,value)-pairs in a dynamic array. Hence, mutating operations invalidate
+ *       existing references/pointers.
+ */
+template <typename KeyT, typename ValT, HashTableKeyTraits<KeyT> HashTraits, bool Relocatable>
+class DynamicHashTable {
+public:
+    using key_type = KeyT; // NOLINT
+    using map_type = ValT; // NOLINT
+    struct BucketT {
+        friend bool                                      operator==(const BucketT&, const BucketT&) = default;
+        key_type                                         key{HashTraits::empty()};
+        POTASSCO_ATTR_NO_UNIQUE_ADDRESS mutable map_type value{};
+    };
+    struct TraitsT {
+        using size_type = uint32_t; // NOLINT
+        using hash_type = uint32_t; // NOLINT
+        static constexpr bool used(const BucketT& x) { return x.key != HashTraits::empty(); }
+        static constexpr auto hashKey(const BucketT& x) -> hash_type {
+            return static_cast<uint32_t>(HashTraits::hashKey(x.key));
+        }
+    };
+    using ArrayType = DynamicHashArray<BucketT, TraitsT>;
+    using pointer   = typename ArrayType::pointer;   // NOLINT
+    using size_type = typename ArrayType::size_type; // NOLINT
+
+    using trivially_relocatable = std::integral_constant<bool, Relocatable>; // NOLINT
+    using const_pointer         = const BucketT*;                            // NOLINT
+
+    //! Creates an empty table.
+    DynamicHashTable() = default;
+    //! Creates a table with at least `bucketCount` buckets.
+    explicit DynamicHashTable(size_type bucketCount) : table_(bucketCount) {
+        avail_ = static_cast<uint32_t>(table_.capacity() * 0.75);
+    }
+    //! Creates a copy of `other`.
+    DynamicHashTable(const DynamicHashTable& other) : DynamicHashTable(other.size()) {
+        auto todo = other.size();
+        assert(avail_ >= todo);
+        for (const auto* x = other.table_.data(); todo; ++x) {
+            if (TraitsT::used(*x)) {
+                *table_.nextUnused(TraitsT::hashKey(*x)) = *x;
+                --todo;
+            }
+        }
+        size_   = other.size_;
+        avail_ -= size_;
+    }
+    //! Move-constructs the table from `other`.
+    DynamicHashTable(DynamicHashTable&& other) noexcept
+        : table_(std::move(other.table_))
+        , size_(std::exchange(other.size_, 0u))
+        , avail_(std::exchange(other.avail_, 0u)) {}
+    //! Replaces this table with a copy of `other`.
+    DynamicHashTable& operator=(const DynamicHashTable& other) {
+        if (this != &other) {
+            *this = DynamicHashTable(other);
+        }
+        return *this;
+    }
+    //! Replaces this map with `other`.
+    DynamicHashTable& operator=(DynamicHashTable&& other) noexcept {
+        if (this != &other) {
+            table_ = std::move(other.table_);
+            size_  = std::exchange(other.size_, 0u);
+            avail_ = std::exchange(other.avail_, 0u);
+        }
+        return *this;
+    }
+    ~DynamicHashTable() = default;
+
+    //! Returns the number of used elements in the table.
+    [[nodiscard]] constexpr auto size() const noexcept -> uint32_t { return size_; }
+    //! Returns whether the table has no used elements.
+    [[nodiscard]] constexpr auto empty() const noexcept -> bool { return size_ == 0u; }
+    //! Returns the number of unused elements that can be used before the table needs to grow.
+    [[nodiscard]] constexpr auto avail() const noexcept -> uint32_t { return avail_; }
+    //! Returns whether the table contains the given key.
+    template <typename K>
+    [[nodiscard]] auto contains(K&& key) const noexcept -> bool {
+        return findKey(std::forward<K>(key)) != nullptr;
+    }
+    //! Returns a pointer to the element with the given key or nullptr if no such element exists.
+    template <typename K>
+    [[nodiscard]] auto findKey(K&& key) const -> const_pointer {
+        auto [pos, found] = lookup(HashTraits::hashKey(key), std::forward<K>(key));
+        return found ? pos : nullptr;
+    }
+    //! Returns a view over the underlying table.
+    [[nodiscard]] constexpr auto array() const noexcept -> std::span<const BucketT> {
+        return {table_.data(), table_.capacity()};
+    }
+
+    //! Adds a new entry with the given key to the table if the key does not yet exist.
+    /*!
+     * \note If the key is already in the table, the function returns a pointer to the corresponding entry without
+     *       changing its value (if any).
+     * \param key The key to add.
+     * \param args Arguments to be used for creating a value if necessary.
+     * \return A pointer to the stored value and a boolean indicating whether a new entry was added.
+     */
+    template <typename K, typename... Args>
+    auto add(K&& key, Args&&... args) -> std::pair<const_pointer, bool> {
+        auto h            = HashTraits::hashKey(key);
+        auto [pos, found] = lookup(h, key);
+        if (found) {
+            return {pos, false};
+        }
+        if (avail_ == 0) {
+            table_.grow();
+            avail_ = static_cast<uint32_t>(table_.capacity() * 0.75) - size_;
+            pos    = table_.nextUnused(h);
+        }
+        KeyT nk{std::forward<K>(key)};
+        assert(nk != HashTraits::empty());
+        pos->key   = std::move(nk);
+        pos->value = ValT{std::forward<Args>(args)...};
+        --avail_;
+        ++size_;
+        return {pos, true};
+    }
+
+    //! Erases the given element.
+    /*!
+     * \param pos The element to erase.
+     * \return A boolean indicating whether the element was erased.
+     */
+    bool erase(const_pointer pos) {
+        if (pos && TraitsT::used(*pos)) {
+            table_.erase(const_cast<pointer>(pos));
+            --size_;
+            ++avail_;
+            return true;
+        }
+        return false;
+    }
+    //! Removes the element with the given key from the table.
+    /*!
+     * \param key The key to remove.
+     * \return A boolean indicating whether the key was removed.
+     * \post findKey(key) == nullptr.
+     */
+    template <typename K>
+    bool remove(K&& key) {
+        return erase(findKey(std::forward<K>(key)));
+    }
+
+    //! Removes all elements from this table but keeps the buckets.
+    void clear() {
+        avail_ += size_;
+        size_   = 0u;
+        table_.clear();
+    }
+
+private:
+    template <typename K>
+    auto lookup(typename ArrayType::hash_type hash, K&& key) const noexcept -> std::pair<pointer, bool> {
+        return table_.lookup(hash, [&](const BucketT& val) {
+            return not TraitsT::used(val) ? HashProbeResult::fail
+                   : val.key == key       ? HashProbeResult::success
+                                          : HashProbeResult::collision;
+        });
+    }
+    ArrayType table_;
+    uint32_t  size_{0u};
+    uint32_t  avail_{0u};
+};
+
+//! A simple (linear-probing) hash map that maps integral keys to scalar values.
+template <std::integral KeyT, typename ValueT, KeyT Empty>
+requires(std::is_scalar_v<ValueT>)
+using SimpleHashMap = DynamicHashTable<KeyT, ValueT, Detail::NumHashTraits<KeyT, Empty>, true>;
 
 //! A trivially relocatable immutable string type with small buffer optimization.
 /*!
  * Not all std::string implementations are trivially relocatable. E.g., the SSO implemented in gcc (libstdc++) relies on
  * a pointer referencing a buffer internal to the string, making relocation non-trivial.
  * In contrast, this class uses an SSO implementation that is more similar to the one from libc++.
+ * By nature, a ConstString can't be changed once constructed. Hence, ConstString only maintains its allocated size,
+ * but no additional "capacity". The size of a ConstString object is always 16-bytes (enough to store a pointer and a
+ * size), with an SSO length of 15 characters (+1 for the null-terminator).
  */
 class ConstString final {
 public:
     using trivially_relocatable = std::true_type; // NOLINT
     struct Borrow_t {};
+    struct NoSso_t {};
     //! Creates an empty string.
-    constexpr ConstString() noexcept {
-        reset();
+    constexpr ConstString() noexcept { // NOLINT(cppcoreguidelines-pro-type-member-init)
         if (std::is_constant_evaluated()) {
-            std::fill(std::begin(storage_) + 1, std::end(storage_) - 1, static_cast<char>(0));
+            std::fill_n(storage_, sizeof(storage_) - 1, static_cast<char>(0));
+            storage_[c_max_small] = c_max_small;
+        }
+        else {
+            reset();
         }
     }
     //! Creates a string by copying `n`.
-    explicit ConstString(std::string_view n);
+    constexpr explicit ConstString(std::string_view n) : ConstString(true, n) {}
+    //! Creates a string by copying `n`.
+    /*!
+     * \note This constructor disables SSO even if `n` fits into the small buffer.
+     */
+    ConstString(NoSso_t, std::string_view n) : ConstString(false, n) {}
     //! Creates a string by borrowing `n`.
     /*!
      * \note It is the caller's responsibility to ensure that the new object is only used as long as `n` is valid.
@@ -535,74 +771,106 @@ public:
     //! Creates a (deep) copy of `o`.
     ConstString(const ConstString& o);
     //! "Steals" the content of `o`.
-    constexpr ConstString(ConstString&& o) noexcept {
-        if (o.small()) {
-            if (std::is_constant_evaluated()) {
-                std::copy(std::begin(o.storage_), std::end(o.storage_), storage_);
-            }
-            else {
-                std::memmove(storage_, o.storage_, o.size() + 1);
-                storage_[c_max_small] = o.storage_[c_max_small];
-            }
-        }
-        else {
-            new (storage_) Large{*o.large()};
-            storage_[c_max_small] = o.storage_[c_max_small];
-        }
-        o.reset();
+    constexpr ConstString(ConstString&& o) noexcept { // NOLINT(cppcoreguidelines-pro-type-member-init)
+        moveFrom(std::move(o));
     }
-    constexpr ~ConstString() {
-        if (tag() == c_large_tag) {
+    constexpr ~ConstString() { release(); }
+    ConstString&           operator=(const ConstString& other);
+    constexpr ConstString& operator=(ConstString&& other) noexcept {
+        if (this != &other) {
             release();
+            moveFrom(std::move(other));
         }
+        return *this;
     }
-    ConstString& operator=(const ConstString& other);
-    ConstString& operator=(ConstString&& other) noexcept;
 
     //! Converts this string to a string_view.
-    [[nodiscard]] constexpr explicit operator std::string_view() const { return {c_str(), size()}; }
+    [[nodiscard]] constexpr explicit operator std::string_view() const { return view(); }
     //! Returns this string as a null-terminated C string.
-    [[nodiscard]] constexpr auto c_str() const -> const char* { return small() ? storage_ : large()->str; }
-    //! Converts this string to a string_view.
-    [[nodiscard]] constexpr auto view() const -> std::string_view { return static_cast<std::string_view>(*this); }
+    [[nodiscard]] constexpr auto c_str() const -> const char* { return data(); }
+    //! Returns this string as a string_view.
+    [[nodiscard]] constexpr auto view() const -> std::string_view {
+        return small() ? std::string_view{storage_, c_max_small - tag()} : large()->view();
+    }
     //! Returns the length of this string.
     [[nodiscard]] constexpr auto size() const -> std::size_t { return small() ? c_max_small - tag() : large()->size; }
-    //! Returns the character at the given position, which shall be \< `size()`.
-    [[nodiscard]] constexpr char operator[](std::size_t pos) const { return c_str()[pos]; }
-
+    //! Returns a pointer to the underlying character array.
+    [[nodiscard]] constexpr auto data() const -> const char* { return small() ? storage_ : large()->str; }
+    //! Returns the character at the given position, which shall be \<= `size()`.
+    [[nodiscard]] constexpr char operator[](std::size_t pos) const { return data()[pos]; }
+    //! Returns whether the string is stored within the object's SSO buffer.
     [[nodiscard]] constexpr bool small() const { return tag() < c_large_tag; }
 
-    friend bool operator==(const ConstString& lhs, const ConstString& rhs) { return lhs.view() == rhs.view(); }
-    friend auto operator<=>(const ConstString& lhs, const ConstString& rhs) { return lhs.view() <=> rhs.view(); }
-    friend bool operator==(std::string_view lhs, const ConstString& rhs) { return lhs == rhs.view(); }
-    friend auto operator<=>(std::string_view lhs, const ConstString& rhs) { return lhs <=> rhs.view(); }
+    [[nodiscard]] friend constexpr bool operator==(const ConstString& lhs, const ConstString& rhs) {
+        return lhs.view() == rhs.view();
+    }
+    [[nodiscard]] friend constexpr auto operator<=>(const ConstString& lhs, const ConstString& rhs) {
+        return lhs.view() <=> rhs.view();
+    }
+    [[nodiscard]] friend constexpr bool operator==(std::string_view lhs, const ConstString& rhs) {
+        return lhs == rhs.view();
+    }
+    [[nodiscard]] friend constexpr auto operator<=>(std::string_view lhs, const ConstString& rhs) {
+        return lhs <=> rhs.view();
+    }
 
 private:
-    static constexpr auto c_max_small  = 23u;
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
+    constexpr explicit ConstString(bool allowShort, std::string_view n) {
+        if (allowShort && n.size() <= c_max_small) {
+            std::copy_n(n.data(), n.size(), storage_);
+            storage_[n.size()]    = 0;
+            storage_[c_max_small] = static_cast<char>(c_max_small - n.size());
+        }
+        else {
+            initLarge(n);
+        }
+    }
+    static constexpr auto c_max_small  = 15u;
     static constexpr auto c_large_tag  = c_max_small + 1u;
     static constexpr auto c_borrow_tag = c_large_tag + 1u;
-    struct Large {
-        const char* str;
-        std::size_t size;
-    };
-    void                         init(std::string_view str);
-    [[nodiscard]] auto           large() const -> const Large* { return reinterpret_cast<const Large*>(storage_); }
-    [[nodiscard]] constexpr auto tag() const -> uint8_t { return static_cast<uint8_t>(storage_[c_max_small]); }
-    void                         release();
-    constexpr void               reset() {
+    static constexpr auto pad_size     = static_cast<uint32_t>(c_large_tag - (sizeof(const char*) + sizeof(uint32_t)));
+    constexpr void        reset() {
         storage_[0]           = 0;
         storage_[c_max_small] = static_cast<char>(c_max_small);
     }
-    alignas(Large) char storage_[c_max_small + 1];
-};
-static_assert(ConstString{}.small());
-static_assert(ConstString{ConstString{}}.small());
-template <typename ValueType>
-using StringMap = std::unordered_map<ConstString, ValueType, std::hash<ConstString>, std::equal_to<>>;
+    constexpr void moveFrom(ConstString&& o) noexcept {
+        if (o.small()) {
+            std::copy_n(o.storage_, sizeof(storage_), storage_);
+        }
+        else {
+            std::memcpy(storage_, o.storage_, sizeof(storage_));
+        }
+        o.reset();
+    }
+    struct Large {
+        [[nodiscard]] constexpr auto view() const -> std::string_view { return {str, size}; }
+        const char*                  str;
+        uint32_t                     size;
+        char                         pad[pad_size];
+    };
+    [[nodiscard]] constexpr auto tag() const -> uint8_t { return static_cast<uint8_t>(storage_[c_max_small]); }
+    [[nodiscard]] auto           large() const -> const Large* { return reinterpret_cast<const Large*>(storage_); }
+    void                         initLarge(std::string_view str);
+    static void                  release(const char*);
+    constexpr void               release() {
+        if (tag() == c_large_tag) {
+            ConstString::release(large()->str);
+        }
+    }
 
-template <typename ValueType, typename... Args>
-auto try_emplace(StringMap<ValueType>& map, std::string_view key,
-                 Args&&... args) -> std::pair<typename StringMap<ValueType>::iterator, bool> {
+    alignas(const char*) char storage_[c_max_small + 1];
+};
+static_assert(sizeof(ConstString) == 16u);
+static_assert(ConstString{}.small());
+static_assert(ConstString{}.size() == 0u);
+static_assert(ConstString{ConstString{}}.small());
+static_assert(ConstString{"small"} == "small");
+static_assert(ConstString{"small"}.size() == 5u);
+
+template <typename MapType, typename... Args>
+auto try_emplace(MapType& map, std::string_view key, Args&&... args)
+    -> decltype(map.try_emplace(std::declval<ConstString>(), std::forward<Args>(args)...)) {
     // Create a "borrowed" key for lookup. If `key` is not in map, `try_emplace()` will copy-construct a key from `k`,
     // thereby materializing a full string. Otoh, if `map` already contains an element with the given key, we avoid an
     // unnecessary allocation.
@@ -610,6 +878,71 @@ auto try_emplace(StringMap<ValueType>& map, std::string_view key,
     ConstString k{ConstString::Borrow_t{}, key};
     return map.try_emplace(k, std::forward<Args>(args)...);
 }
+
+//! A simple string hash set that preserves the insertion order.
+class OrderedStringSet {
+public:
+    using trivially_relocatable = std::true_type; // NOLINT
+    OrderedStringSet()          = default;
+    explicit OrderedStringSet(bool allowShort);
+    OrderedStringSet(const OrderedStringSet&)            = delete;
+    OrderedStringSet(OrderedStringSet&&) noexcept        = default;
+    OrderedStringSet& operator=(const OrderedStringSet&) = delete;
+    OrderedStringSet& operator=(OrderedStringSet&&)      = default;
+    ~OrderedStringSet();
+
+    //! Returns the number of elements in the set.
+    [[nodiscard]] auto size() const -> uint32_t { return static_cast<uint32_t>(strings_.size() / sizeof(ConstString)); }
+    //! Returns a view over the current elements.
+    /*!
+     * \note The view is only valid until the next call to a mutating function.
+     */
+    [[nodiscard]] auto elements() const noexcept -> std::span<const ConstString> {
+        return {reinterpret_cast<const ConstString*>(strings_.data()), size()};
+    }
+    //! Returns a (const) reference to the ith element in the set.
+    /*!
+     * \note The reference is only valid until the next call to a mutating function.
+     */
+    [[nodiscard]] auto operator[](Id_t i) const -> const ConstString& {
+        assert(i < size());
+        return elements()[i];
+    }
+    //! Checks if the set contains the given string.
+    [[nodiscard]] bool contains(std::string_view str) const noexcept {
+        return index_.find_if(hashStr(str), [&](Id_t idx) { return (*this)[idx] == str; }).valid();
+    }
+
+    //! Adds the give string to the set if it is not yet in the set.
+    /*!
+     * \param str The string to add.
+     * \return A pair containing the index of the string in the set and a boolean indicating whether it had to be added.
+     */
+    auto add(std::string_view str) -> std::pair<Id_t, bool> {
+        auto hash = hashStr(str);
+        auto r    = index_.find_if(hash, [&](Id_t idx) { return (*this)[idx] == str; });
+        if (r) {
+            return {*r, false};
+        }
+        auto id = size();
+        push(str);
+        index_.add(r, hash, id);
+        return {id, true};
+    }
+
+    //! Removes all elements from the set.
+    void clear();
+
+private:
+    [[nodiscard]] static auto hashStr(std::string_view str) -> uint32_t {
+        return static_cast<uint32_t>(std::hash<std::string_view>{}(str));
+    }
+    void push(std::string_view);
+
+    DynamicIndex  index_;
+    DynamicBuffer strings_;
+    bool          allowShort_{true};
+};
 
 namespace Detail {
 template <typename T>

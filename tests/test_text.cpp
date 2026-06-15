@@ -537,11 +537,22 @@ TEST_CASE("Text writer ", "[text]") {
                 out.outputTerm(1, "a");
                 REQUIRE(end() == "{x_1;x_2}.\n#show.\n");
             }
+            SECTION("fail if not defined") {
+                //
+                REQUIRE_THROWS_AS(out.output(1, Vec<Lit_t>{1}), std::logic_error);
+            }
             SECTION("simple") {
                 out.outputTerm(1, "a");
                 out.output(1, Vec<Lit_t>{1});
                 out.output(1, Vec<Lit_t>{2});
                 REQUIRE(end() == "{x_1;x_2}.\n#show a : x_1.\n#show a : x_2.\n#show.\n");
+            }
+            SECTION("no rename allowed") {
+                out.outputTerm(1, "a");
+                out.output(1, Vec<Lit_t>{1});
+                REQUIRE_THROWS_AS(out.outputTerm(1, "b"), std::logic_error);
+                REQUIRE_NOTHROW(out.outputTerm(1, "a"));
+                REQUIRE(end() == "{x_1;x_2}.\n#show a : x_1.\n#show.\n");
             }
             SECTION("complex") {
                 out.outputTerm(1, "a");

@@ -74,13 +74,13 @@ public:
     void endStep() override;
 
     //! Returns the output literal associated with `in`.
-    [[nodiscard]] Lit_t get(Lit_t in) const;
+    [[nodiscard]] auto get(Lit_t in) const -> Lit_t;
     //! Returns the max used smodels atom (valid atoms are [1..n]).
-    [[nodiscard]] unsigned maxAtom() const;
+    [[nodiscard]] auto maxAtom() const -> Atom_t;
 
 private:
     //! Creates a (named) atom that is equivalent to the given condition.
-    Atom_t makeAtom(LitSpan lits, Lit_t last, bool named);
+    auto makeAtom(LitSpan lits, Lit_t last, bool named) -> Atom_t;
     //! Processes all outstanding conversions.
     void flush();
     //! Converts external atoms.

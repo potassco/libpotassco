@@ -38,7 +38,9 @@
 #include <algorithm>
 #include <map>
 #include <random>
+#include <ranges>
 #include <sstream>
+#include <unordered_map>
 using namespace std::literals;
 namespace Potassco::Test::Aspif {
 constexpr Weight_t   bound_none = -1;
@@ -435,65 +437,124 @@ TEST_CASE("Test DynamicBuffer", "[util]") {
         }
     }
 }
+TEST_CASE("Test HashMap", "[util]") {
+    using MapT = SimpleHashMap<int, double, INT32_MAX>;
+    SECTION("Init") {
+        using BuckT  = std::optional<unsigned>;
+        auto buckets = GENERATE(BuckT{}, BuckT{0u}, BuckT{3u});
+        MapT m       = buckets.has_value() ? MapT{*buckets} : MapT{};
+        CAPTURE(buckets);
+        REQUIRE(m.empty());
+        REQUIRE(m.size() == 0u);
+        REQUIRE_FALSE(m.contains(0));
+        REQUIRE(m.findKey(0) == nullptr);
+        REQUIRE_FALSE(m.remove(0));
+        REQUIRE(m.array().size() >= buckets.value_or(0u));
+        REQUIRE(std::ranges::all_of(m.array(), [](const auto& x) { return x.key == INT32_MAX; }));
+    }
+    SECTION("add") {
+        MapT m;
+        REQUIRE(m.add(0, 17.0).second);
+        REQUIRE_FALSE(m.add(0).second);
+        REQUIRE(m.add(0, 22.0).first->value == 17.0);
+        REQUIRE(m.size() == 1);
+        REQUIRE(m.contains(0));
+        REQUIRE(m.findKey(0)->value == 17.0);
+        REQUIRE(m.findKey(0)->key == 0);
+        REQUIRE(m.findKey(0)->value == 17.0);
+
+        m.add(0).first->value = 99.0;
+        REQUIRE(m.findKey(0)->key == 0);
+        REQUIRE(m.findKey(0)->value == 99.0);
+    }
+    SECTION("copy and move") {
+        MapT source, saved;
+        for (auto i : std::ranges::views::iota(0, 10)) {
+            REQUIRE(source.add(i, i * 1.0).second);
+            saved.add(i, i * 1.0);
+            REQUIRE(source.contains(i));
+        }
+        REQUIRE(source.size() == 10);
+        REQUIRE(source.array().size() > 10u);
+        REQUIRE(saved.size() == source.size());
+
+        REQUIRE(source.remove(8));
+        REQUIRE(source.remove(2));
+        REQUIRE(source.remove(1));
+        REQUIRE(source.remove(9));
+        REQUIRE(source.remove(4));
+        REQUIRE(source.size() == 5u);
+
+        SECTION("copy") {
+            MapT copy(source);
+            REQUIRE(copy.size() == source.size());
+            REQUIRE(copy.array().data() != source.array().data());
+            REQUIRE(copy.array().size() < source.array().size());
+            for (auto i : std::ranges::views::iota(0, 10)) {
+                CAPTURE(i);
+                REQUIRE(source.contains(i) == copy.contains(i));
+                REQUIRE(*source.add(i, 99.0).first == *copy.add(i, 99.0).first);
+            }
+            copy = saved;
+            REQUIRE(copy.size() == saved.size());
+            REQUIRE(copy.array().data() != saved.array().data());
+            for (auto i : std::ranges::views::iota(0, 10)) {
+                REQUIRE(saved.contains(i));
+                REQUIRE(saved.contains(i) == copy.contains(i));
+                REQUIRE(*saved.findKey(i) == *copy.findKey(i));
+            }
+            REQUIRE(std::ranges::equal(saved.array(), copy.array(), [](const auto& lhs, const auto& rhs) {
+                return lhs.key == rhs.key && lhs.value == rhs.value;
+            }));
+            copy = {};
+            REQUIRE(copy.empty());
+            REQUIRE(copy.array().empty());
+            source.clear();
+            REQUIRE(source.empty());
+            REQUIRE_FALSE(source.array().empty());
+            REQUIRE(std::ranges::all_of(source.array(), [](const auto& x) { return x.key == INT32_MAX; }));
+        }
+        SECTION("move") {
+            auto prev = source.array();
+            MapT mv(std::move(source));
+            REQUIRE(mv.size() == 5u);
+            REQUIRE(source.empty());
+            REQUIRE(mv.array().data() == prev.data());
+
+            prev = saved.array();
+            mv   = std::move(saved);
+            REQUIRE(mv.size() == 10u);
+            REQUIRE(saved.empty());
+            REQUIRE(mv.array().data() == prev.data());
+        }
+    }
+    SECTION("erase") {
+        SimpleHashMap<int, int, INT32_MAX> m;
+
+        auto rem = std::vector{1, 9, 17, 25};
+        do {
+            REQUIRE(m.add(1).first);
+            REQUIRE(m.add(9).first);
+            REQUIRE(m.add(17).first);
+            REQUIRE(m.add(25).first);
+            REQUIRE(m.size() == 4u);
+
+            REQUIRE(m.remove(rem.back()));
+            REQUIRE_FALSE(m.contains(rem.back()));
+            for (auto o : std::span(rem).first(rem.size() - 1)) {
+                //
+                REQUIRE(m.contains(o));
+            }
+            m.clear();
+        } while (std::ranges::next_permutation(rem).found);
+    }
+}
 TEST_CASE("Test HashIndex", "[util]") {
     static_assert(std::is_move_constructible_v<DynamicIndex>, "should be movable");
     static_assert(std::is_move_assignable_v<DynamicIndex>, "should be movable");
     static_assert(std::is_copy_assignable_v<DynamicIndex>, "should be copyable");
     static_assert(std::is_copy_constructible_v<DynamicIndex>, "should be copyable");
     static_assert(DynamicIndex::trivially_relocatable::value, "should be trivially relocatable");
-
-    static_assert(std::is_move_constructible_v<DynamicHashArray<int>>, "should be movable");
-    static_assert(std::is_move_assignable_v<DynamicHashArray<int>>, "should be movable");
-    static_assert(not std::is_copy_assignable_v<DynamicHashArray<int>>, "should not be copyable");
-    static_assert(not std::is_copy_constructible_v<DynamicHashArray<int>>, "should not be copyable");
-
-    SECTION("HashArray") {
-        SECTION("Init") {
-            DynamicHashArray<unsigned> ha(1);
-            REQUIRE(ha.capacity() == 8u);
-        }
-        DynamicHashArray<unsigned> ha;
-        REQUIRE(ha.capacity() == 0u);
-        REQUIRE(ha.grow(std::identity{}, [](unsigned) { return false; }) == 0u);
-        REQUIRE(ha.capacity() == 8u);
-        auto* p = ha.lookup(10u, [](unsigned) { return HashProbeResult::fail; });
-        REQUIRE(*p == 0u);
-        REQUIRE(p - ha.data() == 2);
-        *p = 2u;
-        p  = ha.lookup(3u, [](unsigned x) { return x == 2u ? HashProbeResult::success : HashProbeResult::fail; });
-        REQUIRE(p - ha.data() != 2);
-        *p        = 3u;
-        auto used = ha.grow(
-            [](unsigned x) {
-                REQUIRE(x != 0u);
-                return x == 2u ? 10u : x;
-            },
-            [](unsigned x) { return x != 0u; });
-        REQUIRE(used == 2u);
-        REQUIRE(ha.capacity() == 16u);
-
-        REQUIRE(*ha.lookup(10u, [](unsigned x) { return x ? HashProbeResult::success : HashProbeResult::fail; }) == 2u);
-        REQUIRE(*ha.lookup(3u, [](unsigned x) { return x ? HashProbeResult::success : HashProbeResult::fail; }) == 3u);
-
-        auto* d = ha.data();
-        auto  m = std::move(ha);
-        REQUIRE(ha.capacity() == 0u);
-        REQUIRE(m.capacity() == 16u);
-        REQUIRE(m.data() == d);
-        ha = std::move(m);
-        REQUIRE(ha.capacity() == 16u);
-        REQUIRE(m.capacity() == 0u);
-        REQUIRE(ha.data() == d);
-
-        m = DynamicHashArray<unsigned>{23u};
-        REQUIRE(m.capacity() == 32u);
-        REQUIRE(m.mask() == 31u);
-        REQUIRE(m.data() != d);
-        m = std::move(ha);
-        REQUIRE(m.data() == d);
-        REQUIRE(m.capacity() == 16u);
-        REQUIRE(m.mask() == 15u);
-    }
 
     SECTION("empty") {
         DynamicIndex index;
@@ -786,26 +847,27 @@ TEST_CASE("Test HashIndex", "[util]") {
 }
 TEST_CASE("Test ConstString", "[util]") {
     SECTION("empty") {
-        static_assert(sizeof(ConstString) == 24);
         ConstString s;
         REQUIRE(s.size() == 0);
         REQUIRE(s.c_str() != nullptr);
+        REQUIRE(s.data() != nullptr);
+        REQUIRE(s.view() == std::string_view{});
         REQUIRE_FALSE(*s.c_str());
     }
     SECTION("small to large") {
-        std::string v;
         for (unsigned i = 0;; ++i) {
-            v.assign(i, 'x');
+            std::string v(i, 'x');
             ConstString s(v);
-            REQUIRE(v.size() == i);
+            CAPTURE(i);
             REQUIRE(s.size() == v.size());
+            REQUIRE(s[s.size()] == 0);
             REQUIRE(std::strcmp(s.c_str(), v.c_str()) == 0);
-            REQUIRE(static_cast<std::string_view>(s) == v);
+            REQUIRE(s.view() == v);
             if (not s.small()) {
+                REQUIRE(v.size() == 16);
                 break;
             }
         }
-        REQUIRE(v.size() == 24);
     }
     SECTION("deep copy") {
         std::string_view sv("small");
@@ -813,52 +875,52 @@ TEST_CASE("Test ConstString", "[util]") {
         ConstString      s2(s);
         REQUIRE(s == sv);
         REQUIRE(s2 == sv);
-        REQUIRE(sv.data() != s.view().data());
-        REQUIRE((void*) s.c_str() != (void*) s2.c_str());
+        REQUIRE(sv.data() != s.data());
+        REQUIRE(s.data() != s2.data());
         std::string large(32, 'x');
         ConstString s3(large);
         ConstString s4(s3);
         REQUIRE(s3 == std::string_view{large});
         REQUIRE(s4 == std::string_view{large});
-        REQUIRE((void*) s3.c_str() != (void*) s4.c_str());
+        REQUIRE(s3.data() != s4.data());
 
         SECTION("assign") {
             ConstString sc;
             sc = s3;
             REQUIRE(sc == std::string_view{large});
-            REQUIRE((void*) sc.c_str() != (void*) s3.c_str());
+            REQUIRE(sc.data() != s3.data());
             sc = s2;
             REQUIRE(sc == sv);
-            REQUIRE((void*) sc.c_str() != (void*) s2.c_str());
+            REQUIRE(sc.data() != s2.data());
         }
         SECTION("self assign") {
-            const void* old = s3.view().data();
+            const void* old = s3.data();
             POTASSCO_WARNING_PUSH()
             POTASSCO_WARNING_IGNORE_CLANG("-Wself-assign-overloaded")
             s3 = s3; // NOLINT
             POTASSCO_WARNING_POP()
-            REQUIRE(old == s3.view().data());
+            REQUIRE(old == s3.data());
         }
     }
     SECTION("borrow") {
         std::string_view svSmall("small");
-        std::string_view svLarge("long string longer than sso");
+        std::string_view svLarge("long string no sso");
         ConstString      cSmall{ConstString::Borrow_t{}, svSmall};
         ConstString      cLarge{ConstString::Borrow_t{}, svLarge};
-        REQUIRE(cSmall.view().data() == svSmall.data());
+        REQUIRE(cSmall.data() == svSmall.data());
         REQUIRE_FALSE(cSmall.small());
 
-        REQUIRE(cLarge.view().data() == svLarge.data());
+        REQUIRE(cLarge.data() == svLarge.data());
         REQUIRE_FALSE(cLarge.small());
 
         SECTION("materialize on copy") {
             ConstString smallCopy(cSmall); // NOLINT
             ConstString largeCopy(cLarge); // NOLINT
             REQUIRE(smallCopy.small());
-            REQUIRE(smallCopy.view().data() != svSmall.data());
+            REQUIRE(smallCopy.data() != svSmall.data());
 
             REQUIRE_FALSE(largeCopy.small());
-            REQUIRE(largeCopy.view().data() != svLarge.data());
+            REQUIRE(largeCopy.data() != svLarge.data());
         }
     }
     SECTION("move") {
@@ -896,6 +958,17 @@ TEST_CASE("Test ConstString", "[util]") {
             REQUIRE((const void*) s4.c_str() == old);
         }
     }
+    SECTION("noSSO") {
+        ConstString noSso(ConstString::NoSso_t{}, "small");
+        REQUIRE_FALSE(noSso.small());
+        ConstString copyNoSso(noSso);
+        REQUIRE_FALSE(copyNoSso.small());
+        ConstString assignNoSso("small");
+        REQUIRE(assignNoSso.small());
+        REQUIRE(assignNoSso == noSso);
+        assignNoSso = noSso;
+        REQUIRE_FALSE(assignNoSso.small());
+    }
     SECTION("compare") {
         ConstString s("one");
         ConstString t("two");
@@ -919,10 +992,70 @@ TEST_CASE("Test ConstString", "[util]") {
         REQUIRE(sv <= s);
         REQUIRE(s >= sv);
     }
-    SECTION("map") {
-        StringMap<int> m;
+    SECTION("try_emplace") {
+        using MapT = std::unordered_map<ConstString, int, std::hash<ConstString>, std::equal_to<>>;
+        MapT m;
         REQUIRE(try_emplace(m, "foo", 22).second);
         REQUIRE_FALSE(try_emplace(m, "foo", 23).second);
+    }
+}
+TEST_CASE("Test OrderedStringSet", "[util]") {
+    static_assert(std::is_move_constructible_v<OrderedStringSet>, "should be movable");
+    static_assert(std::is_move_assignable_v<OrderedStringSet>, "should be movable");
+    static_assert(not std::is_copy_assignable_v<OrderedStringSet>, "should not be copyable");
+    static_assert(not std::is_copy_constructible_v<OrderedStringSet>, "should not be copyable");
+    static_assert(DynamicIndex::trivially_relocatable::value, "should be trivially relocatable");
+
+    SECTION("empty") {
+        OrderedStringSet set;
+        REQUIRE(set.size() == 0u);
+        REQUIRE_FALSE(set.contains(""));
+        REQUIRE(set.elements().empty());
+    }
+    SECTION("add") {
+        OrderedStringSet set;
+        for (auto i : std::ranges::views::iota(0u, 10u)) {
+            auto str          = std::string("hello-").append(std::to_string(i));
+            auto [idx, added] = set.add(str);
+            CAPTURE(i);
+            REQUIRE(idx == i);
+            REQUIRE(added);
+            REQUIRE(set[idx] == str);
+            REQUIRE(set.contains(str));
+        }
+        std::vector exp{std::string_view("hello-0"), std::string_view("hello-1"), std::string_view("hello-2")};
+        auto        cmpStr = std::equal_to<>{};
+        REQUIRE(std::ranges::equal(set.elements().first(3), exp, cmpStr));
+
+        OrderedStringSet moved(std::move(set));
+        REQUIRE(set.size() == 0u);
+        REQUIRE(set.elements().empty());
+        REQUIRE(moved.size() == 10u);
+        REQUIRE(std::ranges::equal(moved.elements().first(3), exp, cmpStr));
+
+        moved.clear();
+        REQUIRE(moved.size() == 0u);
+        REQUIRE(moved.elements().empty());
+    }
+    SECTION("SSO") {
+        OrderedStringSet sso, noSso(false);
+        for (auto i : std::ranges::views::iota(0u, 16u)) {
+            auto str            = std::string(i == 0u ? 16u : i, 'x');
+            auto [idx1, added1] = sso.add(str);
+            auto [idx2, added2] = noSso.add(str);
+            CAPTURE(i);
+            REQUIRE(idx1 == i);
+            REQUIRE(added1);
+            REQUIRE(idx2 == i);
+            REQUIRE(added2);
+            REQUIRE(sso[idx1] == str);
+            REQUIRE(noSso[idx2] == str);
+            REQUIRE(sso.contains(str));
+            REQUIRE(noSso.contains(str));
+
+            REQUIRE(sso[i].small() == (i != 0));
+            REQUIRE_FALSE(noSso[i].small());
+        }
     }
 }
 TEST_CASE("Test RadixSort", "[util]") {
@@ -1950,6 +2083,7 @@ TEST_CASE("Test AspifInput", "[aspif]") {
                 input << AspifType::output << " 1 x 0\n";
                 REQUIRE(finalize(input, observer) == 0);
                 REQUIRE(observer.atoms.size() == 1);
+                REQUIRE(observer.atoms.at(1) == "a;x");
                 REQUIRE(observer.rules.size() == 2);
                 REQUIRE(observer.rules.back().head == Vec<Atom_t>{2, 3});
             }

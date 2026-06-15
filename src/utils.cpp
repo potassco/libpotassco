@@ -172,20 +172,16 @@ void DynamicBitset::compact() {
 /////////////////////////////////////////////////////////////////////////////////////////
 // DynamicIndex
 /////////////////////////////////////////////////////////////////////////////////////////
-static constexpr auto permy = 10000u;
-DynamicIndex::DynamicIndex(uint32_t bucketCount, double lf)
-    : table_(bucketCount)
-    , lf_(static_cast<uint32_t>(lf * permy)) {
+DynamicIndex::DynamicIndex(uint32_t bucketCount, double lf) : table_(bucketCount), lf_(static_cast<float>(lf)) {
     POTASSCO_CHECK_PRE(lf >= 0.5 && lf < 1.0);
-    grow_ = table_.avail(0, lf);
+    grow_ = static_cast<uint32_t>(buckets() * lf);
 }
-DynamicIndex::DynamicIndex(const DynamicIndex& other)
-    : DynamicIndex(other.size(), static_cast<double>(other.lf_) / permy) {
+DynamicIndex::DynamicIndex(const DynamicIndex& other) : DynamicIndex(other.size(), other.lf_) {
     POTASSCO_ASSERT(grow_ >= other.size());
     auto todo = other.size();
     for (const auto* x = other.table_.data(); todo; ++x) {
         if (x->used()) {
-            *next(x->hash) = *x;
+            *table_.nextUnused(x->hash) = *x;
             --todo;
         }
     }
@@ -221,11 +217,9 @@ DynamicIndex& DynamicIndex::operator=(DynamicIndex&& other) noexcept {
     }
     return *this;
 }
-
 void DynamicIndex::grow() {
-    auto used = table_.grow([](const Bucket& e) { return e.hash; }, [](const Bucket& e) { return e.used(); });
-    assert(size_ == used);
-    grow_  = table_.avail(used, static_cast<double>(lf_) / permy);
+    table_.grow();
+    grow_  = static_cast<uint32_t>(buckets() * static_cast<double>(lf_)) - size_;
     tombs_ = 0u;
 }
 bool DynamicIndex::erase(IndexRef r) {
@@ -245,7 +239,7 @@ bool DynamicIndex::erase(IndexRef r) {
                 auto t  = std::exchange(x, {});
                 nFree  += x.value == id_empty;
                 if (t.used()) { // ...and re-insert if relevant
-                    *next(t.hash) = t;
+                    *table_.nextUnused(t.hash) = t;
                 }
             }
             POTASSCO_ASSERT(nFree > 0, "broken probing invariant");
@@ -258,7 +252,7 @@ bool DynamicIndex::erase(IndexRef r) {
 void DynamicIndex::clear() {
     grow_ += (size_ + tombs_);
     size_ = tombs_ = 0u;
-    std::fill_n(table_.data(), buckets(), Bucket{});
+    table_.clear();
 }
 void DynamicIndex::discard() {
     size_ = tombs_ = grow_ = 0u;
@@ -267,41 +261,55 @@ void DynamicIndex::discard() {
 /////////////////////////////////////////////////////////////////////////////////////////
 // ConstString
 /////////////////////////////////////////////////////////////////////////////////////////
-ConstString::ConstString(std::string_view n) { // NOLINT(cppcoreguidelines-pro-type-member-init)
-    init(n);
-}
-ConstString::ConstString(const ConstString& o) : ConstString(o.view()) { POTASSCO_DEBUG_ASSERT(tag() != c_borrow_tag); }
+static_assert(ConstString(ConstString("small")).size() == 5u);
 ConstString::ConstString(Borrow_t, std::string_view n) { // NOLINT(cppcoreguidelines-pro-type-member-init)
-    new (storage_) Large{.str = n.data(), .size = n.size()};
+    POTASSCO_CHECK(n.size() <= static_cast<std::size_t>(UINT32_MAX), Errc::length_error, "string too large");
+    new (storage_) Large{.str = n.data(), .size = static_cast<uint32_t>(n.size()), .pad = {}};
     storage_[c_max_small] = static_cast<char>(c_borrow_tag);
 }
-void ConstString::init(std::string_view str) {
-    char* out = storage_;
-    if (str.size() > c_max_small) {
-        out = static_cast<char*>(::operator new[](str.size() + 1));
-        new (storage_) Large{.str = out, .size = str.size()};
-        storage_[c_max_small] = static_cast<char>(c_large_tag);
+ConstString::ConstString(const ConstString& o) : ConstString(o.small() || o.tag() == c_borrow_tag, o.view()) {
+    POTASSCO_DEBUG_ASSERT(tag() != c_borrow_tag);
+}
+void ConstString::release(const char* str) { delete[] str; }
+void ConstString::initLarge(std::string_view str) {
+    POTASSCO_CHECK(str.size() <= static_cast<std::size_t>(UINT32_MAX), Errc::length_error, "string too large");
+    auto* out                                 = static_cast<char*>(::operator new[](str.size() + 1));
+    *std::copy_n(str.data(), str.size(), out) = 0;
+    new (storage_) Large{.str = out, .size = static_cast<uint32_t>(str.size()), .pad = {}};
+    storage_[c_max_small] = static_cast<char>(c_large_tag);
+}
+auto ConstString::operator=(const ConstString& other) -> ConstString& {
+    if (this != &other) {
+        if (other.small()) {
+            release();
+            std::memcpy(storage_, other.storage_, sizeof(storage_));
+        }
+        else {
+            ConstString temp(false, other.view());
+            release();
+            moveFrom(std::move(temp));
+        }
+    }
+    return *this;
+}
+/////////////////////////////////////////////////////////////////////////////////////////
+// OrderedStringSet
+/////////////////////////////////////////////////////////////////////////////////////////
+OrderedStringSet::OrderedStringSet(bool allowShort) : allowShort_(allowShort) {}
+OrderedStringSet::~OrderedStringSet() { clear(); }
+void OrderedStringSet::push(std::string_view str) {
+    auto* mem = reinterpret_cast<ConstString*>(strings_.alloc(sizeof(ConstString)).data());
+    if (allowShort_) {
+        std::construct_at(mem, str);
     }
     else {
-        storage_[c_max_small] = static_cast<char>(c_max_small - str.size());
-    }
-    *std::ranges::copy(str, out).out = 0;
-}
-void ConstString::release() { delete[] large()->str; }
-template <typename C>
-static void assignImpl(ConstString* self, C&& source) {
-    if (self != &source) {
-        self->~ConstString();
-        new (self) ConstString(std::forward<C>(source));
+        std::construct_at(mem, ConstString::NoSso_t{}, str);
     }
 }
-ConstString& ConstString::operator=(const ConstString& other) { // NOLINT(bugprone-unhandled-self-assignment)
-    assignImpl(this, other);
-    return *this;
-}
-ConstString& ConstString::operator=(ConstString&& other) noexcept {
-    assignImpl(this, std::move(other));
-    return *this;
+void OrderedStringSet::clear() {
+    index_.clear();
+    for (auto& str : elements()) { std::destroy_at(&str); }
+    strings_.clear();
 }
 
 } // namespace Potassco

@@ -579,6 +579,8 @@ TEST_CASE("Convert to smodels", "[convert]") {
         auto           c1 = BodyLits{1, -2, 3};
         auto           c2 = BodyLits{-1, -3};
         convertInc.outputTerm(0u, "Foo");
+        REQUIRE_THROWS_AS(convertInc.outputTerm(0u, "Bar"), std::logic_error);
+        REQUIRE_NOTHROW(convertInc.outputTerm(0u, "Foo"));
         convertInc.output(0u, c1); // aux(c1) :- {c1}. aux("Foo") :- aux(c1)
         convertInc.output(0u, c2); // aux(c2) :- {c2}. aux("Foo") :- aux(c2)
         convertInc.endStep();

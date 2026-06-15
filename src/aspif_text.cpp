@@ -38,7 +38,6 @@ POTASSCO_WARNING_END_RELAXED
 #include <cstring>
 #include <ostream>
 #include <sstream>
-#include <unordered_map>
 
 namespace Potassco {
 using namespace std::literals;
@@ -56,12 +55,12 @@ struct AspifTextInput::Data {
         rule.clear();
         symbol.clear();
     }
-    [[nodiscard]] AtomSpan atoms() const { return rule.head(); }
-    [[nodiscard]] LitSpan  lits() const { return rule.body(); }
+    [[nodiscard]] auto atoms() const -> AtomSpan { return rule.head(); }
+    [[nodiscard]] auto lits() const -> LitSpan { return rule.body(); }
 
-    RuleBuilder     rule;
-    DynamicBuffer   symbol;
-    StringMap<Id_t> outTerms;
+    RuleBuilder      rule;
+    DynamicBuffer    symbol;
+    OrderedStringSet outTerms;
 };
 AspifTextInput::AspifTextInput(AbstractProgram* out) : out_(out), data_(nullptr) {}
 void AspifTextInput::setOutput(AbstractProgram& out) { out_ = &out; }
@@ -171,12 +170,11 @@ bool AspifTextInput::matchDirective() {
             out_->outputAtom(atom(data_->lits().front()), str);
         }
         else {
-            auto [it, added] = try_emplace(data_->outTerms, str, 0u);
+            auto [id, added] = data_->outTerms.add(str);
             if (added) {
-                it->second = static_cast<uint32_t>(data_->outTerms.size() - 1);
-                out_->outputTerm(it->second, it->first.view());
+                out_->outputTerm(id, str);
             }
-            out_->output(it->second, data_->lits());
+            out_->output(id, data_->lits());
         }
     }
     else if (matchOpt("#external"sv)) {
@@ -382,13 +380,11 @@ DomModifier AspifTextInput::matchHeuMod() {
 // AspifTextOutput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifTextOutput::Data {
-    using IdMap  = std::unordered_map<Id_t, ConstString>;
-    using LitVec = amc::SmallVector<Lit_t, 64>;
-    using RawVec = amc::SmallVector<uint32_t, 4096>;
-    using StrVec = amc::vector<ConstString>;
-    using StrMap = StringMap<Id_t>;
-    using OutVec = amc::vector<const ConstString*>;
-
+    using LitVec  = amc::SmallVector<Lit_t, 64>;
+    using RawVec  = amc::SmallVector<uint32_t, 4096>;
+    using OutVec  = amc::vector<Id_t>;
+    using TermVec = amc::vector<Id_t>;
+    using AtomMap = SimpleHashMap<Atom_t, Id_t, id_max>;
     [[nodiscard]] LitSpan theoryCondition(Id_t id) const {
         return {conditions.data() + id + 1, static_cast<size_t>(conditions[id])};
     }
@@ -417,27 +413,31 @@ struct AspifTextOutput::Data {
         }
         return false;
     }
-    void addOutput(const ConstString* str, LitSpan cond) {
+    void pushOutput(Id_t str, LitSpan cond) {
         out.push_back(str);
         push(AspifType::output).push(out.size() - 1).push(cond);
     }
-    void addOutput(std::string_view name, LitSpan cond) {
-        addOutput(&try_emplace(strings, name, 0).first->first, cond);
-    }
+    void addOutput(std::string_view name, LitSpan cond) { pushOutput(addString(name), cond); }
     void addOutput(Id_t termId, LitSpan cond) {
-        auto it = term2Name.find(termId);
-        POTASSCO_CHECK_PRE(it != term2Name.end(), "Undefined: term %u is undefined", termId);
-        addOutput(&it->second, cond);
+        POTASSCO_CHECK_PRE(termId < outTerms.size() && outTerms[termId] != id_max, "Undefined: term %u is undefined",
+                           termId);
+        pushOutput(outTerms[termId], cond);
     }
-    auto assignAtomName(Atom_t atom, std::string_view name) {
-        maxNamedAtom = std::max(maxNamedAtom, atom);
-        return atom2Name.try_emplace(atom, name);
+    auto assignAtomName(Atom_t atom, std::string_view name) -> std::pair<Id_t, bool> {
+        maxNamedAtom      = std::max(maxNamedAtom, atom);
+        auto [val, added] = atom2Name.add(atom);
+        if (added) {
+            val->value = addString(name);
+        }
+        return {val->value, added};
     }
 
     [[nodiscard]] auto getAtomName(Atom_t atom) const -> const ConstString* {
-        auto it = atom2Name.find(atom);
-        return it != atom2Name.end() ? &it->second : nullptr;
+        auto* data = atom2Name.findKey(atom);
+        return data ? &getString(data->value) : nullptr;
     }
+    [[nodiscard]] auto addString(std::string_view str) -> Id_t { return strings.add(str).first; }
+    [[nodiscard]] auto getString(Id_t str) const -> const ConstString& { return strings[str]; }
 
     template <typename T>
     requires(std::is_integral_v<T> || std::is_enum_v<T>)
@@ -477,19 +477,19 @@ struct AspifTextOutput::Data {
     static constexpr T next(const uint32_t*& pos) {
         return static_cast<T>(*pos++);
     }
-    RawVec      directives;
-    IdMap       atom2Name;
-    IdMap       term2Name;
-    LitVec      conditions;
-    TheoryData  theory;
-    StrVec      eq;
-    OutVec      out;
-    StrMap      strings;
-    ConstString auxPred{"x_"};
-    Atom_t      startAtom    = 0;
-    Atom_t      maxGenAtom   = 0;
-    Atom_t      maxNamedAtom = 0;
-    bool        hide         = false;
+    RawVec           directives;
+    AtomMap          atom2Name;
+    TermVec          outTerms;
+    LitVec           conditions;
+    TheoryData       theory;
+    OrderedStringSet strings;
+    OutVec           eq;
+    OutVec           out;
+    ConstString      auxPred{"x_"};
+    Atom_t           startAtom    = 0;
+    Atom_t           maxGenAtom   = 0;
+    Atom_t           maxNamedAtom = 0;
+    bool             hide         = false;
 };
 AspifTextOutput::AspifTextOutput(std::ostream& os) : os_(os), data_(std::make_unique<Data>()), step_(-2) {}
 AspifTextOutput::~AspifTextOutput() = default;
@@ -568,16 +568,23 @@ void AspifTextOutput::outputAtom(Atom_t atom, std::string_view name) {
         if (arity == 0) {
             name = id;
         }
-        if (auto [it, added] = data_->assignAtomName(atom, name); not added && it->second != name) {
-            os_ << name << " :- " << it->second.view() << ".\n";
-            data_->eq.emplace_back(name);
+        if (auto [nId, added] = data_->assignAtomName(atom, name); not added && data_->getString(nId) != name) {
+            os_ << name << " :- " << data_->getString(nId).view() << ".\n";
+            data_->eq.emplace_back(data_->addString(name));
         }
     }
 }
 void AspifTextOutput::outputTerm(Id_t termId, std::string_view name) {
-    auto [it, added] = data_->term2Name.try_emplace(termId, name);
-    POTASSCO_CHECK_PRE(added || it->second == name, "Redefinition: term %u already defined as %s", termId,
-                       it->second.c_str());
+    if (termId >= data_->outTerms.size()) {
+        data_->outTerms.resize(termId + 1, id_max);
+    }
+    if (auto& nameId = data_->outTerms[termId]; nameId == id_max) {
+        nameId = data_->addString(name);
+    }
+    else {
+        POTASSCO_CHECK_PRE(data_->getString(nameId) == name, "Redefinition: term %u already defined as %s", termId,
+                           data_->getString(nameId).c_str());
+    }
 }
 void AspifTextOutput::output(Id_t id, LitSpan cond) { data_->addOutput(id, cond); }
 void AspifTextOutput::external(Atom_t a, TruthValue v) { data_->push(AspifType::external).push(a).push(v); }
@@ -674,9 +681,9 @@ void AspifTextOutput::Data::visitTheoryAtoms(std::ostream& os) {
             POTASSCO_CHECK_PRE(atom >= startAtom,
                                "Redefinition: theory atom '%u:%s' already defined in a previous step", atom,
                                name.c_str());
-            auto [it, added] = assignAtomName(atom, name);
+            auto [id, added] = assignAtomName(atom, name);
             POTASSCO_CHECK_PRE(added, "Redefinition: theory atom '%u:%s' already defined as %s", atom, name.c_str(),
-                               it->second.c_str());
+                               getString(id).c_str());
         }
     }
 }
@@ -742,7 +749,7 @@ void AspifTextOutput::Data::showAtom(std::ostream& os, std::string_view name, Ba
     else if (arity != last.second || id != last.first) {
         temp.clear();
         temp.append(id).append("/").append(arity);
-        if (auto pred = temp.view(); try_emplace(strings, pred, 0).second) {
+        if (auto pred = temp.view(); strings.add(pred).second) {
             os << "#show " << pred << ".\n";
         }
         last = {id, arity};
@@ -779,7 +786,9 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
                 break;
             case AspifType::minimize: printMinimize(os, pos); break;
             case AspifType::project : printCondition(os << "#project{", pos) << '}'; break;
-            case AspifType::output  : printCondition(os << "#show " << out.at(next(pos))->view(), pos, " : "); break;
+            case AspifType::output:
+                printCondition(os << "#show " << getString(out.at(next(pos))).view(), pos, " : ");
+                break;
             case AspifType::external:
                 printName(os << "#external ", next<Atom_t>(pos));
                 if (auto v = next<TruthValue>(pos); v != TruthValue::false_) {
@@ -815,7 +824,7 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
                 showAtom(os, name->view(), temp, last);
             }
         }
-        for (const auto& x : eq) { showAtom(os, x.view(), temp, last); }
+        for (const auto& x : eq) { showAtom(os, getString(x).view(), temp, last); }
         if (std::exchange(hide, false)) {
             os << "#show.\n";
         }
