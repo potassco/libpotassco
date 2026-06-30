@@ -24,8 +24,8 @@
 #include <potassco/theory_data.h>
 
 #include <potassco/error.h>
-
-#include <amc/vector.hpp>
+#include <potassco/utils.h>
+#include <potassco/vector.h>
 
 #include <algorithm>
 #include <cstring>
@@ -139,7 +139,6 @@ struct TheoryData::DestroyT {
     }
 };
 struct TheoryData::Data {
-    static_assert(amc::is_trivially_relocatable_v<TheoryTerm>);
     template <typename T, typename... Args>
     static T* allocConstruct(Args&&... args) {
         auto bytes = (sizeof(T) + ... + computeExtraBytes(args));
@@ -150,9 +149,9 @@ struct TheoryData::Data {
         *std::ranges::copy(in, str).out = 0;
         return str;
     }
-    amc::vector<TheoryAtom*>    atoms;
-    amc::vector<TheoryElement*> elems;
-    amc::vector<TheoryTerm>     terms;
+    Vector<TheoryAtom*>    atoms;
+    Vector<TheoryElement*> elems;
+    Vector<TheoryTerm>     terms;
     struct Up {
         uint32_t atom{0};
         uint32_t term{0};

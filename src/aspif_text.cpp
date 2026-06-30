@@ -28,10 +28,7 @@
 #include <potassco/format.h>
 #include <potassco/rule_utils.h>
 #include <potassco/theory_data.h>
-
-POTASSCO_WARNING_BEGIN_RELAXED
-#include <amc/vector.hpp>
-POTASSCO_WARNING_END_RELAXED
+#include <potassco/vector.h>
 
 #include <algorithm>
 #include <cctype>
@@ -380,10 +377,10 @@ DomModifier AspifTextInput::matchHeuMod() {
 // AspifTextOutput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifTextOutput::Data {
-    using LitVec  = amc::SmallVector<Lit_t, 64>;
-    using RawVec  = amc::SmallVector<uint32_t, 4096>;
-    using OutVec  = amc::vector<Id_t>;
-    using TermVec = amc::vector<Id_t>;
+    using LitVec  = Vector<Lit_t>;
+    using RawVec  = Vector<uint32_t>;
+    using OutVec  = Vector<Id_t>;
+    using TermVec = Vector<Id_t>;
     using AtomMap = SimpleHashMap<Atom_t, Id_t, id_max>;
     [[nodiscard]] LitSpan theoryCondition(Id_t id) const {
         return {conditions.data() + id + 1, static_cast<size_t>(conditions[id])};
@@ -508,8 +505,10 @@ void AspifTextOutput::setAtomPred(std::string_view pred) {
         data_->auxPred = ConstString(id);
     }
     else {
-        amc::vector<char> tmp{id.data(), id.data() + id.size() + 1};
-        tmp.back()     = '(';
+        char          small[32];
+        DynamicBuffer tmp{std::span{small}};
+        std::memcpy(tmp.alloc(id.size()).data(), id.data(), id.size());
+        tmp.push('(');
         data_->auxPred = ConstString(std::string_view{tmp.data(), tmp.size()});
     }
 }
@@ -830,12 +829,12 @@ void AspifTextOutput::Data::endStep(std::ostream& os, bool more) {
         }
     }
     os << std::flush;
-    std::exchange(directives, {});
-    std::exchange(out, {});
-    std::exchange(eq, {});
+    reset(directives);
+    reset(out);
+    reset(eq);
     if (not more) {
         theory.reset();
-        std::exchange(conditions, {});
+        reset(conditions);
     }
 }
 void AspifTextOutput::endStep() { data_->endStep(os_, step_ >= 0); }

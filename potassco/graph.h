@@ -24,10 +24,10 @@
 //
 #pragma once
 
+#include <potassco/vector.h>
+
 #include <cassert>
-#include <cstdint>
 #include <span>
-#include <vector>
 
 namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -46,8 +46,8 @@ public:
     auto getData(IdType nId) const -> DataType { return nodes_.at(nId).data; }
     void clear() { nodes_.clear(); }
 
-    using Scc    = std::vector<DataType>;
-    using SccVec = std::vector<Scc>;
+    using Scc    = Vector<DataType>;
+    using SccVec = Vector<Scc>;
     /*!
      * \brief Compute strongly connected components (SCCs) using Tarjan's algorithm.
      *
@@ -57,7 +57,7 @@ public:
      *       Node IDs and edges remain unchanged.
      */
     auto computeSccs(bool skipTrivial = false) -> SccVec {
-        using IdVec = std::vector<IdType>;
+        using IdVec = Vector<IdType>;
         SccVec     sccs;
         IdVec      stack;
         IdVec      trail;
@@ -125,14 +125,15 @@ public:
 
 private:
     struct Node {
+        using trivially_relocatable = std::true_type; // NOLINT
         Node(DataType d, IdType m) : data(d), min(m), off(0) {}
-        std::vector<IdType> edges;
-        DataType            data{0};
-        IdType              min{0};
-        IdType              off{0};
+        Vector<IdType> edges;
+        DataType       data{0};
+        IdType         min{0};
+        IdType         off{0};
     };
 
-    std::vector<Node> nodes_;
-    IdType            open_ = 0; // current "unseen" state - either 0 or 1
+    Vector<Node> nodes_;
+    IdType       open_ = 0; // current "unseen" state - either 0 or 1
 };
 } // namespace Potassco

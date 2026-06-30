@@ -5,7 +5,8 @@ target_sources(test_potassco_lp PRIVATE
     test_graph.cpp
     test_reify.cpp
     test_smodels.cpp
-    test_text.cpp)
+    test_text.cpp
+    test_utils.cpp)
 add_executable(test_potassco_opts)
 target_sources(test_potassco_opts PRIVATE
     test_application.cpp

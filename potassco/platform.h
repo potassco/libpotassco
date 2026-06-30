@@ -189,6 +189,32 @@ auto getProcessTime() -> double;
  */
 auto getThreadTime() -> double;
 
+struct SystemAllocator {
+    //! Allocates at least `sz` number of bytes with the given alignment.
+    /*!
+     * \pre sz > 0.
+     * \param[inout] sz The number of bytes to allocate. On success, `sz` is updated to the actual size of
+     *                  the allocation, which could be larger.
+     * \param[in]align The alignment requirements for the allocation.
+     * \return A suitable aligned block of memory of at least `sz` bytes.
+     * \throw std::bad_alloc if memory allocation failed.
+     */
+    static void* allocate(std::size_t& sz, std::align_val_t align);
+    //! Frees the given memory block, which must have been allocated via a call to `allocate`.
+    static void deallocate(void* mem, std::size_t sz, std::align_val_t align);
+    //! Tries to expand the given memory block to the new size without relocation.
+    /*!
+     * \pre `mem` was previously allocated via `allocate()` and `sz` is not less than the size that was allocated.
+     * \param mem The memory block to expand.
+     * \param[inout] sz The new minimal size.
+     * \return On success, the function returns the new size of the memory block, which is no less than `sz`. Otherwise,
+     *         the function returns 0.
+     */
+    static auto expand(void* mem, std::size_t sz, std::align_val_t align) -> std::size_t;
+
+    static const constinit bool has_expand;
+};
+
 } // namespace Potassco
 
 ///@}

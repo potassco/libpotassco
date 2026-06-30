@@ -27,12 +27,12 @@
 #include <potassco/graph.h>
 #include <potassco/reify.h>
 #include <potassco/utils.h>
+#include <potassco/vector.h>
 
 #include <algorithm>
 #include <ostream>
 #include <ranges>
 #include <tuple>
-#include <vector>
 
 namespace Potassco {
 namespace {
@@ -95,16 +95,16 @@ void printCommaSeparated(std::ostream& out, const T& t, const V&... v) {
 struct Reifier::StepData {
     static constexpr auto hash(std::integral auto x) -> uint32_t { return hashId(static_cast<uint32_t>(x)); }
     static constexpr auto hash(WeightLit x) -> uint32_t { return hash(x.lit) + hash(x.weight); }
-    using TupleData = std::vector<std::byte>;
-    using Elements  = std::vector<std::size_t>;
+    using TupleData = Vector<std::byte>;
+    using Elements  = Vector<std::size_t>;
     template <typename T>
     static auto pushTuple(TupleData& target, std::span<const T> tuple) -> std::span<T> {
         auto start = target.size();
         auto bytes = as_bytes(tuple);
         auto size  = static_cast<uint32_t>(tuple.size());
-        target.insert(target.end(), reinterpret_cast<const std::byte*>(&size),
+        target.append(reinterpret_cast<const std::byte*>(&size),
                       reinterpret_cast<const std::byte*>(&size) + sizeof(uint32_t));
-        target.insert(target.end(), bytes.data(), bytes.data() + bytes.size());
+        target.append(bytes.data(), bytes.data() + bytes.size());
         return std::span{reinterpret_cast<T*>(target.data() + start + sizeof(uint32_t)), tuple.size()};
     }
     template <typename T>
