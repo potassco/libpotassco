@@ -158,7 +158,7 @@ bool BufferedStream::readInt(int64_t& res) {
     }
     return true;
 }
-std::size_t BufferedStream::read(std::span<char> bufferOut) {
+auto BufferedStream::read(std::span<char> bufferOut) -> std::size_t {
     auto* out = bufferOut.data();
     for (auto n = bufferOut.size(); n && peek();) {
         auto m  = std::min<std::size_t>(n, avail());
@@ -168,7 +168,7 @@ std::size_t BufferedStream::read(std::span<char> bufferOut) {
     }
     return static_cast<std::size_t>(out - bufferOut.data());
 }
-std::size_t BufferedStream::readLine(DynamicBuffer& bufferOut) {
+auto BufferedStream::readLine(DynamicBuffer& bufferOut) -> std::size_t {
     for (auto sz = bufferOut.size();;) {
         const char* in   = buf_ + rpos_;
         const auto  read = findNewLine(in);
@@ -181,7 +181,7 @@ std::size_t BufferedStream::readLine(DynamicBuffer& bufferOut) {
         bufferOut.push(n);
     }
 }
-unsigned BufferedStream::line() const { return line_; }
+auto BufferedStream::line() const -> unsigned { return line_; }
 /////////////////////////////////////////////////////////////////////////////////////////
 // ProgramReader
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -210,10 +210,10 @@ void ProgramReader::reset() {
     doReset();
     str_.reset();
 }
-void            ProgramReader::doReset() {}
-unsigned        ProgramReader::line() const { return str_ ? str_->line() : 1; }
-BufferedStream* ProgramReader::stream() const { return str_.get(); }
-void            ProgramReader::error(const char* msg) const {
+void ProgramReader::doReset() {}
+auto ProgramReader::line() const -> unsigned { return str_ ? str_->line() : 1; }
+auto ProgramReader::stream() const -> BufferedStream* { return str_.get(); }
+void ProgramReader::error(const char* msg) const {
     POTASSCO_FAIL(std::errc::operation_not_supported, "parse error in line %u: %s", str_->line(), msg);
 }
 char ProgramReader::get() { return str_->get(); }

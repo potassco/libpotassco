@@ -26,8 +26,6 @@
 
 #include <potassco/rule_utils.h>
 
-#include <amc/vector.hpp>
-
 #include <ostream>
 #include <string_view>
 
@@ -37,15 +35,14 @@ using namespace std::literals;
 // AspifInput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifInput::Extra {
-    static_assert(amc::is_trivially_relocatable_v<Id_t>, "should be relocatable");
-    Atom_t                   popFact() { return facts.at(nextFact++ % facts.size()); }
-    [[nodiscard]] bool       hasFact() const { return not facts.empty(); }
-    RuleBuilder              rule;
-    amc::vector<Id_t>        ids;
-    amc::vector<Atom_t>      facts;
-    amc::vector<ConstString> factTerms;
-    DynamicBuffer            sym;
-    uint32_t                 nextFact{0};
+    Atom_t                    popFact() { return facts.at(nextFact++ % facts.size()); }
+    [[nodiscard]] bool        hasFact() const { return not facts.empty(); }
+    RuleBuilder               rule;
+    DynamicArray<Id_t>        ids;
+    DynamicArray<Atom_t>      facts;
+    DynamicArray<ConstString> factTerms;
+    DynamicBuffer             sym;
+    uint32_t                  nextFact{0};
 };
 
 AspifInput::AspifInput(AbstractProgram& out, OutputMapping mapOutput, Atom_t fact)
@@ -282,15 +279,16 @@ struct AspifOutput::Data {
         outTerms[termId] = termName;
     }
     struct OutTerm {
+        using trivially_relocatable = std::true_type; // NOLINT
         OutTerm(std::string_view n = "") : name(n) {} // NOLINT
         ConstString name;
         Atom_t      atom{0};
         Atom_t      last{0};
     };
-    amc::vector<OutTerm> outTerms;
-    amc::vector<Id_t>    mapping;
-    RuleBuilder          rb;
-    Atom_t               trueAtom{0};
+    DynamicArray<OutTerm> outTerms;
+    DynamicArray<Id_t>    mapping;
+    RuleBuilder           rb;
+    Atom_t                trueAtom{0};
 };
 
 AspifOutput::AspifOutput(std::ostream& os, uint32_t version) : os_(os) {

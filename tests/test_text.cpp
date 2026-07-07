@@ -91,7 +91,7 @@ struct TextObserver : ReadObserver {
 };
 } // namespace
 static bool read(ProgramReader& in, std::stringstream& str) { return in.accept(str) && in.parse(); }
-TEST_CASE("Text reader ", "[text]") {
+TEST_CASE("Text reader", "[text]") {
     std::stringstream input;
     TextObserver      observer;
     AspifTextInput    prg(&observer);
@@ -305,7 +305,7 @@ TEST_CASE("Text reader ", "[text]") {
 /////////////////////////////////////////////////////////////////////////////////////////
 // AspifTextOutput
 /////////////////////////////////////////////////////////////////////////////////////////
-TEST_CASE("Text writer ", "[text]") {
+TEST_CASE("Text writer", "[text]") {
     std::stringstream output;
     AspifTextOutput   out(output);
     RuleBuilder       rb;

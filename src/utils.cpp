@@ -32,13 +32,6 @@ namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
 // DynamicBuffer
 /////////////////////////////////////////////////////////////////////////////////////////
-static constexpr uint32_t c_fast_grow_cap = 0x20000u;
-static constexpr uint32_t nextCapacity(uint32_t current) {
-    if (current == 0u) {
-        return 64u;
-    }
-    return current <= c_fast_grow_cap ? (current * 3 + 1) >> 1 : current << 1u;
-}
 DynamicBuffer::DynamicBuffer(std::size_t init) { reserve(init); }
 DynamicBuffer::DynamicBuffer(std::span<char> borrow)
     : beg_(borrow.data())
@@ -77,8 +70,8 @@ void DynamicBuffer::swap(DynamicBuffer& other) noexcept {
     std::swap(cap_, other.cap_);
     std::swap(sizeOwn_, other.sizeOwn_);
 }
-void DynamicBuffer::grow(std::size_t n) {
-    auto nc = std::max<std::size_t>(nextCapacity(capacity()), n);
+void DynamicBuffer::grow(std::size_t n, bool exact) {
+    auto nc = std::max<std::size_t>(exact ? n : Detail::nextCap(capacity(), 1u), n);
     if (nc > maxSize()) {
         POTASSCO_CHECK(n <= maxSize(), Errc::length_error);
         nc = maxSize();
@@ -93,7 +86,9 @@ void DynamicBuffer::grow(std::size_t n) {
     cap_ = static_cast<uint32_t>(nc);
 }
 std::span<char> DynamicBuffer::alloc(std::size_t n) {
-    reserve(size() + n);
+    if (auto x = size() + n; x > capacity()) {
+        grow(x, false);
+    }
     return {data(std::exchange(sizeOwn_, static_cast<uint32_t>(sizeOwn_ + n)) & size_mask), n};
 }
 void DynamicBuffer::append(const void* what, std::size_t n) {

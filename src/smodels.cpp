@@ -29,8 +29,6 @@
 #include <cstring>
 #include <ostream>
 
-#include <amc/vector.hpp>
-
 namespace Potassco {
 using namespace std::literals;
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -49,7 +47,7 @@ struct SmodelsInput::Extra {
         auto [idx, added] = atoms.add(name);
         if (added) {
             POTASSCO_ASSERT(idx == name2Atom.size());
-            name2Atom.emplace_back(atom);
+            name2Atom.push_back(atom);
             added = atom != 0u;
         }
         else if (atom && name2Atom[idx] == 0u) {
@@ -75,11 +73,11 @@ struct SmodelsInput::Extra {
         }
         dom.clear();
     }
-    Id_t                addNode(std::string_view name) { return nodes.add(name).first; }
-    OrderedStringSet    atoms;
-    OrderedStringSet    nodes;
-    amc::vector<Atom_t> name2Atom;
-    amc::vector<Dom>    dom;
+    Id_t                 addNode(std::string_view name) { return nodes.add(name).first; }
+    OrderedStringSet     atoms;
+    OrderedStringSet     nodes;
+    DynamicArray<Atom_t> name2Atom;
+    DynamicArray<Dom>    dom;
 };
 
 SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts) : out_(out), opts_(opts) {}

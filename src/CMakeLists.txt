@@ -55,7 +55,7 @@ if(MSVC)
     target_compile_options(libpotassco PUBLIC "$<$<CONFIG:RELEASE>:${VC_RELEASE_OPTIONS}>")
 endif()
 
-target_link_libraries(libpotassco PUBLIC potassco_default_options PRIVATE amc::amc potassco_default_warnings)
+target_link_libraries(libpotassco PUBLIC potassco_default_options PRIVATE potassco_default_warnings)
 target_include_directories(libpotassco PUBLIC
     $<BUILD_INTERFACE:${LIB_POTASSCO_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${potassco_include_dest}>)

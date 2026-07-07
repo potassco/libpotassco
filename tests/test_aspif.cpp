@@ -363,8 +363,8 @@ TEST_CASE("Test DynamicBuffer", "[util]") {
     SECTION("copy and move") {
         static_assert(std::is_move_constructible_v<DynamicBuffer>, "should be movable");
         static_assert(std::is_move_assignable_v<DynamicBuffer>, "should be movable");
-        static_assert(std::is_copy_assignable_v<DynamicBuffer>, "should not be copyable");
-        static_assert(std::is_copy_constructible_v<DynamicBuffer>, "should not be copyable");
+        static_assert(std::is_copy_assignable_v<DynamicBuffer>, "should be copyable");
+        static_assert(std::is_copy_constructible_v<DynamicBuffer>, "should be copyable");
         static_assert(DynamicBuffer::trivially_relocatable::value);
 
         DynamicBuffer m1;
@@ -434,6 +434,95 @@ TEST_CASE("Test DynamicBuffer", "[util]") {
             CHECK(raw == m2.data());
             CHECK(exp == m2.data());
             CHECK(m1.data() == nullptr);
+        }
+    }
+}
+TEST_CASE("Test DynamicArray", "[util]") {
+    static constexpr auto supportsArray = []<typename T>(std::type_identity<T>) {
+        if constexpr (requires { typename DynamicArray<T>::value_type; }) {
+            return std::true_type{};
+        }
+        else {
+            return std::false_type{};
+        }
+    };
+    STATIC_REQUIRE_FALSE(supportsArray(std::type_identity<std::string>{}));
+    STATIC_REQUIRE(supportsArray(std::type_identity<ConstString>{}));
+    SECTION("starts empty") {
+        DynamicArray<int> r;
+        REQUIRE(r.size() == 0);
+        REQUIRE(r.capacity() == 0);
+        REQUIRE(r.data() == nullptr);
+        REQUIRE(r.empty());
+    }
+    SECTION("copy and move") {
+        using StrArray = DynamicArray<ConstString>;
+        static_assert(std::is_move_constructible_v<StrArray>, "should be movable");
+        static_assert(std::is_move_assignable_v<StrArray>, "should be movable");
+        static_assert(std::is_copy_assignable_v<StrArray>, "should be copyable");
+        static_assert(std::is_copy_constructible_v<StrArray>, "should be copyable");
+        static_assert(StrArray::trivially_relocatable::value);
+
+        StrArray m1;
+        auto     longStr = "A long long string longer than our SSO buffer size"sv;
+        m1.emplace_back(longStr);
+        m1.emplace_back("Short");
+        m1.emplace_back("short");
+        m1.emplace_back(longStr);
+        REQUIRE(m1[0] == longStr);
+        auto  sz  = m1.size();
+        auto  cp  = m1.capacity();
+        auto* beg = m1.data();
+        // NOLINTBEGIN(bugprone-use-after-move)
+        SECTION("move construct") {
+            StrArray m2(std::move(m1));
+            CHECK(m1.capacity() == 0);
+            CHECK(m1.data() == nullptr);
+            CHECK(m2.size() == sz);
+            CHECK(m2.capacity() == cp);
+            CHECK(beg == m2.data());
+        }
+
+        SECTION("copy construct") {
+            StrArray m2(m1);
+            CHECK(m2.size() == sz);
+            CHECK(m1.size() == sz);
+            CHECK(m1.capacity() == cp);
+            CHECK(m2.capacity() <= cp);
+            CHECK(m1.data() == beg);
+            CHECK(m2.data() != beg);
+            CHECK(longStr == m2[0]);
+            CHECK(m1[0] == m2[0]);
+            CHECK(m1[0].data() != m2[0].data());
+
+            CHECK(m1 == m2);
+        }
+
+        SECTION("move assign") {
+            StrArray m2;
+            m2.push_back(ConstString("Foo"));
+            m2.push_back(ConstString("Bar"));
+            m2 = std::move(m1);
+            CHECK(m1.empty());
+            CHECK(m1.data() == nullptr);
+            CHECK(m2.data() == beg);
+            CHECK(m2.size() == sz);
+            CHECK(m2.capacity() == cp);
+            CHECK(longStr == m2[0]);
+        }
+        // NOLINTEND(bugprone-use-after-move)
+        SECTION("copy assign") {
+            StrArray m2;
+            m2.push_back(ConstString("Foo"));
+            m2.push_back(ConstString("Bar"));
+            m2 = m1;
+            CHECK(m1.size() == sz);
+            CHECK(m1.data() == beg);
+            CHECK(m2.data() != beg);
+            CHECK(m2.size() == sz);
+            CHECK(m2.capacity() <= cp);
+            CHECK(m1 == m2);
+            CHECK(m1[0].data() != m2[0].data());
         }
     }
 }

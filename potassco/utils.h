@@ -31,9 +31,31 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace Potassco {
+template <typename T>
+concept HasTriviallyRelocatable = requires() {
+    typename T::trivially_relocatable;
+    requires T::trivially_relocatable::value;
+};
+template <typename T>
+struct is_trivially_relocatable // NOLINT
+    : std::integral_constant<bool, std::is_trivially_copyable_v<T> || HasTriviallyRelocatable<T>> {};
+
+template <typename T, typename U>
+struct is_trivially_relocatable<std::pair<T, U>>
+    : std::integral_constant<bool, is_trivially_relocatable<T>::value && is_trivially_relocatable<U>::value> {};
+
+template <typename T>
+struct is_trivially_relocatable<std::unique_ptr<T>> : std::true_type {};
+
+template <typename T>
+constexpr bool is_trivially_relocatable_v = is_trivially_relocatable<T>::value;
+
 namespace Detail {
+template <typename T>
+using Param_t = std::conditional_t<std::is_trivially_copyable_v<T> && sizeof(T) <= sizeof(void*) * 2, T, const T&>;
 //! Forward iterator for enumerating over ranges.
 template <typename R, typename SizeT>
 class EnumIter {
@@ -83,6 +105,20 @@ struct NumHashTraits {
         }
     }
 };
+inline constexpr auto fast_grow_cap = 0x20000u;
+inline constexpr auto min_grow_cap  = 64u;
+template <std::unsigned_integral SizeT>
+constexpr auto nextCap(SizeT current, std::size_t elemSize) -> SizeT {
+    auto minCap = static_cast<SizeT>(std::max(min_grow_cap, static_cast<unsigned>(elemSize)) / elemSize);
+    if (current < minCap) {
+        return minCap;
+    }
+    if (auto nc = current > 8u && current <= (fast_grow_cap / elemSize) ? (current * 3 + 1) >> 1 : current << 1u;
+        nc > current) {
+        return nc;
+    }
+    return static_cast<SizeT>(static_cast<SizeT>(-1) / elemSize);
+}
 
 } // namespace Detail
 //! Returns a range adaptor similar to C++23's std::views::enumerate.
@@ -154,7 +190,7 @@ public:
     //! Increases the capacity of the buffer to a value that is greater or equal to `n`.
     void reserve(std::size_t n) {
         if (n > capacity()) {
-            grow(n);
+            grow(n, true);
         }
     }
 
@@ -174,7 +210,9 @@ public:
     //! Appends the given character to the buffer.
     void push(char c) {
         auto sz = size();
-        reserve(size() + 1);
+        if (size() == capacity()) {
+            grow(sz + 1, false);
+        }
         data()[sz] = c;
         ++sizeOwn_;
     }
@@ -198,13 +236,177 @@ private:
     static constexpr auto size_mask  = 0x7FFFFFFFu;
     static constexpr auto borrow_bit = 31u;
     //
-    void grow(std::size_t n);
+    void grow(std::size_t n, bool exact = false);
 
     void*    beg_{nullptr};
     uint32_t cap_{0};
     uint32_t sizeOwn_{0};
 };
 inline void swap(DynamicBuffer& lhs, DynamicBuffer& rhs) noexcept { lhs.swap(rhs); }
+
+template <typename T>
+requires(is_trivially_relocatable_v<T> && alignof(T) <= __STDCPP_DEFAULT_NEW_ALIGNMENT__)
+class DynamicArray {
+public:
+    // NOLINTBEGIN
+    using size_type             = uint32_t;
+    using pointer               = T*;
+    using const_pointer         = const T*;
+    using iterator              = pointer;
+    using const_iterator        = const_pointer;
+    using reference             = T&;
+    using const_reference       = const T&;
+    using value_type            = T;
+    using value_type_param      = Detail::Param_t<value_type>;
+    using trivially_relocatable = std::true_type;
+    // NOLINTEND
+    DynamicArray() = default;
+    DynamicArray(const DynamicArray& other) : DynamicArray() { append(other.begin(), other.end()); }
+    DynamicArray(DynamicArray&&) noexcept = default;
+    ~DynamicArray() { clear(); }
+    auto operator=(const DynamicArray& other) -> DynamicArray& {
+        if (this != &other) {
+            reset();
+            append(other.begin(), other.end());
+        }
+        return *this;
+    }
+    auto operator=(DynamicArray&&) noexcept -> DynamicArray& = default;
+
+    [[nodiscard]] auto begin() const noexcept -> const_iterator { return data(); }
+    [[nodiscard]] auto begin() noexcept -> iterator { return data(); }
+    [[nodiscard]] auto end() const noexcept -> const_iterator { return data() + size(); }
+    [[nodiscard]] auto end() noexcept -> iterator { return data() + size(); }
+    [[nodiscard]] auto data() const noexcept -> const_pointer { return reinterpret_cast<const_pointer>(buf_.data()); }
+    [[nodiscard]] auto data() noexcept -> pointer { return reinterpret_cast<pointer>(buf_.data()); }
+
+    [[nodiscard]] auto operator[](size_type pos) const -> const_reference {
+        return const_cast<DynamicArray&>(*this)[pos];
+    }
+    [[nodiscard]] auto operator[](size_type pos) -> reference {
+        assert(pos < size());
+        return data()[pos];
+    }
+    [[nodiscard]] auto at(size_type pos) const -> const_reference { return const_cast<DynamicArray&>(*this).at(pos); }
+    [[nodiscard]] auto at(size_type pos) -> reference {
+        if (pos < size()) {
+            return data()[pos];
+        }
+        throw std::out_of_range("DynamicArray::at()");
+    }
+
+    [[nodiscard]] auto front() const -> const_reference { return (*this)[0]; }
+    [[nodiscard]] auto front() -> reference { return (*this)[0]; }
+    [[nodiscard]] auto back() const -> const_reference { return (*this)[size() - 1]; }
+    [[nodiscard]] auto back() -> reference { return (*this)[size() - 1]; }
+
+    [[nodiscard]] auto empty() const noexcept -> bool { return size() == 0u; }
+    [[nodiscard]] auto size() const noexcept -> size_type { return buf_.size() / val_size; }
+    [[nodiscard]] auto capacity() const noexcept -> size_type { return buf_.capacity() / val_size; }
+    [[nodiscard]] auto maxSize() const noexcept -> size_type { return buf_.maxSize() / val_size; /* NOLINT*/ }
+
+    void push_back(value_type_param u) {
+        push(1u, [&u](T* pos) { std::construct_at(pos, u); });
+    }
+    void push_back(T&& u) requires(not std::is_same_v<value_type_param, T>)
+    {
+        push(1u, [&u](T* pos) { std::construct_at(pos, std::move(u)); });
+    }
+    template <typename... Args>
+    void emplace_back(Args&&... args) {
+        push(1u, [&](T* pos) { std::construct_at(pos, std::forward<Args>(args)...); });
+    }
+    void pop_back() { pop(1u); }
+    void pop(size_type n) {
+        if (n) {
+            destroy(end() - n, n);
+            buf_.pop(valSize(n));
+        }
+    }
+    template <typename It>
+    requires(not std::integral<It>)
+    void append(It first, It last) {
+        auto n = static_cast<std::size_t>(std::distance(first, last));
+        assert(std::cmp_less_equal(n, maxSize() - size()));
+        push(static_cast<size_type>(n), [&first, n](T* pos) { std::uninitialized_copy_n(first, n, pos); });
+    }
+    void append(size_type n, value_type_param val) {
+        push(n, [&val, n](T* pos) { std::uninitialized_fill_n(pos, n, val); });
+    }
+
+    void reserve(size_type nc) {
+        if (nc > capacity()) {
+            buf_.reserve(valSize(nc));
+            assert(capacity() == nc);
+        }
+    }
+
+    void resize(size_type count, const T& val = T()) {
+        if (auto sz = size(); count > sz) {
+            append(count - sz, val);
+        }
+        else {
+            pop(sz - count);
+        }
+        assert(size() == count);
+    }
+
+    void clear() {
+        destroy(data(), size());
+        buf_.clear();
+    }
+
+    //! Swaps this and other.
+    void swap(DynamicArray& other) noexcept { buf_.swap(other.buf_); }
+
+    void reset() {
+        destroy(data(), size());
+        buf_.release();
+    }
+
+private:
+    static constexpr auto val_size = static_cast<size_type>(sizeof(T));
+    static constexpr auto valSize(size_type n) noexcept { return static_cast<std::size_t>(n * val_size); }
+
+    void grow(size_type n) {
+        auto nc = std::max(Detail::nextCap(capacity(), val_size), size() + n);
+        buf_.reserve(valSize(nc));
+        assert(capacity() == nc);
+    }
+    template <typename Op>
+    void push(size_type n, Op op) {
+        if (std::cmp_greater(size() + n, capacity())) {
+            grow(n);
+        }
+        auto* mem = reinterpret_cast<pointer>(buf_.alloc(valSize(n)).data());
+        try {
+            std::move(op)(mem);
+        }
+        catch (...) {
+            buf_.pop(valSize(n));
+            throw;
+        }
+    }
+    POTASSCO_ATTR_INLINE void destroy(pointer first, size_type n) {
+        if constexpr (not std::is_trivially_destructible_v<T>) {
+            std::destroy_n(first, n);
+        }
+    }
+    DynamicBuffer buf_;
+};
+template <typename T>
+void swap(DynamicArray<T>& lhs, DynamicArray<T>& rhs) noexcept {
+    lhs.swap(rhs);
+}
+template <std::equality_comparable T>
+auto operator==(const DynamicArray<T>& lhs, const DynamicArray<T>& rhs) -> bool {
+    return std::ranges::equal(lhs, rhs);
+}
+template <std::three_way_comparable T>
+auto operator<=>(const DynamicArray<T>& lhs, const DynamicArray<T>& rhs)
+    -> decltype(std::lexicographical_compare_three_way(lhs.begin(), lhs.end(), rhs.begin(), rhs.end())) {
+    return std::lexicographical_compare_three_way(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+}
 
 class DynamicBitset {
 public:
