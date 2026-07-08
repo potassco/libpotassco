@@ -25,8 +25,6 @@
 
 #include <potassco/error.h>
 
-#include <amc/type_traits.hpp>
-
 #include <algorithm>
 #include <utility>
 
@@ -64,7 +62,7 @@ RuleBuilder::RuleBuilder(RuleBuilder&& other) noexcept
     : mem_(std::move(other.mem_))
     , head_(std::exchange(other.head_, {}))
     , body_(std::exchange(other.body_, {})) {
-    static_assert(amc::is_trivially_relocatable_v<DynamicBuffer> && amc::is_trivially_relocatable_v<Range>);
+    static_assert(is_trivially_relocatable_v<DynamicBuffer> && is_trivially_relocatable_v<Range>);
 }
 RuleBuilder& RuleBuilder::operator=(RuleBuilder&& other) noexcept {
     if (this != &other) {

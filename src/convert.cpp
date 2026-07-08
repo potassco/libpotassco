@@ -27,10 +27,6 @@
 #include <potassco/format.h>
 #include <potassco/rule_utils.h>
 
-POTASSCO_WARNING_BEGIN_RELAXED
-#include <amc/vector.hpp>
-POTASSCO_WARNING_END_RELAXED
-
 #include <algorithm>
 #include <memory>
 #include <string_view>
@@ -106,26 +102,20 @@ struct SmodelsConvert::SmData {
         };
         int32_t end;
     };
-    static_assert(amc::is_trivially_relocatable_v<Atom> && amc::is_trivially_relocatable_v<Atom_t> &&
-                  amc::is_trivially_relocatable_v<Lit_t> && amc::is_trivially_relocatable_v<WeightLit> &&
-                  amc::is_trivially_relocatable_v<Heuristic> && amc::is_trivially_relocatable_v<Output>);
-    using AtomMap = amc::vector<Atom>;
-    using AtomVec = amc::vector<Atom_t>;
-    using WLitVec = amc::vector<WeightLit>;
-    using HeuVec  = amc::vector<Heuristic>;
-    using OutVec  = amc::vector<Output>;
-    using TermVec = amc::vector<OutTerm>;
+    using AtomMap = Vector<Atom>;
+    using AtomVec = Vector<Atom_t>;
+    using WLitVec = Vector<WeightLit>;
+    using HeuVec  = Vector<Heuristic>;
+    using OutVec  = Vector<Output>;
+    using TermVec = Vector<OutTerm>;
     struct Minimize {
-        static_assert(amc::is_trivially_relocatable_v<WLitVec>);
-        using trivially_relocatable = std::true_type; // NOLINT
         Weight_t prio;
         unsigned startPos;
         unsigned endPos;
     };
     static constexpr Atom_t false_atom = 1;
-    static_assert(amc::is_trivially_relocatable_v<Minimize>);
-    using MinSet = amc::vector<Minimize>;
-    SmData()     = default;
+    using MinSet                       = Vector<Minimize>;
+    SmData()                           = default;
     [[nodiscard]] auto mapped(Atom_t a) -> Atom* {
         return a < atoms.size() && atoms[a].smId != 0 ? &atoms[a] : nullptr;
     }
@@ -211,10 +201,10 @@ struct SmodelsConvert::SmData {
         heuristic.push_back(h);
     }
     void flushStep() {
-        std::exchange(minimize, {});
-        std::exchange(minLits, {});
-        std::exchange(external, {});
-        std::exchange(heuristic, {});
+        reset(minimize);
+        reset(minLits);
+        reset(external);
+        reset(heuristic);
         output.clear();
     }
 

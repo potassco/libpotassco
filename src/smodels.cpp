@@ -29,8 +29,6 @@
 #include <cstring>
 #include <ostream>
 
-#include <amc/vector.hpp>
-
 namespace Potassco {
 using namespace std::literals;
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -75,11 +73,11 @@ struct SmodelsInput::Extra {
         }
         dom.clear();
     }
-    Id_t                addNode(std::string_view name) { return nodes.add(name).first; }
-    OrderedStringSet    atoms;
-    OrderedStringSet    nodes;
-    amc::vector<Atom_t> name2Atom;
-    amc::vector<Dom>    dom;
+    Id_t             addNode(std::string_view name) { return nodes.add(name).first; }
+    OrderedStringSet atoms;
+    OrderedStringSet nodes;
+    Vector<Atom_t>   name2Atom;
+    Vector<Dom>      dom;
 };
 
 SmodelsInput::SmodelsInput(AbstractProgram& out, const Options& opts) : out_(out), opts_(opts) {}

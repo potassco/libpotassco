@@ -189,6 +189,55 @@ auto getProcessTime() -> double;
  */
 auto getThreadTime() -> double;
 
+struct SystemAllocator {
+    static constexpr auto realloc_max_align = __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+
+    //! Rounds the given size up to a value that minimizes padding.
+    /*!
+     * \note This is a "best effort" function that might fall back to always return the input size.
+     * \param sz The allocation size to round up.
+     * \param align The alignment requirements for the allocation.
+     * \return A value >= sz.
+     */
+    static auto goodAllocSize(std::size_t sz, std::align_val_t align) -> std::size_t;
+
+    //! Allocates `sz` number of bytes with the given alignment.
+    /*!
+     * \pre sz > 0.
+     * \param sz The number of bytes to allocate.
+     * \param align The alignment requirements for the allocation.
+     * \return A suitable aligned block of memory of `sz` bytes.
+     * \throw std::bad_alloc if memory allocation failed.
+     */
+    static void* allocate(std::size_t sz, std::align_val_t align);
+
+    //! Reallocates the given area of memory, which must be null or have been allocated via a call to `allocate`.
+    /*!
+     * \pre `mem` is null or was previously allocated via `allocate()`.
+     * \pre Any objects stored in `mem` must be "relocatable" (bitwise movable) and their alignment must not exceed
+     *      `realloc_max_align`.
+     * \param mem The memory block to reallocate.
+     * \param sz The new size.
+     * \return On success, a new block of memory of `sz` bytes. On failure, `mem` remains valid.
+     * \throw std::bad_alloc if memory allocation failed.
+     */
+    static void* reallocate(void* mem, std::size_t sz);
+
+    //! Frees the given memory block, which must have been allocated via a call to `allocate`.
+    static void deallocate(void* mem, std::size_t sz, std::align_val_t align);
+
+    //! Tries to expand the given memory block to the new size without relocation.
+    /*!
+     * \pre `mem` was previously allocated via `allocate()` and `sz` is not less than the size that was allocated.
+     * \param mem The memory block to expand.
+     * \param align The alignment requirements for the allocation.
+     * \param[inout] sz The new minimal size.
+     * \return On success, the function returns the new size of the memory block, which is no less than `sz`. Otherwise,
+     *         the function returns 0.
+     */
+    static auto expand(void* mem, std::size_t sz, std::align_val_t align) -> std::size_t;
+};
+
 } // namespace Potassco
 
 ///@}

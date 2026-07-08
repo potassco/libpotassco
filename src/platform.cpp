@@ -23,6 +23,8 @@
 //
 #include <potassco/platform.h>
 
+#include <potassco/error.h>
+
 #if __has_include(<fpu_control.h>)
 #include <fpu_control.h>
 #endif
@@ -53,11 +55,18 @@
 #endif
 #endif
 
+#if __has_include(<malloc.h>)
+#include <malloc.h>
+#elif __has_include(<malloc/malloc.h>)
+#include <malloc/malloc.h>
+#endif
+
 #include <cfloat>
 #include <chrono>
 #include <csignal>
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <span>
 #include <utility>
 
@@ -69,7 +78,7 @@ namespace PlatformApi {
 static auto orig_alarm_handler   = SIG_DFL;
 static auto active_alarm_handler = static_cast<Potassco::AlarmFunc>(nullptr);
 static auto setAlarm(uint32_t millis, Potassco::AlarmFunc func) -> std::errc {
-    struct itimerval tv {};
+    struct itimerval tv{};
     tv.it_value.tv_sec   = static_cast<long>(millis / 1000);
     tv.it_value.tv_usec  = static_cast<long>(millis % 1000) * 1000;
     active_alarm_handler = func;
@@ -88,7 +97,7 @@ static auto setAlarm(uint32_t millis, Potassco::AlarmFunc func) -> std::errc {
 }
 static bool killAlarm() {
     if (std::exchange(active_alarm_handler, nullptr)) {
-        struct itimerval tv {};
+        struct itimerval tv{};
         tv.it_value.tv_sec  = 0;
         tv.it_value.tv_usec = 0;
         setitimer(ITIMER_REAL, &tv, nullptr);
@@ -154,7 +163,7 @@ static auto getThreadTime() -> DurationType {
 #elif defined(__APPLE__) && __APPLE__
     struct thread_basic_info t_info;
     mach_msg_type_number_t   t_info_count = TASK_BASIC_INFO_COUNT;
-    struct timeval           tv {};
+    struct timeval           tv{};
     if (thread_info(mach_thread_self(), THREAD_BASIC_INFO, (thread_info_t) &t_info, &t_info_count) == KERN_SUCCESS) {
         time_value_add(&t_info.user_time, &t_info.system_time);
         tv.tv_sec  = static_cast<decltype(tv.tv_sec)>(t_info.user_time.seconds);
@@ -282,6 +291,57 @@ static unsigned setFpuPrecision(unsigned* r) {
 #else
 constexpr unsigned setFpuPrecision(unsigned*) { return 0u; }
 #endif
+///////////////////////////////////////////////////////////////////////////
+// System allocator
+///////////////////////////////////////////////////////////////////////////
+template <typename T>
+auto malloc_usable(T* x) -> std::size_t {
+    if constexpr (requires { malloc_usable_size(x); }) {
+        return malloc_usable_size(x);
+    }
+    else if constexpr (requires { _msize(x); }) {
+        return _msize(x);
+    }
+    else if constexpr (requires { malloc_size(x); }) {
+        return malloc_size(x);
+    }
+    else {
+        return 0u;
+    }
+}
+template <typename T>
+auto malloc_expand(T* x, std::size_t sz, std::align_val_t align) -> std::size_t {
+    if constexpr (requires { _expand(x, sz); }) {
+        if (auto* r = _expand(x, sz); r) {
+            return sz;
+        }
+    }
+    else if (auto rs = PlatformApi::malloc_usable(x); rs >= sz) {
+        auto extra = ((rs - sz) / static_cast<std::size_t>(align)) * static_cast<std::size_t>(align);
+        return sz + extra;
+    }
+    return 0u;
+}
+template <typename T, typename SizeT>
+auto alloc_good_size([[maybe_unused]] T* x, SizeT sz) -> SizeT {
+    if constexpr (requires { malloc_good_size(sz); }) {
+        sz = malloc_good_size(sz);
+    }
+    else if constexpr (requires { malloc_usable_size(x); }) {
+        static constexpr auto align    = __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+        static constexpr auto min_size = 3 * sizeof(x);
+        static constexpr auto max_size = 8246 * align;
+        static constexpr auto add_size = align - sizeof(void*);
+        static_assert(align > sizeof(void*), "sanity check");
+        if (sz < min_size) {
+            return min_size;
+        }
+        if (sz < max_size) {
+            sz = (((sz + (align - 1)) / align) * align) + add_size;
+        }
+    }
+    return sz;
+}
 } // namespace PlatformApi
 namespace Potassco {
 static constexpr auto c_file = std::string_view{__FILE__};
@@ -307,6 +367,42 @@ const char* ExpressionInfo::relativeFileName(const std::source_location& loc) {
     auto res = loc.file_name();
     for (auto cmp = c_file; *res && not cmp.empty() && *res == cmp.front(); cmp.remove_prefix(1), ++res) { ; }
     return res;
+}
+/////////////////////////////////////////////////////////////////////////////////////////
+// SystemAllocator
+/////////////////////////////////////////////////////////////////////////////////////////
+constexpr auto malloc_max_align = static_cast<std::align_val_t>(__STDCPP_DEFAULT_NEW_ALIGNMENT__);
+
+auto SystemAllocator::allocate(std::size_t sz, std::align_val_t align) -> void* {
+    POTASSCO_ASSERT(sz, "invalid size");
+    if (align <= malloc_max_align) {
+        auto* m = std::malloc(sz);
+        POTASSCO_CHECK(m != nullptr, Errc::bad_alloc, "Allocator::malloc: out of memory");
+        return m;
+    }
+    // NOTE: Can't use std::aligned_alloc here because this function is currently not supported by Microsoft's C
+    // Runtime library.
+    return ::operator new(sz, align);
+}
+auto SystemAllocator::reallocate(void* mem, std::size_t sz) -> void* {
+    POTASSCO_ASSERT(sz, "invalid size");
+    auto* m = std::realloc(mem, sz);
+    POTASSCO_CHECK(m != nullptr, Errc::bad_alloc, "Allocator::realloc: out of memory");
+    return m;
+}
+void SystemAllocator::deallocate(void* mem, std::size_t, std::align_val_t align) {
+    if (align <= malloc_max_align) {
+        std::free(mem);
+    }
+    else {
+        ::operator delete(mem, align);
+    }
+}
+auto SystemAllocator::expand(void* mem, std::size_t sz, std::align_val_t align) -> std::size_t {
+    return align <= malloc_max_align && mem ? PlatformApi::malloc_expand(mem, sz, align) : 0u;
+}
+auto SystemAllocator::goodAllocSize(std::size_t sz, std::align_val_t align) -> std::size_t {
+    return align <= malloc_max_align ? PlatformApi::alloc_good_size(static_cast<void*>(nullptr), sz) : sz;
 }
 
 } // namespace Potassco

@@ -32,13 +32,6 @@ namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
 // DynamicBuffer
 /////////////////////////////////////////////////////////////////////////////////////////
-static constexpr uint32_t c_fast_grow_cap = 0x20000u;
-static constexpr uint32_t nextCapacity(uint32_t current) {
-    if (current == 0u) {
-        return 64u;
-    }
-    return current <= c_fast_grow_cap ? (current * 3 + 1) >> 1 : current << 1u;
-}
 DynamicBuffer::DynamicBuffer(std::size_t init) { reserve(init); }
 DynamicBuffer::DynamicBuffer(std::span<char> borrow)
     : beg_(borrow.data())
@@ -78,7 +71,7 @@ void DynamicBuffer::swap(DynamicBuffer& other) noexcept {
     std::swap(sizeOwn_, other.sizeOwn_);
 }
 void DynamicBuffer::grow(std::size_t n) {
-    auto nc = std::max<std::size_t>(nextCapacity(capacity()), n);
+    auto nc = std::max<std::size_t>(Detail::nextCap(capacity(), 1u), n);
     if (nc > maxSize()) {
         POTASSCO_CHECK(n <= maxSize(), Errc::length_error);
         nc = maxSize();

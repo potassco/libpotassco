@@ -57,17 +57,18 @@ endif()
 ########################################################################################################################
 ### Third party stuff                                                                                                ###
 ########################################################################################################################
-add_subdirectory(third_party/amc EXCLUDE_FROM_ALL)
-if(NOT AMC_PEDANTIC)
-    # NOTE: This should be part of the AMC cmake config.
-    target_compile_definitions(amc INTERFACE AMC_NONSTD_FEATURES)
-endif()
-
 if(LIB_POTASSCO_SETUP_CATCH2)
     message(STATUS "libpotassco: setting up Catch2")
     set(CATCH_BUILD_STATIC_LIBRARY ON CACHE INTERNAL " " FORCE)
     set(CATCH_CONFIG_WINDOWS_CRTDBG ${LIB_POTASSCO_TESTS_ENABLE_DBG_HEAP} CACHE INTERNAL " " FORCE)
     add_subdirectory(third_party/Catch2 EXCLUDE_FROM_ALL)
+    message(STATUS "libpotassco: setting std>=c++17 for Catch2 targets")
+    foreach(target Catch2 Catch2WithMain)
+        if(NOT TARGET ${target})
+            message(FATAL_ERROR "Expected Catch2 target '${target}' not found.")
+        endif()
+        target_compile_features(${target} PRIVATE cxx_std_17)
+    endforeach()
 elseif(LIB_POTASSCO_BUILD_TESTS)
     find_package(Catch2 3.5 REQUIRED)
 endif()
