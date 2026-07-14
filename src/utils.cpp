@@ -134,7 +134,7 @@ auto DynamicBitset::compare(const DynamicBitset& rhs) const -> std::strong_order
 bool DynamicBitset::add(IndexType bit) {
     auto [word, pos] = idx(bit);
     if (word < words()) {
-        return test_bit(data()[word], pos) || store_set_bit(data()[word], pos);
+        return not test_bit(data()[word], pos) && store_set_bit(data()[word], pos);
     }
     auto missing = (word - words()) + 1u;
     auto mem     = buffer_.alloc(missing * sizeof(SetType));
@@ -159,7 +159,7 @@ void DynamicBitset::apply(uint64_t mask) {
 void DynamicBitset::compact() {
     const auto w = words();
     auto       n = w;
-    for (const auto* d = data(); d[n - 1] == 0u;) { --n; }
+    for (const auto* d = data(); n && d[n - 1] == 0u;) { --n; }
     if (n < w) {
         buffer_.pop(sizeof(SetType) * (w - n));
     }
