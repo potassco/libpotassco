@@ -139,7 +139,7 @@ requires requires(C c, std::string_view in) {
 }
 std::from_chars_result fromChars(std::string_view in, C& out) {
     auto m = Parse::matchOpt(in, '[');
-    for (typename C::value_type temp; not in.empty();) {
+    for (typename C::value_type temp{}; not in.empty();) {
         if (auto r = extract(in, temp); not Parse::ok(r)) {
             return Parse::error(in, r);
         }
@@ -159,7 +159,7 @@ std::from_chars_result fromChars(std::string_view in, EnumT& out) {
     // try numeric extraction first
     using U = std::underlying_type_t<EnumT>;
     using T = std::conditional_t<not std::is_same_v<U, char>, U, int>;
-    T    v;
+    T    v{};
     auto ret = fromChars(in, v);
     if (Parse::ok(ret)) {
         if (enum_cast<EnumT>(v).has_value()) {
