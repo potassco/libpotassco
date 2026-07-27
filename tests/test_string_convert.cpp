@@ -25,6 +25,7 @@
 
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <climits>
 #include <string>
@@ -358,38 +359,89 @@ TEST_CASE("String conversion", "[string]") {
 }
 TEST_CASE("BasicCharBuffer", "[string]") {
     BasicCharBuffer buffer;
+    REQUIRE(buffer.empty());
+    REQUIRE(buffer.capacity() == 253);
+    const auto* local = buffer.data();
     SECTION("move") {
-        const auto* local = buffer.view().data();
         SECTION("small") {
             buffer.open(TextStyle::Color::red, '\n').append("Hello");
             BasicCharBuffer buffer2(std::move(buffer));
             REQUIRE(buffer.empty()); // NOLINT(bugprone-use-after-move)
-            REQUIRE(buffer.view().data() == local);
+            REQUIRE(buffer.data() == local);
             REQUIRE(buffer.close().empty());
             REQUIRE(buffer2.view() == "\x1b[0;31mHello");
-            REQUIRE(buffer2.view().data() != local);
+            REQUIRE(buffer2.data() != local);
             REQUIRE(buffer2.close() == "\x1b[0;31mHello\x1b[0m\n");
             buffer = std::move(buffer2);
             REQUIRE(buffer2.empty()); // NOLINT(bugprone-use-after-move)
             REQUIRE(buffer2.close().empty());
             REQUIRE(buffer.view() == "\x1b[0;31mHello\x1b[0m\n");
-            REQUIRE(buffer.view().data() == local);
+            REQUIRE(buffer.data() == local);
             REQUIRE(buffer.close() == "\x1b[0;31mHello\x1b[0m\n");
         }
         SECTION("large") {
             std::string data(500, 'x');
             buffer.append(data);
-            REQUIRE(buffer.view().data() != local);
+            REQUIRE(buffer.data() != local);
             BasicCharBuffer buffer2(std::move(buffer));
             REQUIRE(buffer.empty()); // NOLINT(bugprone-use-after-move)
-            REQUIRE(buffer.view().data() == local);
+            REQUIRE(buffer.data() == local);
             REQUIRE(buffer.close().empty());
             REQUIRE(buffer2.view() == data);
             buffer = std::move(buffer2);
             REQUIRE(buffer2.empty()); // NOLINT(bugprone-use-after-move)
             REQUIRE(buffer2.close().empty());
             REQUIRE(buffer.view() == data);
-            REQUIRE(buffer.view().data() != local);
+            REQUIRE(buffer.data() != local);
+        }
+    }
+    SECTION("copy") {
+        SECTION("small") {
+            buffer.open(TextStyle::Color::red, '\n').append("Hello");
+            BasicCharBuffer buffer2(buffer);
+            REQUIRE(buffer2.view() == "\x1b[0;31mHello");
+            REQUIRE(buffer2.data() != local);
+            REQUIRE(buffer2.close() == "\x1b[0;31mHello\x1b[0m\n");
+
+            REQUIRE_FALSE(buffer.empty());
+            REQUIRE(buffer.data() == local);
+            REQUIRE(buffer.close() == "\x1b[0;31mHello\x1b[0m\n");
+            REQUIRE(buffer.view() == buffer2.view());
+
+            buffer.clear();
+            REQUIRE(buffer.empty());
+            buffer.append(buffer.capacity() + 1, 'x');
+            REQUIRE(buffer.data() != local);
+
+            auto nc = buffer.capacity();
+            REQUIRE(nc > buffer2.capacity());
+            buffer = buffer2;
+            REQUIRE(buffer2.close() == "\x1b[0;31mHello\x1b[0m\n");
+
+            REQUIRE(buffer.view() == "\x1b[0;31mHello\x1b[0m\n");
+            REQUIRE(buffer.data() != local);
+            REQUIRE(buffer.close() == "\x1b[0;31mHello\x1b[0m\n");
+            REQUIRE(buffer.capacity() == nc);
+        }
+        SECTION("large") {
+            std::string data(500, 'x');
+            buffer.append(data);
+            REQUIRE(buffer.data() != local);
+            BasicCharBuffer buffer2(buffer);
+            REQUIRE_FALSE(buffer.empty());
+            REQUIRE(buffer.data() != local);
+            REQUIRE(buffer.view() == data);
+            REQUIRE(buffer2.view() == data);
+
+            buffer2 = BasicCharBuffer();
+            buffer2.open(TextStyle::Color::red, '\n').append("Hello");
+
+            buffer = buffer2;
+            REQUIRE_FALSE(buffer2.empty());
+            REQUIRE(buffer2.close() == "\x1b[0;31mHello\x1b[0m\n");
+            REQUIRE(buffer.data() != local);
+            REQUIRE(buffer.view() == "\x1b[0;31mHello");
+            REQUIRE(buffer.close() == "\x1b[0;31mHello\x1b[0m\n");
         }
     }
     SECTION("OpenClose") {
@@ -462,6 +514,7 @@ TEST_CASE("BasicCharBuffer", "[string]") {
         buffer.append('(').append(4, 'x').push_back(')');
         REQUIRE(buffer.view() == "(xxxx)");
     }
+
     SECTION("appendF") {
         REQUIRE(BasicCharBuffer{}.appendF("Hello").view() == "Hello");
         REQUIRE(BasicCharBuffer{}.appendF("Hello %s", "World").c_str() == std::string_view{"Hello World"});
@@ -470,6 +523,64 @@ TEST_CASE("BasicCharBuffer", "[string]") {
         exp.append(130, ' ');
         exp.append("foo");
         REQUIRE(BasicCharBuffer{}.appendF("Hello %130sfoo", "").c_str() == exp);
+    }
+
+    SECTION("appendFCornerCase") {
+        BasicCharBuffer buf;
+        std::string     exp;
+        auto            small = GENERATE(false, true);
+        CAPTURE(small);
+        if (not small) {
+            exp.append(buf.capacity() + 1, 'a');
+            buf.append(buf.capacity() + 1, 'a');
+        }
+        else {
+            REQUIRE(buf.capacity() > 2);
+        }
+        auto avail = buf.capacity() - buf.size();
+        buf.append(avail - 2, 'x');
+        exp.append(avail - 2, 'x');
+        REQUIRE(buf.view() == exp);
+        auto* d = buf.data();
+        exp.append("12");
+        SECTION("full-cap") {
+            REQUIRE(buf.appendF("%d", 12).view() == exp);
+            REQUIRE(d == buf.data());
+            REQUIRE(buf.data()[exp.size()] == 0);
+        }
+        SECTION("grow") {
+            auto oldCap  = buf.capacity();
+            exp         += "3";
+            REQUIRE(buf.appendF("%d", 123).view() == exp);
+            REQUIRE(buf.capacity() > oldCap);
+            REQUIRE(buf.data()[exp.size()] == 0);
+        }
+    }
+    SECTION("smallToLarge") {
+        BasicCharBuffer buf;
+        auto*           d = buf.data();
+        std::string     s(buf.capacity(), 'x');
+        buf.append(s);
+        REQUIRE(buf.size() == buf.capacity());
+        REQUIRE(buf.data() == d);
+        REQUIRE(buf.size() == s.size());
+        REQUIRE(buf.view() == s);
+        REQUIRE(buf.c_str() == s);
+        REQUIRE(d[s.size()] == 0);
+        buf.push_back('x');
+        s.push_back('x');
+        REQUIRE(buf.size() == s.size());
+        REQUIRE(buf.capacity() > buf.size());
+        REQUIRE(buf.data() != d);
+        REQUIRE(buf.back() == 'x');
+        REQUIRE(buf.view() == s);
+        REQUIRE(buf.data()[buf.size()] == 0);
+
+        buf.append(buf.capacity() - buf.size(), 'y');
+        s.resize(buf.capacity(), 'y');
+        REQUIRE(buf.view() == s);
+        REQUIRE(buf.size() == buf.capacity());
+        REQUIRE(buf.data()[buf.size()] == 0);
     }
 }
 namespace {

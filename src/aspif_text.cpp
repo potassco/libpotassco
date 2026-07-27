@@ -55,7 +55,7 @@ struct AspifTextInput::Data {
     [[nodiscard]] auto lits() const -> LitSpan { return rule.body(); }
 
     RuleBuilder      rule;
-    DynamicBuffer    symbol;
+    BasicCharBuffer  symbol;
     OrderedStringSet outTerms;
 };
 AspifTextInput::AspifTextInput(AbstractProgram* out) : out_(out), data_(nullptr) {}
@@ -306,7 +306,7 @@ Atom_t AspifTextInput::matchId() {
     skipWs();
     return static_cast<Atom_t>(c - 'a') + 1;
 }
-void AspifTextInput::push(char c) { data_->symbol.push(c); }
+void AspifTextInput::push(char c) { data_->symbol.push_back(c); }
 
 void AspifTextInput::matchTerm() {
     auto c = peek();
@@ -504,11 +504,9 @@ void AspifTextOutput::setAtomPred(std::string_view pred) {
         data_->auxPred = ConstString(id);
     }
     else {
-        char          small[32];
-        DynamicBuffer tmp{std::span{small}};
-        std::memcpy(tmp.alloc(id.size()).data(), id.data(), id.size());
-        tmp.push('(');
-        data_->auxPred = ConstString(std::string_view{tmp.data(), tmp.size()});
+        BasicCharBuffer buf;
+        buf.append(id).push_back('(');
+        data_->auxPred = ConstString(buf.view());
     }
 }
 void AspifTextOutput::initProgram(bool incremental) {

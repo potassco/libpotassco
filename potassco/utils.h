@@ -31,18 +31,22 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 namespace Potassco {
-template <typename T>
-concept HasTriviallyRelocatable = requires() {
-    typename T::trivially_relocatable;
-    requires T::trivially_relocatable::value;
-};
-template <typename T>
-struct is_trivially_relocatable // NOLINT
-    : std::integral_constant<bool, std::is_trivially_copyable_v<T> || HasTriviallyRelocatable<T>> {};
 
+//! Type trait checking whether a given type is trivially-relocatable (i.e. "bitwise-movable").
+/*!
+ * By default, only trivially copyable types are considered trivially-relocatable. All other types require
+ * explicit "opt-in". To "opt-in", a type either has to define a typedef called `trivially_relocatable` that must alias
+ * to a boolean constant type (e.g. std::true_type), or specialize Potassco::is_trivially_relocatable.
+ */
+template <typename T> // clang-format off
+struct is_trivially_relocatable // NOLINT
+    : std::bool_constant < std::is_trivially_copyable_v<T> ||
+    requires {
+    requires T::trivially_relocatable::value;
+} > {};
+// clang-format on
 template <typename T, typename U>
 struct is_trivially_relocatable<std::pair<T, U>>
     : std::integral_constant<bool, is_trivially_relocatable<T>::value && is_trivially_relocatable<U>::value> {};
@@ -52,6 +56,13 @@ struct is_trivially_relocatable<std::unique_ptr<T>> : std::true_type {};
 
 template <typename T>
 constexpr bool is_trivially_relocatable_v = is_trivially_relocatable<T>::value;
+
+template <typename T>
+concept TriviallyRelocatable = is_trivially_relocatable_v<T>;
+
+//! Convenience macro for marking a type as trivially-relocatable.
+#define POTASSCO_TRIVIALLY_RELOCATABLE(...)                                                                            \
+    using trivially_relocatable = std::bool_constant<[](auto... args) { return (... && args); }(__VA_ARGS__)>
 
 namespace Detail {
 template <typename T>
@@ -100,26 +111,52 @@ struct NumHashTraits {
         else {
             auto x  = static_cast<uint64_t>(key);
             x      *= 0xbf58476d1ce4e5b9u;
-            x      ^= x >> 31;
+            x      ^= x >> 31u;
             return static_cast<uint32_t>(x);
         }
     }
 };
-inline constexpr auto fast_grow_cap = 0x20000u;
-inline constexpr auto min_grow_cap  = 64u;
-template <std::unsigned_integral SizeT>
-constexpr auto nextCap(SizeT current, std::size_t elemSize) -> SizeT {
-    auto minCap = static_cast<SizeT>(std::max(min_grow_cap, static_cast<unsigned>(elemSize)) / elemSize);
-    if (current < minCap) {
-        return minCap;
+auto dupString(std::string_view in) -> char*;
+template <TriviallyRelocatable T>
+void destructiveMove(T* target, T* source) {
+    if constexpr (std::is_trivial_v<T>) {
+        *target = *source;
     }
-    if (auto nc = current > 8u && current <= (fast_grow_cap / elemSize) ? (current * 3 + 1) >> 1 : current << 1u;
-        nc > current) {
-        return nc;
+    else {
+        std::memcpy(static_cast<void*>(target), static_cast<void*>(source), sizeof(T));
     }
-    return static_cast<SizeT>(static_cast<SizeT>(-1) / elemSize);
 }
-
+template <typename It, typename OutT>
+constexpr void uninitialized_copy_n(It first, std::size_t n, OutT* out) {
+    using RefT = decltype(*first);
+    using ValT = std::remove_cvref_t<RefT>;
+    if (n) [[likely]] {
+        if constexpr (std::is_trivially_constructible_v<OutT, RefT> && std::contiguous_iterator<It> &&
+                      sizeof(OutT) == sizeof(ValT) &&
+                      (std::is_same_v<OutT, ValT> || (std::is_integral_v<OutT> && std::is_integral_v<ValT>) )) {
+            std::memcpy(static_cast<void*>(out), static_cast<const void*>(std::to_address(first)), n * sizeof(OutT));
+        }
+        else {
+            std::uninitialized_copy_n(first, n, out);
+        }
+    }
+}
+static constexpr auto fastGrowSize(std::size_t valSize) -> std::size_t { return 0x20000u / valSize; }
+template <typename SizeT>
+static constexpr auto goodNextSize(SizeT minS, SizeT cap, SizeT valSize) -> SizeT {
+    if (cap == 0u) {
+        cap = std::max(static_cast<SizeT>(SystemAllocator::realloc_max_align), valSize) / valSize;
+    }
+    else if (cap > 8u && cap <= static_cast<SizeT>(fastGrowSize(valSize))) {
+        cap = (cap * 3 + 1) / 2u;
+    }
+    else {
+        cap = cap + cap;
+    }
+    auto ns = std::max(cap, minS);
+    auto gs = static_cast<SizeT>(SystemAllocator::goodAllocSize(ns * valSize)) / valSize;
+    return gs > minS && gs <= (UINT32_MAX / valSize) ? gs : minS;
+}
 } // namespace Detail
 //! Returns a range adaptor similar to C++23's std::views::enumerate.
 /*!
@@ -157,191 +194,381 @@ constexpr auto enumerate(R&& r) {
  */
 ///@{
 
-//! A (dynamically sized) buffer of raw memory.
+//! A (dynamically sized) array of T.
 /*!
- * The class manages a (dynamically sized) buffer of memory obtained by malloc/realloc.
- * It uses a simple geometric scheme when the buffer needs to grow.
+ * The class is similar to std::vector<T>, but with reduced API and fewer guarantees.
+ * Major caveats:
+ * - DynamicArray only supports trivially-relocatable (i.e. "bitwise-movable") types (checked at compile-time).
+ * - Push/append/insert operations **must not** reference elements in the array (precondition - not checked).
+ * - There is no support for bulk insertions at arbitrary positions.
+ * - Mutating operations only provide basic exception safety.
+ * - There is no fine-grained allocator support - all allocations happen through the system allocator.
  */
-class DynamicBuffer {
-public:
-    using trivially_relocatable = std::true_type; // NOLINT
-
-    //! Creates a buffer with the given initial capacity.
-    explicit DynamicBuffer(std::size_t initialCap = 0);
-    explicit DynamicBuffer(std::span<char> borrow);
-    ~DynamicBuffer();
-    DynamicBuffer(const DynamicBuffer&);
-    DynamicBuffer(DynamicBuffer&&) noexcept;
-    DynamicBuffer& operator=(DynamicBuffer&&) noexcept;
-    DynamicBuffer& operator=(const DynamicBuffer&);
-
-    //! Returns the maximum size that the buffer may grow to without triggering reallocation.
-    [[nodiscard]] auto capacity() const noexcept -> uint32_t { return cap_; }
-    //! Returns the number of bytes used in this buffer.
-    [[nodiscard]] auto size() const noexcept -> uint32_t { return sizeOwn_ & size_mask; }
-    //! Returns a pointer to the beginning of the buffer.
-    [[nodiscard]] char* data() const noexcept { return static_cast<char*>(beg_); }
-    [[nodiscard]] char* data(std::size_t pos) const noexcept { return data() + pos; }
-    [[nodiscard]] auto  view(std::size_t pos = 0, std::size_t n = std::string_view::npos) const -> std::string_view {
-        return {data() + pos, std::min(n, size() - pos)};
-    }
-    [[nodiscard]] static auto maxSize() noexcept -> uint32_t { return size_mask; }
-
-    //! Increases the capacity of the buffer to a value that is greater or equal to `n`.
-    void reserve(std::size_t n) {
-        if (n > capacity()) {
-            grow(n, true);
-        }
-    }
-
-    //! Resizes the buffer to accommodate an additional `n` bytes at the end.
-    /*!
-     * If the current capacity is insufficient, this function grows the region by reallocating a new block of memory,
-     * thereby invalidating all existing references into the region.
-     *
-     * \post <tt>size() >= n</tt>
-     */
-    [[nodiscard]] auto alloc(std::size_t n) -> std::span<char>;
-    void               append(const void* what, std::size_t n);
-    auto               append(std::string_view str) -> DynamicBuffer& {
-        append(str.data(), str.size());
-        return *this;
-    }
-    //! Appends the given character to the buffer.
-    void push(char c) {
-        auto sz = size();
-        if (size() == capacity()) {
-            grow(sz + 1, false);
-        }
-        data()[sz] = c;
-        ++sizeOwn_;
-    }
-    auto back() -> char& { return data()[size() - 1]; }
-
-    //! Reduces the number of used bytes in this region by `n`.
-    void pop(std::size_t n) { sizeOwn_ -= n <= size() ? static_cast<uint32_t>(n) : size(); }
-    //! Reduces the number of used bytes in this region to 0.
-    void clear() { sizeOwn_ &= ~size_mask; }
-
-    //! Swaps this and other.
-    void swap(DynamicBuffer& other) noexcept;
-
-    //! Releases all allocated memory in this region.
-    /*!
-     * \post <tt>size() == capacity() == 0</tt>
-     */
-    void release() noexcept;
-
-private:
-    static constexpr auto size_mask  = 0x7FFFFFFFu;
-    static constexpr auto borrow_bit = 31u;
-    //
-    void grow(std::size_t n, bool exact = false);
-
-    void*    beg_{nullptr};
-    uint32_t cap_{0};
-    uint32_t sizeOwn_{0};
-};
-inline void swap(DynamicBuffer& lhs, DynamicBuffer& rhs) noexcept { lhs.swap(rhs); }
-
-template <typename T>
-requires(is_trivially_relocatable_v<T> && alignof(T) <= __STDCPP_DEFAULT_NEW_ALIGNMENT__)
+template <TriviallyRelocatable T>
+requires(alignof(T) <= Potassco::SystemAllocator::realloc_max_align)
 class DynamicArray {
 public:
+    POTASSCO_TRIVIALLY_RELOCATABLE();
     // NOLINTBEGIN
-    using size_type             = uint32_t;
-    using pointer               = T*;
-    using const_pointer         = const T*;
-    using iterator              = pointer;
-    using const_iterator        = const_pointer;
-    using reference             = T&;
-    using const_reference       = const T&;
-    using value_type            = T;
-    using value_type_param      = Detail::Param_t<value_type>;
-    using trivially_relocatable = std::true_type;
+    using size_type                = uint32_t;
+    using pointer                  = T*;
+    using const_pointer            = const T*;
+    using iterator                 = pointer;
+    using const_iterator           = const_pointer;
+    using reverse_iterator         = std::reverse_iterator<iterator>;
+    using const_reverse_iterator   = std::reverse_iterator<const_iterator>;
+    using reference                = T&;
+    using const_reference          = const T&;
+    using value_type               = T;
+    using value_type_param         = Detail::Param_t<value_type>;
+    static constexpr auto val_size = static_cast<size_type>(sizeof(T));
     // NOLINTEND
-    DynamicArray() = default;
-    DynamicArray(const DynamicArray& other) : DynamicArray() { append(other.begin(), other.end()); }
-    DynamicArray(DynamicArray&&) noexcept = default;
-    ~DynamicArray() { clear(); }
+
+    //! Creates an empty array.
+    constexpr DynamicArray() = default;
+    //! Creates an array with `n` default constructed objects.
+    constexpr explicit DynamicArray(size_type n) : DynamicArray(std::piecewise_construct, n) {}
+    //! Creates an array with `n` copies of `val`.
+    DynamicArray(size_type n, value_type_param val) : DynamicArray(std::piecewise_construct, n, val) {}
+    //! Creates a copy of other.
+    DynamicArray(const DynamicArray& other) : DynamicArray(other.begin(), other.end()) {}
+    //! Steals the contents from other.
+    constexpr DynamicArray(DynamicArray&& other) noexcept
+        : data_(std::exchange(other.data_, nullptr))
+        , size_(std::exchange(other.size_, 0u))
+        , cap_(std::exchange(other.cap_, 0u)) {}
+    //! Creates an array with copies of the elements in the range [first, last).
+    template <std::forward_iterator It>
+    DynamicArray(It first, It last) : DynamicArray(std::piecewise_construct, checkRange(first, last), first) {}
+    //! Creates an array with copies of the elements in `x`.
+    DynamicArray(std::initializer_list<value_type> x) : DynamicArray(x.begin(), x.end()) {}
+
+    //! Destroys the array and its contents.
+    constexpr ~DynamicArray() {
+        destroy(data(), size());
+        if (not std::is_constant_evaluated()) {
+            deallocate();
+        }
+    }
+
+    //! Replaces the contents of this array with copies of the values in `other`.
     auto operator=(const DynamicArray& other) -> DynamicArray& {
         if (this != &other) {
-            reset();
-            append(other.begin(), other.end());
+            assign(other.begin(), other.end());
         }
         return *this;
     }
-    auto operator=(DynamicArray&&) noexcept -> DynamicArray& = default;
+    //! Replaces the contents of this array with copies of the values in `x`.
+    auto operator=(std::initializer_list<value_type> x) -> DynamicArray& {
+        assign(x.begin(), x.end());
+        return *this;
+    }
+    //! Replaces the contents of this array with the contents of `other`.
+    constexpr auto operator=(DynamicArray&& other) noexcept -> DynamicArray& {
+        if (this != &other) {
+            destroy(data(), size());
+            deallocate();
+            data_ = std::exchange(other.data_, nullptr);
+            size_ = std::exchange(other.size_, 0u);
+            cap_  = std::exchange(other.cap_, 0u);
+        }
+        return *this;
+    }
+    //! Replaces the contents of this array with `n` copies of `val`.
+    void assign(size_type n, value_type_param val) {
+        clear();
+        append(n, val);
+    }
+    //! Replaces the contents of this array with copies of the values in the range [first, last).
+    template <std::forward_iterator It>
+    void assign(It first, It last) {
+        auto n = checkRange(first, last);
+        clear();
+        append(n, first);
+    }
+    //! Replaces the contents of this array with copies of the values in `x`.
+    void assign(std::initializer_list<value_type> x) { assign(x.begin(), x.end()); }
 
-    [[nodiscard]] auto begin() const noexcept -> const_iterator { return data(); }
-    [[nodiscard]] auto begin() noexcept -> iterator { return data(); }
-    [[nodiscard]] auto end() const noexcept -> const_iterator { return data() + size(); }
-    [[nodiscard]] auto end() noexcept -> iterator { return data() + size(); }
-    [[nodiscard]] auto data() const noexcept -> const_pointer { return reinterpret_cast<const_pointer>(buf_.data()); }
-    [[nodiscard]] auto data() noexcept -> pointer { return reinterpret_cast<pointer>(buf_.data()); }
+    //! Returns a pointer to the beginning of the underlying array.
+    [[nodiscard]] constexpr auto data() const noexcept -> const_pointer { return data_; }
+    //! \copydoc data()
+    [[nodiscard]] constexpr auto data() noexcept -> pointer { return data_; }
+    //! \name Iterators
+    //!@{
+    //! Returns an iterator to the first element of the array.
+    [[nodiscard]] constexpr auto begin() -> iterator { return data(); }
+    //! \copydoc begin()
+    [[nodiscard]] constexpr auto begin() const -> const_iterator { return data(); }
+    //! \copydoc begin()
+    [[nodiscard]] constexpr auto cbegin() const noexcept -> const_iterator { return data(); }
+    //! Returns an iterator to the element following the last element of the array.
+    [[nodiscard]] constexpr auto end() -> iterator { return begin() + size(); }
+    //! \copydoc end()
+    [[nodiscard]] constexpr auto end() const -> const_iterator { return begin() + size(); }
+    //! \copydoc end()
+    [[nodiscard]] constexpr auto cend() const noexcept -> const_iterator { return cbegin() + size(); }
+    //! Returns a reverse iterator to the first element of the reversed array.
+    [[nodiscard]] constexpr auto rbegin() noexcept -> reverse_iterator { return std::make_reverse_iterator(end()); }
+    //! \copydoc rbegin()
+    [[nodiscard]] constexpr auto rbegin() const noexcept -> const_reverse_iterator {
+        return std::make_reverse_iterator(end());
+    }
+    //! \copydoc rbegin()
+    [[nodiscard]] constexpr auto crbegin() const noexcept -> const_reverse_iterator {
+        return std::make_reverse_iterator(end());
+    }
+    //! Returns a reverse iterator to the element following the last element of the reversed array.
+    [[nodiscard]] constexpr auto rend() noexcept -> reverse_iterator { return std::make_reverse_iterator(begin()); }
+    //! \copydoc rend()
+    [[nodiscard]] constexpr auto rend() const noexcept -> const_reverse_iterator {
+        return std::make_reverse_iterator(begin());
+    }
+    //! \copydoc rend()
+    [[nodiscard]] constexpr auto crend() const noexcept -> const_reverse_iterator {
+        return std::make_reverse_iterator(begin());
+    }
+    //!@}
 
-    [[nodiscard]] auto operator[](size_type pos) const -> const_reference {
+    //! Returns a reference to the element at the given position.
+    /*!
+     * \pre pos < size()
+     */
+    [[nodiscard]] constexpr auto operator[](size_type pos) const -> const_reference {
         return const_cast<DynamicArray&>(*this)[pos];
     }
-    [[nodiscard]] auto operator[](size_type pos) -> reference {
+    //! \copydoc const_reference operator[](size_type) const
+    [[nodiscard]] constexpr auto operator[](size_type pos) -> reference {
         assert(pos < size());
-        return data()[pos];
+        return data_[pos];
     }
-    [[nodiscard]] auto at(size_type pos) const -> const_reference { return const_cast<DynamicArray&>(*this).at(pos); }
-    [[nodiscard]] auto at(size_type pos) -> reference {
+    //! Returns a reference to the element at the given position.
+    /*!
+     * \throw std::out_of_range if pos >= size()
+     */
+    [[nodiscard]] constexpr auto at(size_type pos) const -> const_reference {
+        return const_cast<DynamicArray&>(*this).at(pos);
+    }
+    //! \copydoc at(size_type)
+    [[nodiscard]] constexpr auto at(size_type pos) -> reference {
         if (pos < size()) {
-            return data()[pos];
+            return data_[pos];
         }
         throw std::out_of_range("DynamicArray::at()");
     }
+    //! Returns a reference to the first element of the array.
+    /*!
+     * \pre not empty()
+     */
+    [[nodiscard]] constexpr auto front() const -> const_reference { return this->operator[](0); }
+    //! \copydoc front()
+    [[nodiscard]] constexpr auto front() -> reference { return this->operator[](0); }
+    //! Returns a reference to the last element of the array.
+    /*!
+     * \pre not empty()
+     */
+    [[nodiscard]] constexpr auto back() const -> const_reference { return this->operator[](size() - 1); }
+    //! \copydoc back()
+    [[nodiscard]] constexpr auto back() -> reference { return this->operator[](size() - 1); }
 
-    [[nodiscard]] auto front() const -> const_reference { return (*this)[0]; }
-    [[nodiscard]] auto front() -> reference { return (*this)[0]; }
-    [[nodiscard]] auto back() const -> const_reference { return (*this)[size() - 1]; }
-    [[nodiscard]] auto back() -> reference { return (*this)[size() - 1]; }
+    //! Returns whether the array is empty.
+    [[nodiscard]] constexpr auto empty() const noexcept -> bool { return size() == 0u; }
+    //! Returns the number of elements in the array.
+    [[nodiscard]] constexpr auto size() const noexcept -> size_type { return size_; }
+    //! Returns the current capacity of the array.
+    [[nodiscard]] constexpr auto capacity() const noexcept -> size_type { return cap_; }
+    //! Returns the maximum number of elements this array can hold.
+    [[nodiscard]] constexpr auto max_size() const noexcept -> size_type { return UINT32_MAX / val_size; }
 
-    [[nodiscard]] auto empty() const noexcept -> bool { return size() == 0u; }
-    [[nodiscard]] auto size() const noexcept -> size_type { return buf_.size() / val_size; }
-    [[nodiscard]] auto capacity() const noexcept -> size_type { return buf_.capacity() / val_size; }
-    [[nodiscard]] auto maxSize() const noexcept -> size_type { return buf_.maxSize() / val_size; /* NOLINT*/ }
-
+    //! Appends `u` to the end of the array.
+    /*!
+     * \pre `u` must not reference an element in this array.
+     */
     void push_back(value_type_param u) {
-        push(1u, [&u](T* pos) { std::construct_at(pos, u); });
+        if (auto sz = size(); sz != capacity()) {
+            std::construct_at(data_ + sz, u);
+        }
+        else {
+            std::construct_at(reallocNext(sz, 1u), u);
+        }
+        ++size_;
     }
-    void push_back(T&& u) requires(not std::is_same_v<value_type_param, T>)
+    //! \copydoc push_back(value_type_param)
+    void push_back(value_type&& u) requires(not std::is_same_v<value_type_param, T>)
     {
-        push(1u, [&u](T* pos) { std::construct_at(pos, std::move(u)); });
+        emplace_back(std::move(u));
     }
+    //! Constructs a new element at the end of the array.
+    /*!
+     * \pre `args...` must not reference elements in this array.
+     * \return A reference to the inserted element.
+     */
     template <typename... Args>
-    void emplace_back(Args&&... args) {
-        push(1u, [&](T* pos) { std::construct_at(pos, std::forward<Args>(args)...); });
+    auto emplace_back(Args&&... args) -> reference {
+        if (auto sz = size(); sz != capacity()) {
+            std::construct_at(data_ + sz, std::forward<Args>(args)...);
+        }
+        else {
+            std::construct_at(reallocNext(sz, 1u), std::forward<Args>(args)...);
+        }
+        return data_[size_++];
     }
-    void pop_back() { pop(1u); }
+
+    //! Constructs a new element right before `pos`.
+    /*!
+     * \pre `pos` must be a valid iterator of this array and `args...` must not reference elements in this array.
+     * \return An iterator pointing to the inserted element.
+     */
+    template <typename... Args>
+    auto emplace(const_iterator pos, Args&&... args) -> iterator {
+        assert(pos >= begin() && pos <= end());
+        auto idx  = static_cast<size_type>(pos - begin());
+        auto tail = size() - idx;
+        if (tail == 0u) {
+            return std::addressof(emplace_back(std::forward<Args>(args)...));
+        }
+        prepare(1u);
+        auto insPos = data_ + idx;
+        // shift tail one position to the right
+        std::memmove(static_cast<void*>(insPos + 1), static_cast<void*>(insPos), valSize(tail));
+        if constexpr (std::is_nothrow_constructible_v<value_type, Args...>) {
+            std::construct_at(insPos, std::forward<Args>(args)...);
+        }
+        else {
+            try {
+                std::construct_at(insPos, std::forward<Args>(args)...);
+            }
+            catch (...) {
+                // rollback to previous state
+                std::memmove(static_cast<void*>(insPos), static_cast<void*>(insPos + 1), valSize(tail));
+                throw;
+            }
+        }
+        ++size_;
+        return insPos;
+    }
+
+    //! Inserts `u` right before `pos`.
+    /*!
+     * \pre `pos` must be a valid iterator of this array and `u` must not reference an element in this array.
+     * \return An iterator pointing to the inserted element.
+     */
+    auto insert(const_iterator pos, value_type_param u) -> iterator { return emplace(pos, u); }
+    //! \copydoc insert(const_iterator, value_type_param)
+    auto insert(const_iterator pos, value_type&& u) -> iterator requires(not std::is_same_v<value_type_param, T>)
+    {
+        return emplace(pos, std::move(u));
+    }
+
+    //! Appends copies of the elements in the range [first, last).
+    /*!
+     * \pre The source range must not overlap this array's storage.
+     */
+    template <std::forward_iterator It>
+    void append(It first, It last) {
+        append(checkRange(first, last), first);
+    }
+    //! Appends the elements in `x`.
+    void append(std::initializer_list<T> x) { append(x.begin(), x.end()); }
+    //! Appends `n` copies of `val`.
+    /*!
+     * \pre `val` must not reference an element in this array.
+     */
+    void append(size_type n, value_type_param val) {
+        std::uninitialized_fill_n(prepare(n), n, val);
+        size_ += n;
+    }
+    //! Appends `n` value-initialized elements.
+    void append(size_type n) {
+        std::uninitialized_value_construct_n(prepare(n), n);
+        size_ += n;
+    }
+    //! Extends the array by `n` elements and returns writable storage for the appended tail.
+    /*!
+     * The returned span refers to elements that are already part of the array.
+     * Callers are responsible for initializing/overwriting all returned elements before they are read or destroyed.
+     */
+    auto appendForOverwrite(size_type n) -> std::span<T> {
+        prepare(n);
+        return {data_ + std::exchange(size_, size_ + n), n};
+    }
+
+    //! Removes the last element of this array.
+    /*!
+     * \pre not empty().
+     */
+    void pop_back() {
+        assert(not empty());
+        destroy(end() - 1);
+        --size_;
+    }
+    //! Removes the last `n` elements of this array.
+    /*!
+     * \pre `n <= size()`.
+     */
     void pop(size_type n) {
         if (n) {
+            assert(n <= size());
             destroy(end() - n, n);
-            buf_.pop(valSize(n));
+            size_ -= n;
         }
     }
-    template <typename It>
-    requires(not std::integral<It>)
-    void append(It first, It last) {
-        auto n = static_cast<std::size_t>(std::distance(first, last));
-        assert(std::cmp_less_equal(n, maxSize() - size()));
-        push(static_cast<size_type>(n), [&first, n](T* pos) { std::uninitialized_copy_n(first, n, pos); });
-    }
-    void append(size_type n, value_type_param val) {
-        push(n, [&val, n](T* pos) { std::uninitialized_fill_n(pos, n, val); });
+
+    //! Erases the element at `pos`.
+    /*!
+     * \pre `pos` is a valid iterator in `[begin(), end())`.
+     * \return Iterator to the element following the erased one, or `end()` if no such element exists.
+     */
+    constexpr auto erase(const_iterator pos) -> iterator {
+        assert(pos >= begin() && pos < end());
+        auto p    = const_cast<pointer>(pos);
+        auto next = p + 1;
+        destroy(p);
+        if (auto tail = static_cast<size_type>(end() - next); tail) {
+            std::memmove(static_cast<void*>(p), static_cast<void*>(next), valSize(tail));
+        }
+        --size_;
+        return p;
     }
 
+    //! Erases all elements satisfying `pred`.
+    /*!
+     * \return The number of erased elements.
+     */
+    template <std::predicate<value_type_param> Pred>
+    auto erase_if(Pred pred) -> size_type {
+        if (auto last = end(), first = std::find_if(data_, last, std::ref(pred)); first != last) {
+            destroy(first);
+            auto out = first++;
+            for (; first != last; ++first) {
+                if (not pred(*first)) {
+                    Detail::destructiveMove(out++, first);
+                }
+                else {
+                    destroy(first);
+                }
+            }
+            auto r  = static_cast<size_type>(last - out);
+            size_  -= r;
+            return r;
+        }
+        return 0u;
+    }
+
+    //! Ensures that capacity is at least `nc` without changing the size of this array.
+    /*!
+     * \note The function never decreases the capacity of the array.
+     */
     void reserve(size_type nc) {
         if (nc > capacity()) {
-            buf_.reserve(valSize(nc));
-            assert(capacity() == nc);
+            realloc(static_cast<size_type>(SystemAllocator::goodAllocSize(valSize(nc))) / val_size);
         }
     }
 
-    void resize(size_type count, const T& val = T()) {
+    //! Resizes the array to `count`.
+    /*!
+     * Appends copies of `val` if `count > size()`, otherwise removes trailing elements.
+     */
+    void resize(size_type count, value_type_param val) {
         if (auto sz = size(); count > sz) {
             append(count - sz, val);
         }
@@ -350,50 +577,109 @@ public:
         }
         assert(size() == count);
     }
-
-    void clear() {
-        destroy(data(), size());
-        buf_.clear();
+    //! Resizes the array to `count`.
+    /*!
+     * Appends value-initialized elements if `count > size()`, otherwise removes trailing elements.
+     */
+    void resize(size_type count) {
+        if (auto sz = size(); count > sz) {
+            append(count - sz);
+        }
+        else {
+            pop(sz - count);
+        }
+        assert(size() == count);
     }
 
-    //! Swaps this and other.
-    void swap(DynamicArray& other) noexcept { buf_.swap(other.buf_); }
+    //! Removes all elements from the array without changing the array's capacity.
+    void clear() { destroy(data(), std::exchange(size_, 0u)); }
 
+    //! Swaps `this` and `other`.
+    void swap(DynamicArray& other) noexcept {
+        std::swap(data_, other.data_);
+        std::swap(size_, other.size_);
+        std::swap(cap_, other.cap_);
+    }
+
+    //! Resets the array to its default-constructed state by removing all elements and realising any allocated storage.
     void reset() {
         destroy(data(), size());
-        buf_.release();
+        deallocate();
+        data_ = nullptr;
+        size_ = cap_ = 0u;
+    }
+
+    //! Requests capacity reduction to fit current size.
+    /*!
+     * If shrinking allocation fails, the array remains unchanged.
+     */
+    void shrink_to_fit() {
+        if (auto rc = not empty() ? static_cast<size_type>(SystemAllocator::goodAllocSize(valSize(size()))) : 0u;
+            rc < valSize(capacity())) {
+            void* newMem = nullptr;
+            if (rc) {
+                newMem = SystemAllocator::allocate(rc);
+                std::memcpy(newMem, static_cast<void*>(data_), valSize(size()));
+            }
+            deallocate();
+            data_ = static_cast<T*>(newMem);
+            cap_  = rc / val_size;
+        }
     }
 
 private:
-    static constexpr auto val_size = static_cast<size_type>(sizeof(T));
-    static constexpr auto valSize(size_type n) noexcept { return static_cast<std::size_t>(n * val_size); }
-
-    void grow(size_type n) {
-        auto nc = std::max(Detail::nextCap(capacity(), val_size), size() + n);
-        buf_.reserve(valSize(nc));
-        assert(capacity() == nc);
+    [[nodiscard]] static constexpr auto valSize(size_type n) noexcept -> size_type {
+        return static_cast<std::size_t>(n * val_size);
     }
-    template <typename Op>
-    void push(size_type n, Op op) {
-        if (std::cmp_greater(size() + n, capacity())) {
-            grow(n);
-        }
-        auto* mem = reinterpret_cast<pointer>(buf_.alloc(valSize(n)).data());
-        try {
-            std::move(op)(mem);
-        }
-        catch (...) {
-            buf_.pop(valSize(n));
-            throw;
+    template <std::forward_iterator It>
+    [[nodiscard]] constexpr auto checkRange(It first, It last) const -> size_type {
+        auto diff = static_cast<std::size_t>(std::distance(first, last));
+        return std::cmp_less_equal(diff, max_size()) ? static_cast<size_type>(diff)
+                                                     : throw std::length_error("DynamicArray::appendRange");
+    }
+    void deallocate() { SystemAllocator::deallocate(data_, valSize(cap_)); }
+    void realloc(size_type n) {
+        data_ = static_cast<T*>(SystemAllocator::reallocate(static_cast<void*>(data_), valSize(n)));
+        cap_  = n;
+    }
+    auto reallocNext(size_type sz, size_type n) -> pointer {
+        auto minS = max_size() - sz >= n ? sz + n : throw std::length_error("DynamicArray::push");
+        realloc(Detail::goodNextSize(minS, capacity(), val_size));
+        return data_ + sz;
+    }
+    template <typename... Arg>
+    requires(sizeof...(Arg) <= 1)
+    DynamicArray(std::piecewise_construct_t, size_type n, Arg&&... arg) {
+        reserve(n);
+        append(n, std::forward<Arg>(arg)...);
+    }
+    POTASSCO_ATTR_INLINE auto prepare(size_type n) -> pointer {
+        return capacity() - size() >= n ? data_ + size() : reallocNext(size(), n);
+    }
+    template <std::forward_iterator It>
+    POTASSCO_ATTR_INLINE void append(size_type n, It first) {
+        if (n) {
+            Detail::uninitialized_copy_n(first, n, prepare(n));
+            size_ += n;
         }
     }
-    POTASSCO_ATTR_INLINE void destroy(pointer first, size_type n) {
+    POTASSCO_ATTR_INLINE constexpr void destroy(pointer first) {
+        if constexpr (not std::is_trivially_destructible_v<T>) {
+            std::destroy_at(first);
+        }
+    }
+    POTASSCO_ATTR_INLINE constexpr void destroy(pointer first, size_type n) {
         if constexpr (not std::is_trivially_destructible_v<T>) {
             std::destroy_n(first, n);
         }
     }
-    DynamicBuffer buf_;
+    pointer   data_{nullptr};
+    size_type size_{0};
+    size_type cap_{0};
 };
+template <std::forward_iterator It>
+DynamicArray(It, It) -> DynamicArray<typename std::iterator_traits<It>::value_type>;
+
 template <typename T>
 void swap(DynamicArray<T>& lhs, DynamicArray<T>& rhs) noexcept {
     lhs.swap(rhs);
@@ -408,10 +694,19 @@ auto operator<=>(const DynamicArray<T>& lhs, const DynamicArray<T>& rhs)
     return std::lexicographical_compare_three_way(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
 }
 
+template <typename T, typename V>
+constexpr auto erase(DynamicArray<T>& vec, const V& value) -> typename DynamicArray<T>::size_type {
+    return vec.erase_if([&](typename DynamicArray<T>::value_type_param x) { return x == value; });
+}
+template <typename T, typename P>
+constexpr auto erase_if(DynamicArray<T>& vec, P pred) -> typename DynamicArray<T>::size_type {
+    return vec.erase_if(std::ref(pred));
+}
+
 class DynamicBitset {
 public:
-    using IndexType             = uint32_t;
-    using trivially_relocatable = std::true_type; // NOLINT
+    using IndexType = uint32_t;
+    POTASSCO_TRIVIALLY_RELOCATABLE();
 
     //! Creates an empty set.
     DynamicBitset() noexcept = default;
@@ -420,10 +715,10 @@ public:
     //! Returns whether the set contains the given bit.
     [[nodiscard]] bool contains(IndexType bit) const {
         auto [w, p] = idx(bit);
-        return w < words() && test_bit(data()[w], p);
+        return w < words() && test_bit(buffer_[w], p);
     }
     //! Returns whether the set is empty.
-    [[nodiscard]] bool empty() const noexcept { return buffer_.size() == 0; }
+    [[nodiscard]] bool empty() const noexcept { return buffer_.empty(); }
     //! Returns the number of elements in the set, i.e., the number of bits set.
     [[nodiscard]] auto count() const noexcept -> unsigned;
     //! Returns the smallest element in the set or 0 if empty.
@@ -431,7 +726,7 @@ public:
     //! Returns the largest element in the set or 0 if empty.
     [[nodiscard]] auto largest() const noexcept -> unsigned;
     //! Returns the number of active words.
-    [[nodiscard]] auto words() const noexcept -> uint32_t { return buffer_.size() / sizeof(SetType); }
+    [[nodiscard]] auto words() const noexcept -> uint32_t { return buffer_.size(); }
     //! Adds the given bit to the set and returns true if it was not already in the set.
     bool add(IndexType bit);
     //! Removes the given bit from the set and returns true if it was in the set.
@@ -454,10 +749,9 @@ private:
     };
     [[nodiscard]] static constexpr auto idx(IndexType bit) -> Index { return {bit / 64u, bit & 63u}; }
     [[nodiscard]] auto                  compare(const DynamicBitset& rhs) const -> std::strong_ordering;
-    [[nodiscard]] auto data() const noexcept -> SetType* { return reinterpret_cast<SetType*>(buffer_.data()); }
-    void               compact();
+    void                                popZero();
 
-    DynamicBuffer buffer_;
+    DynamicArray<SetType> buffer_;
 };
 
 //! Enumeration type for guiding hash probe lookup.
@@ -487,8 +781,15 @@ public:
     explicit DynamicHashArray(size_type bucketCount) {
         if (bucketCount) {
             if (auto cap = std::bit_ceil(std::max(bucketCount, static_cast<size_type>(8u))); cap >= bucketCount) {
-                auto t = std::make_unique<T[]>(cap);
-                arr_   = {t.release(), cap};
+                auto t = SystemAllocator::allocate(cap * sizeof(T));
+                try {
+                    std::uninitialized_value_construct_n(static_cast<T*>(t), cap);
+                    arr_ = {static_cast<T*>(t), cap};
+                }
+                catch (...) {
+                    SystemAllocator::deallocate(t, cap * sizeof(T));
+                    throw;
+                }
             }
             else {
                 throw std::length_error{"DynamicHashArray"};
@@ -498,12 +799,12 @@ public:
     DynamicHashArray(DynamicHashArray&& other) noexcept : arr_(std::exchange(other.arr_, {})) {}
     DynamicHashArray& operator=(DynamicHashArray&& other) noexcept {
         if (data() != other.data()) {
-            Deleter{}(arr_.data());
+            deallocate();
             arr_ = std::exchange(other.arr_, {});
         }
         return *this;
     }
-    ~DynamicHashArray() noexcept { Deleter{}(arr_.data()); }
+    ~DynamicHashArray() noexcept { deallocate(); }
 
     //! Clears the array while keeping its capacity().
     void clear() { std::fill_n(data(), capacity(), T{}); }
@@ -527,7 +828,7 @@ public:
                 *tmp.nextUnused(TraitsT::hashKey(b)) = std::move(b);
             }
         }
-        Deleter{}(arr_.data());
+        deallocate();
         arr_ = std::exchange(tmp.arr_, {});
     }
 
@@ -594,7 +895,12 @@ public:
     }
 
 private:
-    using Deleter   = typename std::unique_ptr<T[]>::deleter_type;
+    void deallocate() {
+        if constexpr (not std::is_trivially_destructible_v<T>) {
+            std::destroy_n(arr_.data(), arr_.size());
+        }
+        SystemAllocator::deallocate(arr_.data(), arr_.size() * sizeof(T));
+    }
     using ArrayType = std::span<T>;
     ArrayType arr_;
 };
@@ -623,9 +929,8 @@ class DynamicIndex {
     };
 
 public:
+    POTASSCO_TRIVIALLY_RELOCATABLE();
     using HashType = Bucket::hash_type;
-
-    using trivially_relocatable = std::true_type; // NOLINT
 
     //! Creates an empty index.
     DynamicIndex() = default;
@@ -681,8 +986,7 @@ public:
      *
      * \note An "invalid" result can later be used when adding the missing element.
      */
-    template <typename CmpFunc>
-    requires(std::is_invocable_r_v<bool, CmpFunc, Id_t>)
+    template <std::predicate<Id_t> CmpFunc>
     [[nodiscard]] auto find_if(HashType hash, CmpFunc&& func) const noexcept -> IndexRef {
         return IndexRef{table_
                             .lookup(hash,
@@ -701,8 +1005,7 @@ public:
     }
 
     //! Returns whether the index contains an element with the given hash for which the provided predicate returns true.
-    template <typename CmpFunc>
-    requires(std::is_invocable_r_v<bool, CmpFunc, Id_t>)
+    template <std::predicate<Id_t> CmpFunc>
     [[nodiscard]] auto contains(HashType hash, CmpFunc&& func) const noexcept -> bool {
         return find_if(hash, std::forward<CmpFunc>(func)).valid();
     }
@@ -765,31 +1068,32 @@ concept HashTableKeyTraits = requires(const K& x) {
  * \note Entries are stored as (key,value)-pairs in a dynamic array. Hence, mutating operations invalidate
  *       existing references/pointers.
  */
-template <typename KeyT, typename ValT, HashTableKeyTraits<KeyT> HashTraits, bool Relocatable>
+template <typename KeyT, typename ValT, HashTableKeyTraits<KeyT> HashTraits>
 class DynamicHashTable {
 public:
-    using key_type = KeyT; // NOLINT
-    using map_type = ValT; // NOLINT
+    // ReSharper disable CppInconsistentNaming, CppRedundantTypenameKeyword
+    using key_type    = KeyT;
+    using map_type    = ValT;
+    using traits_type = HashTraits;
+    POTASSCO_TRIVIALLY_RELOCATABLE(is_trivially_relocatable_v<KeyT>, is_trivially_relocatable_v<ValT>);
     struct BucketT {
         friend bool                                      operator==(const BucketT&, const BucketT&) = default;
         key_type                                         key{HashTraits::empty()};
         POTASSCO_ATTR_NO_UNIQUE_ADDRESS mutable map_type value{};
     };
     struct TraitsT {
-        using size_type = uint32_t; // NOLINT
-        using hash_type = uint32_t; // NOLINT
+        using size_type = uint32_t;
+        using hash_type = uint32_t;
         static constexpr bool used(const BucketT& x) { return x.key != HashTraits::empty(); }
         static constexpr auto hashKey(const BucketT& x) -> hash_type {
             return static_cast<uint32_t>(HashTraits::hashKey(x.key));
         }
     };
-    using ArrayType = DynamicHashArray<BucketT, TraitsT>;
-    using pointer   = typename ArrayType::pointer;   // NOLINT
-    using size_type = typename ArrayType::size_type; // NOLINT
-
-    using trivially_relocatable = std::integral_constant<bool, Relocatable>; // NOLINT
-    using const_pointer         = const BucketT*;                            // NOLINT
-
+    using ArrayType     = DynamicHashArray<BucketT, TraitsT>;
+    using pointer       = typename ArrayType::pointer;
+    using const_pointer = const BucketT*;
+    using size_type     = typename ArrayType::size_type;
+    // ReSharper restore CppInconsistentNaming, CppRedundantTypenameKeyword
     //! Creates an empty table.
     DynamicHashTable() = default;
     //! Creates a table with at least `bucketCount` buckets.
@@ -929,10 +1233,9 @@ private:
     uint32_t  avail_{0u};
 };
 
-//! A simple (linear-probing) hash map that maps integral keys to scalar values.
-template <std::integral KeyT, typename ValueT, KeyT Empty>
-requires(std::is_scalar_v<ValueT>)
-using SimpleHashMap = DynamicHashTable<KeyT, ValueT, Detail::NumHashTraits<KeyT, Empty>, true>;
+//! A simple (linear-probing) hash map that maps integral keys to trivially relocatable values.
+template <std::integral KeyT, TriviallyRelocatable ValueT, KeyT Empty>
+using SimpleHashMap = DynamicHashTable<KeyT, ValueT, Detail::NumHashTraits<KeyT, Empty>>;
 
 //! A trivially relocatable immutable string type with small buffer optimization.
 /*!
@@ -945,7 +1248,7 @@ using SimpleHashMap = DynamicHashTable<KeyT, ValueT, Detail::NumHashTraits<KeyT,
  */
 class ConstString final {
 public:
-    using trivially_relocatable = std::true_type; // NOLINT
+    POTASSCO_TRIVIALLY_RELOCATABLE();
     struct Borrow_t {};
     struct NoSso_t {};
     //! Creates an empty string.
@@ -1054,10 +1357,10 @@ private:
     [[nodiscard]] constexpr auto tag() const -> uint8_t { return static_cast<uint8_t>(storage_[c_max_small]); }
     [[nodiscard]] auto           large() const -> const Large* { return reinterpret_cast<const Large*>(storage_); }
     void                         initLarge(std::string_view str);
-    static void                  release(const char*);
+    static void                  release(const Large&);
     constexpr void               release() {
         if (tag() == c_large_tag) {
-            ConstString::release(large()->str);
+            ConstString::release(*large());
         }
     }
 
@@ -1084,24 +1387,22 @@ auto try_emplace(MapType& map, std::string_view key, Args&&... args)
 //! A simple string hash set that preserves the insertion order.
 class OrderedStringSet {
 public:
-    using trivially_relocatable = std::true_type; // NOLINT
-    OrderedStringSet()          = default;
+    POTASSCO_TRIVIALLY_RELOCATABLE();
+    OrderedStringSet() = default;
     explicit OrderedStringSet(bool allowShort);
     OrderedStringSet(const OrderedStringSet&)            = delete;
     OrderedStringSet(OrderedStringSet&&) noexcept        = default;
     OrderedStringSet& operator=(const OrderedStringSet&) = delete;
     OrderedStringSet& operator=(OrderedStringSet&&)      = default;
-    ~OrderedStringSet();
+    ~OrderedStringSet()                                  = default;
 
     //! Returns the number of elements in the set.
-    [[nodiscard]] auto size() const -> uint32_t { return static_cast<uint32_t>(strings_.size() / sizeof(ConstString)); }
+    [[nodiscard]] auto size() const -> uint32_t { return strings_.size(); }
     //! Returns a view over the current elements.
     /*!
      * \note The view is only valid until the next call to a mutating function.
      */
-    [[nodiscard]] auto elements() const noexcept -> std::span<const ConstString> {
-        return {reinterpret_cast<const ConstString*>(strings_.data()), size()};
-    }
+    [[nodiscard]] auto elements() const noexcept -> std::span<const ConstString> { return {strings_.data(), size()}; }
     //! Returns a (const) reference to the ith element in the set.
     /*!
      * \note The reference is only valid until the next call to a mutating function.
@@ -1141,30 +1442,10 @@ private:
     }
     void push(std::string_view);
 
-    DynamicIndex  index_;
-    DynamicBuffer strings_;
-    bool          allowShort_{true};
+    DynamicIndex              index_;
+    DynamicArray<ConstString> strings_;
+    bool                      allowShort_{true};
 };
-
-namespace Detail {
-template <typename T>
-struct Temp {
-    Temp() = default;
-    ~Temp() {
-        if constexpr (not std::is_trivially_destructible_v<T>) {
-            std::destroy_n(data(), size());
-        }
-    }
-    void resize(std::size_t n, const T& v) {
-        Temp t;
-        std::uninitialized_fill_n(reinterpret_cast<T*>(t.buffer.alloc(n * sizeof(T)).data()), n, v);
-        t.buffer.swap(buffer);
-    }
-    auto               data() const -> T* { return reinterpret_cast<T*>(buffer.data()); }
-    [[nodiscard]] auto size() const -> std::size_t { return buffer.size() / sizeof(T); }
-    DynamicBuffer      buffer;
-};
-} // namespace Detail
 
 struct RadixConfig {
     static constexpr auto def_threshold    = 32u;
@@ -1193,13 +1474,14 @@ constexpr inline auto radix_only    = RadixConfig{.stdSortThreshold = 1u, .stdSt
  *       std::ranges::sort or std::ranges::stable_sort depending on whether the output must be stable.
  * \note Use std::ref(buffer) to reuse an existing temporary buffer.
  */
-template <std::ranges::contiguous_range R, typename RankFn, typename Tb = Detail::Temp<std::ranges::range_value_t<R>>>
+template <std::ranges::contiguous_range R, typename RankFn, typename Tb = DynamicArray<std::ranges::range_value_t<R>>>
 requires std::is_invocable_v<RankFn&, std::ranges::range_value_t<R>> &&
          std::is_unsigned_v<std::remove_cvref_t<std::invoke_result_t<RankFn&, std::ranges::range_value_t<R>>>>
 constexpr void radixSort(R&& rng, RankFn rank, RadixConfig config = radix_def, Tb tmp = {}) {
     using T        = std::ranges::range_value_t<R>;
     using Rank     = std::remove_cvref_t<std::invoke_result_t<RankFn&, T>>;
     using SizeType = std::common_type_t<std::size_t, Rank>;
+    static_assert(std::is_nothrow_move_constructible_v<T>);
     assert(std::size(rng) <= UINT32_MAX);
     const auto n = static_cast<uint32_t>(std::size(rng));
     if (n < 2) {

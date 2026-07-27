@@ -28,9 +28,9 @@
 
 namespace Potassco {
 using namespace std::literals;
-using ErrorBuffer = BasicCharBufferT<1024>;
+using ErrorBuffer = BasicCharBuffer;
 
-constinit AbortHandler g_abort_handler = nullptr;
+static constinit AbortHandler abort_handler = nullptr;
 
 static ErrorBuffer& appendInfo(ErrorBuffer& buffer, std::string_view type, const ExpressionInfo& expressionInfo,
                                bool addFile) {
@@ -46,6 +46,7 @@ static ErrorBuffer& appendInfo(ErrorBuffer& buffer, std::string_view type, const
     return buffer.append(type).append(startExp).append(expressionInfo.expression).append(endExp).append("failed."sv);
 }
 
+// NOLINTNEXTLINE(*-avoid-variadic-functions)
 extern void failAbort(const ExpressionInfo& expressionInfo, const char* fmt, ...) {
     ErrorBuffer buffer;
     auto        hasMessage = fmt && *fmt;
@@ -57,13 +58,13 @@ extern void failAbort(const ExpressionInfo& expressionInfo, const char* fmt, ...
         buffer.vAppendF(fmt, args);
         va_end(args);
     }
-    if (g_abort_handler) {
-        g_abort_handler(buffer.c_str());
+    if (abort_handler) {
+        abort_handler(buffer.c_str());
     }
     fprintf(stderr, "%s\n", buffer.c_str());
     std::abort();
 }
-
+// NOLINTNEXTLINE(*-avoid-variadic-functions)
 extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char* fmt, ...) {
     if (ec == Errc::bad_alloc) {
         throw std::bad_alloc();
@@ -101,7 +102,7 @@ extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char*
     }
 }
 
-extern AbortHandler setAbortHandler(AbortHandler handler) { return std::exchange(g_abort_handler, handler); }
+extern AbortHandler setAbortHandler(AbortHandler handler) { return std::exchange(abort_handler, handler); }
 
 std::string_view RuntimeError::message() const noexcept {
     auto ret = std::string_view(what());

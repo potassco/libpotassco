@@ -24,6 +24,7 @@
 #include <potassco/match_basic_types.h>
 
 #include <potassco/error.h>
+#include <potassco/format.h>
 #include <potassco/utils.h>
 
 #include <algorithm>
@@ -56,8 +57,12 @@ void AbstractProgram::endStep() {}
 /////////////////////////////////////////////////////////////////////////////////////////
 // BufferedStream
 /////////////////////////////////////////////////////////////////////////////////////////
-BufferedStream::BufferedStream(std::istream& str) : str_(str), buf_(new char[buf_size + 1]) { underflow(0); }
-BufferedStream::~BufferedStream() { delete[] buf_; }
+BufferedStream::BufferedStream(std::istream& str)
+    : str_(str)
+    , buf_(static_cast<char*>(SystemAllocator::allocate(buf_size + 1))) {
+    underflow(0);
+}
+BufferedStream::~BufferedStream() { SystemAllocator::deallocate(buf_); }
 auto BufferedStream::avail() const -> uint32_t { return rEnd_ - rpos_; }
 void BufferedStream::advance(uint32_t n) {
     POTASSCO_DEBUG_ASSERT(rpos_ + n <= rEnd_);
@@ -168,17 +173,17 @@ auto BufferedStream::read(std::span<char> bufferOut) -> std::size_t {
     }
     return static_cast<std::size_t>(out - bufferOut.data());
 }
-auto BufferedStream::readLine(DynamicBuffer& bufferOut) -> std::size_t {
+auto BufferedStream::readLine(BasicCharBuffer& bufferOut) -> std::size_t {
     for (auto sz = bufferOut.size();;) {
         const char* in   = buf_ + rpos_;
         const auto  read = findNewLine(in);
-        bufferOut.append(in, read);
+        bufferOut.append(std::string_view{in, read});
         advance(read);
         auto n = get();
         if (n == nl || n == 0) {
             return bufferOut.size() - sz;
         }
-        bufferOut.push(n);
+        bufferOut.push_back(n);
     }
 }
 auto BufferedStream::line() const -> unsigned { return line_; }

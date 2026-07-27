@@ -23,6 +23,8 @@
 //
 #include <potassco/platform.h>
 
+#include <potassco/error.h>
+
 #if __has_include(<fpu_control.h>)
 #include <fpu_control.h>
 #endif
@@ -53,11 +55,17 @@
 #endif
 #endif
 
+#if __has_include(<malloc.h>)
+#include <malloc.h>
+#elif __has_include(<malloc/malloc.h>)
+#include <malloc/malloc.h>
+#endif
+
 #include <cfloat>
 #include <chrono>
 #include <csignal>
-#include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <span>
 #include <utility>
 
@@ -280,8 +288,61 @@ static unsigned setFpuPrecision(unsigned* r) {
     return 0u;
 }
 #else
-constexpr unsigned setFpuPrecision(unsigned*) { return 0u; }
+static constexpr unsigned setFpuPrecision(unsigned*) { return 0u; }
 #endif
+///////////////////////////////////////////////////////////////////////////
+// System allocator
+///////////////////////////////////////////////////////////////////////////
+template <typename T>
+static auto allocUsable(T* x) -> std::size_t {
+    if constexpr (requires { malloc_usable_size(x); }) {
+        return malloc_usable_size(x);
+    }
+    else if constexpr (requires { _msize(x); }) {
+        return _msize(x);
+    }
+    else if constexpr (requires { malloc_size(x); }) {
+        return malloc_size(x);
+    }
+    else {
+        return 0u;
+    }
+}
+template <typename T>
+static auto allocExpand(T* x, std::size_t sz, std::align_val_t align) -> std::size_t {
+    if constexpr (requires { _expand(x, sz); }) {
+        if (auto* r = _expand(x, sz); r) {
+            return sz;
+        }
+    }
+    else if (auto rs = PlatformApi::allocUsable(x); rs >= sz) {
+        auto extra = ((rs - sz) / static_cast<std::size_t>(align)) * static_cast<std::size_t>(align);
+        return sz + extra;
+    }
+    return 0u;
+}
+template <typename SizeT>
+static auto allocGoodSize(SizeT sz) -> SizeT {
+    if constexpr (requires { malloc_good_size(sz); }) {
+        sz = malloc_good_size(sz);
+    }
+#if defined(__GLIBC__)
+    else {
+        static constexpr auto align     = __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+        static constexpr auto min_size  = 3 * sizeof(void*);
+        static constexpr auto max_size  = 8246 * align;
+        static constexpr auto head_size = sizeof(void*);
+        static_assert(align > sizeof(void*), "sanity check");
+        if (sz <= min_size) {
+            return min_size;
+        }
+        if (sz < max_size) {
+            sz = (align * ((sz + head_size + align - 1) / align)) - head_size;
+        }
+    }
+#endif
+    return sz;
+}
 } // namespace PlatformApi
 namespace Potassco {
 static constexpr auto c_file = std::string_view{__FILE__};
@@ -305,8 +366,44 @@ auto getThreadTime() -> double { return std::chrono::duration<double>(PlatformAp
 
 const char* ExpressionInfo::relativeFileName(const std::source_location& loc) {
     auto res = loc.file_name();
-    for (auto cmp = c_file; *res && not cmp.empty() && *res == cmp.front(); cmp.remove_prefix(1), ++res) { ; }
+    for (auto cmp = c_file; *res && not cmp.empty() && *res == cmp.front(); cmp.remove_prefix(1), ++res) {}
     return res;
+}
+/////////////////////////////////////////////////////////////////////////////////////////
+// SystemAllocator
+/////////////////////////////////////////////////////////////////////////////////////////
+constexpr auto malloc_max_align = static_cast<std::align_val_t>(__STDCPP_DEFAULT_NEW_ALIGNMENT__);
+
+auto SystemAllocator::allocate(std::size_t sz, std::align_val_t align) -> void* {
+    POTASSCO_ASSERT(sz, "invalid size");
+    if (align <= malloc_max_align) {
+        auto* m = std::malloc(sz);
+        POTASSCO_CHECK(m != nullptr, Errc::bad_alloc, "Allocator::malloc: out of memory");
+        return m;
+    }
+    // NOTE: Can't use std::aligned_alloc here because this function is currently not supported by Microsoft's C
+    // Runtime library.
+    return ::operator new(sz, align);
+}
+auto SystemAllocator::reallocate(void* mem, std::size_t sz) -> void* {
+    POTASSCO_ASSERT(sz, "invalid size");
+    auto* m = std::realloc(mem, sz);
+    POTASSCO_CHECK(m != nullptr, Errc::bad_alloc, "Allocator::realloc: out of memory");
+    return m;
+}
+void SystemAllocator::deallocate(void* mem, std::size_t, std::align_val_t align) {
+    if (align <= malloc_max_align) {
+        std::free(mem);
+    }
+    else {
+        ::operator delete(mem, align);
+    }
+}
+auto SystemAllocator::tryExpand(void* mem, std::size_t sz, std::align_val_t align) -> std::size_t {
+    return align <= malloc_max_align && mem ? PlatformApi::allocExpand(mem, sz, align) : 0u;
+}
+auto SystemAllocator::goodAllocSize(std::size_t sz, std::align_val_t align) -> std::size_t {
+    return align <= malloc_max_align ? PlatformApi::allocGoodSize(sz) : sz;
 }
 
 } // namespace Potassco

@@ -24,10 +24,11 @@
 //
 #pragma once
 
+#include <potassco/utils.h>
+
 #include <cassert>
 #include <cstdint>
 #include <span>
-#include <vector>
 
 namespace Potassco {
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -46,21 +47,22 @@ public:
     auto getData(IdType nId) const -> DataType { return nodes_.at(nId).data; }
     void clear() { nodes_.clear(); }
 
-    using Scc    = std::vector<DataType>;
-    using SccVec = std::vector<Scc>;
     /*!
      * \brief Compute strongly connected components (SCCs) using Tarjan's algorithm.
      *
-     * \param skipTrivial If true, SCCs of size 1 are omitted from the returned vector.
+     * \param out Function object called for each discovered scc.
+     * \param skipTrivial If true, SCCs of size 1 are omitted.
      *
      * \note This function modifies the internal state of the graph (node visit markers and traversal offsets).
      *       Node IDs and edges remain unchanged.
      */
-    auto computeSccs(bool skipTrivial = false) -> SccVec {
-        using IdVec = std::vector<IdType>;
-        SccVec     sccs;
+    template <std::invocable<unsigned, std::span<DataType>> SccOutIt>
+    auto computeSccs(SccOutIt out, bool skipTrivial = false) -> uint32_t {
+        using Scc = DynamicArray<DataType>;
+        Scc        scc;
         IdVec      stack;
         IdVec      trail;
+        uint32_t   nScc{0};
         const auto open   = open_;      // open state, i.e. node not yet seen
         const auto closed = 1u - open_; // closed state, i.e. node has its scc determined
         for (auto xId = IdType(0); auto& x : nodes_) {
@@ -98,7 +100,7 @@ public:
                         }
 
                         if (root) {
-                            Scc  scc;
+                            scc.clear();
                             auto nId = xId;
                             do {
                                 nId = trail.back();
@@ -109,7 +111,8 @@ public:
                             } while (nId != yId);
 
                             if (not skipTrivial || scc.size() > 1) {
-                                sccs.push_back(std::move(scc));
+                                out(nScc, std::span(scc));
+                                ++nScc;
                             }
                         }
                     }
@@ -118,21 +121,26 @@ public:
             ++xId;
         }
         open_ = closed;
-        return sccs;
+        return nScc;
     }
     //! Compute only SCCs of size > 1 (non-trivial).
-    auto computeNonTrivialSccs() -> SccVec { return computeSccs(true); }
+    template <typename SccOutIt>
+    auto computeNonTrivialSccs(SccOutIt&& outIt) -> uint32_t {
+        return computeSccs(std::forward<SccOutIt>(outIt), true);
+    }
 
 private:
+    using IdVec = DynamicArray<IdType>;
     struct Node {
+        POTASSCO_TRIVIALLY_RELOCATABLE();
         Node(DataType d, IdType m) : data(d), min(m), off(0) {}
-        std::vector<IdType> edges;
-        DataType            data{0};
-        IdType              min{0};
-        IdType              off{0};
+        IdVec    edges;
+        DataType data{0};
+        IdType   min{0};
+        IdType   off{0};
     };
 
-    std::vector<Node> nodes_;
-    IdType            open_ = 0; // current "unseen" state - either 0 or 1
+    DynamicArray<Node> nodes_;
+    IdType             open_ = 0; // current "unseen" state - either 0 or 1
 };
 } // namespace Potassco

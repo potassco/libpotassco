@@ -22,26 +22,27 @@
 // IN THE SOFTWARE.
 //
 #pragma once
+#include <potassco/bits.h>
 #include <potassco/enum.h>
-#include <potassco/utils.h>
 
+#include <cassert>
 #include <cstdarg>
+#include <span>
 #include <string>
 #include <type_traits>
 namespace Potassco {
 struct Field;
+class BasicCharBuffer;
 namespace Detail {
 char* writeSigned(char* first, char* last, std::intmax_t);
 char* writeUnsigned(char* first, char* last, std::uintmax_t);
 char* writeFloat(char* first, char* last, double, int p = -1);
-void  writeField(DynamicBuffer& buffer, const Field& f);
 struct TypeWithToChars {};
 enum class AugmentStyle {
     quoted,
     keyed,
     styled,
 };
-std::size_t    vFormatTo(DynamicBuffer&, const char* fmt, va_list args) noexcept POTASSCO_ATTRIBUTE_FORMAT(2, 0);
 constexpr bool hasValue(const auto&) { return true; }
 template <typename T>
 constexpr bool hasValue(const std::optional<T>& o) {
@@ -198,26 +199,7 @@ struct Field {
     char   term{0};         // term character
 };
 template <CharBuffer S>
-S& toChars(S& out, const Field& f) {
-    if constexpr (requires { out.append(f); }) {
-        out.append(f);
-    }
-    else if (f.prec == Field::str_field) {
-        constexpr auto pad = std::string_view{" "};
-        auto           w   = f.f.s.size() + (f.term != 0);
-        for (auto p = f.width > 0 ? static_cast<std::size_t>(f.width) : 0; p > w; --p) { out.append(pad); }
-        out.append(f.f.s);
-        out.append(std::string_view{&f.term, f.term != 0});
-        for (auto p = -f.width > 0 ? static_cast<std::size_t>(-f.width) : 0; p > w; --p) { out.append(pad); }
-    }
-    else {
-        char          local[256];
-        DynamicBuffer temp{local};
-        Detail::writeField(temp, f);
-        out.append(temp.view());
-    }
-    return out;
-}
+S& toChars(S& out, const Field& f);
 template <std::integral T>
 constexpr auto num(T n, Field::Width w, char term = 0) -> Field {
     auto rw = to_underlying(w);
@@ -317,7 +299,7 @@ public:
         auto n    = 0u;
         rep_[n++] = '\033';
         rep_[n++] = '[';
-        rep_[n++] = static_cast<char>('0' + (static_cast<uint32_t>(spec.em) & 0xFF));
+        rep_[n++] = static_cast<char>('0' + (static_cast<uint32_t>(spec.em) & 0xFFu));
         if (auto cr = static_cast<uint32_t>(spec.fg); cr) {
             cr        += offset(spec.fg);
             rep_[n++]  = ';';
@@ -380,51 +362,45 @@ auto styled(const T& arg, const TextStyle& style) -> Augmented<std::remove_cvref
 ///////////////////////////////////////////////////////////////////////////////
 // T -> string
 ///////////////////////////////////////////////////////////////////////////////
-template <auto StackSize = 256>
-requires(StackSize > sizeof(DynamicBuffer) + 2)
-class BasicCharBufferT { // NOLINT(*-pro-type-member-init)
+//! A (dynamic) character buffer with "small buffer optimization" for basic formatting.
+class BasicCharBuffer { // NOLINT(*-pro-type-member-init)
 public:
     static constexpr int eof = -1;
 
-    BasicCharBufferT()                        = default; // NOLINT
-    BasicCharBufferT(const BasicCharBufferT&) = default;
-    ~BasicCharBufferT()                       = default;
-    BasicCharBufferT(BasicCharBufferT&& other) noexcept : BasicCharBufferT() { *this = std::move(other); }
-    BasicCharBufferT& operator=(const BasicCharBufferT&) = default;
-    BasicCharBufferT& operator=(BasicCharBufferT&& other) noexcept {
-        if (this != &other) {
-            clear();
-            term_ = std::exchange(other.term_, 0);
-            ts_   = std::exchange(other.ts_, 0);
-            if (other.buffer_.data() == other.local_) {
-                append(other.view());
-                other.buffer_.clear();
-            }
-            else {
-                buffer_ = std::exchange(other.buffer_, DynamicBuffer(other.local_));
-            }
+    //! Creates an empty buffer.
+    constexpr BasicCharBuffer() noexcept { // NOLINT(cppcoreguidelines-pro-type-member-init)
+        if (std::is_constant_evaluated()) {
+            std::fill_n(storage_, sizeof(storage_), static_cast<char>(0));
         }
-        return *this;
+        initState();
     }
+    BasicCharBuffer(const BasicCharBuffer& other);
+    BasicCharBuffer(BasicCharBuffer&& other) noexcept;
+    constexpr ~BasicCharBuffer() {
+        if (not small()) {
+            release();
+        }
+    }
+    auto operator=(const BasicCharBuffer&) -> BasicCharBuffer&;
+    auto operator=(BasicCharBuffer&& other) noexcept -> BasicCharBuffer&;
 
-    [[nodiscard]] auto view() const noexcept -> std::string_view { return buffer_.view(); }
-    [[nodiscard]] auto size() const noexcept -> uint32_t { return buffer_.size(); }
-    [[nodiscard]] auto empty() const noexcept -> bool { return buffer_.size() == 0; }
-    [[nodiscard]] auto data() const noexcept -> const char* { return buffer_.data(); }
-    [[nodiscard]] auto c_str() -> const char* {
-        if (empty() || back() != 0) {
-            push_back(0);
-        }
-        return buffer_.data();
+    [[nodiscard]] auto size() const noexcept -> uint32_t {
+        return small() ? max_small - static_cast<uint32_t>(tag()) : large()->size;
     }
+    [[nodiscard]] auto capacity() const noexcept -> uint32_t { return small() ? max_small : large()->cap; }
+    [[nodiscard]] auto empty() const noexcept -> bool { return size() == 0; }
+    [[nodiscard]] auto data() const noexcept -> const char* { return small() ? storage_ : large()->data; }
+    [[nodiscard]] auto c_str() const noexcept -> const char* { return data(); }
+    [[nodiscard]] auto view() const noexcept -> std::string_view { return {data(), size()}; }
     //! Appends the given arguments according to `fmt`.
     /*!
      * \note Formatting follows the rules of std::vsnprintf().
      */
-    BasicCharBufferT& appendF(const char* fmt, ...) noexcept POTASSCO_ATTRIBUTE_FORMAT(2, 3) {
+    POTASSCO_ATTRIBUTE_FORMAT(2, 3)
+    auto appendF(const char* fmt, ...) noexcept -> BasicCharBuffer& { // NOLINT
         va_list args;
         va_start(args, fmt);
-        Detail::vFormatTo(buffer_, fmt, args);
+        vFormatTo(fmt, args);
         va_end(args);
         return *this;
     }
@@ -432,30 +408,31 @@ public:
     /*!
      * \note Formatting follows the rules of std::vsnprintf().
      */
-    BasicCharBufferT& vAppendF(const char* fmt, va_list args) noexcept POTASSCO_ATTRIBUTE_FORMAT(2, 0) {
-        Detail::vFormatTo(buffer_, fmt, args);
+    POTASSCO_ATTRIBUTE_FORMAT(2, 0)
+    auto vAppendF(const char* fmt, va_list args) noexcept -> BasicCharBuffer& {
+        vFormatTo(fmt, args);
         return *this;
     }
     //! Appends `s` to the buffer.
-    BasicCharBufferT& append(std::string_view s) {
-        buffer_.append(s);
+    auto append(std::string_view s) -> BasicCharBuffer& {
+        appendImpl(s);
         return *this;
     }
     //! Appends `n` copies of `c` to the buffer.
-    BasicCharBufferT& append(std::size_t n, char c) {
-        std::fill_n(buffer_.alloc(n).data(), n, c);
+    auto append(std::size_t n, char c) -> BasicCharBuffer& {
+        appendImpl(n, c);
         return *this;
     }
     //! Appends the given field to the buffer.
-    BasicCharBufferT& append(const Field& f) {
-        Detail::writeField(buffer_, f);
+    auto append(const Field& f) -> BasicCharBuffer& {
+        writeField(f);
         return *this;
     }
     //! Converts the given argument and appends its character representation to the buffer.
     template <typename T>
-    BasicCharBufferT& append(const T& x) {
-        if constexpr (requires { buffer_.append(x); }) {
-            buffer_.append(x);
+    auto append(const T& x) -> BasicCharBuffer& {
+        if constexpr (requires { appendImpl(x); }) {
+            appendImpl(x);
         }
         else {
             static_assert(requires { toChars(*this, x); }, "toChars not defined for type T");
@@ -465,62 +442,119 @@ public:
     }
     //! Converts and appends the given arguments to the buffer, separated by `sep`.
     template <typename... Args>
-    BasicCharBufferT& appendSep(std::string_view sep, const Args&... args) {
+    auto appendSep(std::string_view sep, const Args&... args) -> BasicCharBuffer& {
         std::string_view seps[2] = {std::string_view{}, sep};
         int              n       = 0;
         (append(seps[Detail::hasValue(args) && n++]).append(args), ...);
         return *this;
     }
+    //! Appends `n` uninitialized characters to the buffer.
+    auto appendForOverwrite(std::size_t n) -> std::span<char>;
     //! Clears the buffer.
-    void clear() noexcept {
-        term_ = 0;
-        ts_   = 0;
-        buffer_.clear();
-    }
+    void clear() noexcept;
+
     //! Returns the last character in the buffer.
     /*!
      * \pre not empty()
      */
-    char& back() { return buffer_.back(); }
+    char& back() {
+        assert(not empty());
+        return buf()[size() - 1];
+    }
     //! Appends the given character to the buffer.
-    void push_back(char c) { buffer_.push(c); }
+    void push_back(char c);
     //! Pops the last `n` characters from the buffer.
-    void pop(uint32_t n) { buffer_.pop(n); }
+    void pop(uint32_t n) noexcept;
     //! Opens the buffer for styled output.
-    BasicCharBufferT& open(const TextStyle& style, int term = eof) {
-        if (ts_) {
+    auto open(const TextStyle& style, int term = eof) -> BasicCharBuffer& {
+        if (ts()) {
             close();
         }
         if (style != TextStyle()) {
-            store_set_bit(ts_, 1);
-            buffer_.append(style.view());
+            storage_[ts_byte] = static_cast<char>(set_bit(ts(), 1));
+            appendImpl(style.view());
         }
         if (term != eof) {
-            store_set_bit(ts_, 0);
-            term_ = static_cast<char>(term);
+            storage_[ts_byte]   = static_cast<char>(set_bit(ts(), 0));
+            storage_[term_byte] = static_cast<char>(term);
         }
         return *this;
     }
     //! Finishes styled output and appends the terminator character given on open().
     auto close() -> std::string_view {
-        if (test_bit(ts_, 1)) {
-            buffer_.append(Detail::resetStyle());
+        if (test_bit(ts(), 1)) {
+            appendImpl(Detail::resetStyle());
         }
-        if (test_bit(ts_, 0)) {
-            buffer_.push(term_);
+        if (test_bit(ts(), 0)) {
+            push_back(storage_[term_byte]);
         }
-        ts_ = 0;
+        storage_[ts_byte] = 0;
         return view();
     }
 
 private:
-    char          local_[StackSize - (sizeof(DynamicBuffer) + 2)]{};
-    char          term_{0};
-    uint8_t       ts_{0};
-    DynamicBuffer buffer_{local_};
+    static constexpr auto max_small = 253u;
+    static constexpr auto term_byte = 254u;
+    static constexpr auto ts_byte   = 255u;
+    struct Large {
+        char*    data{nullptr};
+        uint32_t size{0};
+        uint32_t cap{0};
+    };
+    //
+    constexpr void initState(const BasicCharBuffer& other) noexcept {
+        storage_[0]         = 0;
+        storage_[max_small] = static_cast<char>(max_small);
+        storage_[term_byte] = other.storage_[term_byte];
+        storage_[ts_byte]   = other.storage_[ts_byte];
+    }
+    constexpr void initState() noexcept {
+        storage_[0]         = 0;
+        storage_[max_small] = static_cast<char>(max_small);
+        storage_[term_byte] = 0u;
+        storage_[ts_byte]   = 0u;
+    }
+    [[nodiscard]] constexpr auto tag() const -> uint8_t { return static_cast<uint8_t>(storage_[max_small]); }
+    [[nodiscard]] constexpr bool small() const { return tag() <= max_small; }
+    [[nodiscard]] constexpr auto ts() const -> uint8_t { return static_cast<uint8_t>(storage_[ts_byte]); }
+    [[nodiscard]] auto           large() -> Large* { return reinterpret_cast<Large*>(storage_); }
+    [[nodiscard]] auto           large() const -> const Large* { return reinterpret_cast<const Large*>(storage_); }
+    [[nodiscard]] auto           buf() -> char* { return small() ? storage_ : large()->data; }
+    //
+    void appendImpl(std::string_view);
+    void appendImpl(std::size_t, char);
+    void release() noexcept;
+    auto expand(std::size_t n, bool) -> char*;
+    void setSize(uint32_t sz);
+
+    void writeField(const Field& f);
+    POTASSCO_ATTRIBUTE_FORMAT(2, 0)
+    auto vFormatTo(const char* fmt, va_list args) noexcept -> std::size_t;
+
+    alignas(char*) char storage_[256];
 };
-using BasicCharBuffer = BasicCharBufferT<>;
 static_assert(CharBuffer<BasicCharBuffer> && sizeof(BasicCharBuffer) == 256);
+
+template <CharBuffer S>
+S& toChars(S& out, const Field& f) {
+    if constexpr (requires { out.append(f); }) {
+        out.append(f);
+    }
+    else if (f.prec == Field::str_field) {
+        constexpr auto pad = std::string_view{" "};
+        auto           w   = f.f.s.size() + (f.term != 0);
+        for (auto p = f.width > 0 ? static_cast<std::size_t>(f.width) : 0; p > w; --p) { out.append(pad); }
+        out.append(f.f.s);
+        out.append(std::string_view{&f.term, f.term != 0});
+        for (auto p = -f.width > 0 ? static_cast<std::size_t>(-f.width) : 0; p > w; --p) { out.append(pad); }
+    }
+    else {
+        BasicCharBuffer temp;
+        temp.append(f);
+        out.append(temp.view());
+    }
+    return out;
+}
 
 template <typename T, typename... Args>
 std::string toString(const T& t, const Args&... args) {

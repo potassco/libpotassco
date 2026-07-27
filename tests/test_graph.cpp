@@ -28,10 +28,11 @@
 #include <sstream>
 
 namespace Potassco::Test::Graph {
-
+using Scc    = std::vector<uint32_t>;
+using SccVec = std::vector<Scc>;
 namespace {
 struct Fixture {
-    std::string toString(const Potassco::Graph<uint32_t>::SccVec& sccs) {
+    std::string toString(const SccVec& sccs) {
         std::ostringstream out;
         out << "[";
         std::string_view sccVecSeparator;
@@ -48,18 +49,22 @@ struct Fixture {
         out << "]";
         return out.str();
     }
+    [[nodiscard]] auto computeSccs(bool skipTriv = false) -> SccVec {
+        SccVec res;
+        g.computeSccs([&](uint32_t, std::span<uint32_t> scc) { res.emplace_back(scc.begin(), scc.end()); }, skipTriv);
+        return res;
+    }
+    [[nodiscard]] auto computeNonTrivialSccs() -> SccVec { return computeSccs(true); }
 
     Potassco::Graph<uint32_t> g;
 };
 } // end unnamed namespace
 
-TEST_CASE_METHOD(Fixture, "Graph empty", "[reify][graph]") {
-    REQUIRE(g.computeSccs().empty());
-}
+TEST_CASE_METHOD(Fixture, "Graph empty", "[reify][graph]") { REQUIRE(computeSccs().empty()); }
 
 TEST_CASE_METHOD(Fixture, "Graph single node", "[reify][graph]") {
     g.addNode(0);
-    auto sccs = g.computeSccs();
+    auto sccs = computeSccs();
     REQUIRE(sccs.size() == 1);
     REQUIRE(toString(sccs) == "[[a]]");
 }
@@ -72,10 +77,10 @@ TEST_CASE_METHOD(Fixture, "Graph acyclic", "[reify][graph]") {
     g.addEdge(idA, idB);
     g.addEdge(idB, idC);
 
-    auto sccs = g.computeSccs();
+    auto sccs = computeSccs();
     REQUIRE(sccs.size() == 3);
     REQUIRE(toString(sccs) == "[[c],[b],[a]]");
-    REQUIRE(g.computeNonTrivialSccs().empty());
+    REQUIRE(computeNonTrivialSccs().empty());
 }
 
 TEST_CASE_METHOD(Fixture, "Graph single cycle", "[reify][graph]") {
@@ -88,7 +93,7 @@ TEST_CASE_METHOD(Fixture, "Graph single cycle", "[reify][graph]") {
     g.addEdge(idB, idC);
     g.addEdge(idC, idA);
 
-    auto sccs = g.computeSccs();
+    auto sccs = computeSccs();
     REQUIRE(sccs.size() == 2);
     REQUIRE(toString(sccs) == "[[c,b,a],[d]]");
 }
@@ -115,7 +120,7 @@ TEST_CASE_METHOD(Fixture, "Graph multiple cycles", "[reify][graph]") {
     g.addEdge(idF, idC);
     g.addEdge(idG, idD);
 
-    REQUIRE(toString(g.computeSccs()) == "[[h],[i],[c],[e,b,f,d,g,a]]");
+    REQUIRE(toString(computeSccs()) == "[[h],[i],[c],[e,b,f,d,g,a]]");
 }
 
 TEST_CASE_METHOD(Fixture, "Graph preserved", "[reify][graph]") {
@@ -143,9 +148,9 @@ TEST_CASE_METHOD(Fixture, "Graph preserved", "[reify][graph]") {
     g.addEdge(idI, idH);
 
     const auto expected = "[[i,h],[g,f],[e,d,c,b],[a]]";
-    REQUIRE(toString(g.computeSccs()) == expected);
-    REQUIRE(toString(g.computeSccs()) == expected);
-    REQUIRE(toString(g.computeSccs()) == expected);
+    REQUIRE(toString(computeSccs()) == expected);
+    REQUIRE(toString(computeSccs()) == expected);
+    REQUIRE(toString(computeSccs()) == expected);
 }
 
 } // namespace Potassco::Test::Graph

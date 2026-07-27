@@ -24,6 +24,7 @@
 #include <potassco/basic_types.h>
 #include <potassco/error.h>
 #include <potassco/format.h>
+#include <potassco/utils.h>
 
 #if not defined(_MSC_VER)
 #include <strings.h>
@@ -83,7 +84,7 @@ std::from_chars_result parseUnsigned(std::string_view in, std::uintmax_t& out, s
     }
 
     if (bool isSignedMax = in.starts_with("imax"); isSignedMax || in.starts_with("umax")) {
-        out = isSignedMax ? max >> 1 : max;
+        out = isSignedMax ? max >> 1u : max;
         return Parse::success(in, 4);
     }
 
@@ -125,7 +126,7 @@ std::from_chars_result parseSigned(std::string_view in, std::intmax_t& out, std:
 }
 
 template <typename T = double>
-std::from_chars_result parseFloatImpl(std::string_view in, T& out) {
+static std::from_chars_result parseFloatImpl(std::string_view in, T& out) {
     if constexpr (requires { std::from_chars(in.data(), in.data() + in.size(), out); }) {
         return std::from_chars(in.data(), in.data() + in.size(), out);
     }
@@ -194,56 +195,7 @@ char* writeFloat(char* first, char* last, double in, int p) {
     return r.ptr;
 }
 
-void writeField(DynamicBuffer& buffer, const Field& f) {
-    char             temp[128];
-    char*            ep = std::end(temp);
-    std::string_view s;
-    switch (f.prec) {
-        case Field::str_field : s = f.f.s; break;
-        case Field::int_field : s = {temp, writeSigned(temp, ep, f.f.i)}; break;
-        case Field::uint_field: s = {temp, writeUnsigned(temp, ep, f.f.u)}; break;
-        default               : s = {temp, writeFloat(temp, ep, f.f.d, f.prec)}; break;
-    }
-    auto  w   = s.size() + (f.term != 0);
-    auto  lf  = std::cmp_greater(f.width, w) ? static_cast<std::size_t>(f.width) - w : 0;
-    auto  rf  = std::cmp_greater(-f.width, w) ? static_cast<std::size_t>(-f.width) - w : 0;
-    auto* oIt = std::fill_n(buffer.alloc(w + lf + rf).data(), lf, ' ');
-    oIt       = std::copy_n(s.data(), s.size(), oIt);
-    if (f.term != 0) {
-        *oIt++ = f.term;
-    }
-    std::fill_n(oIt, rf, ' ');
-}
-
 auto resetStyle() -> std::string_view { return TextStyle::ts_reset_v; }
-
-auto vFormatTo(DynamicBuffer& buffer, const char* fmt, va_list args) noexcept -> std::size_t {
-    bool truncate = false;
-    for (va_list saved;;) {
-        va_copy(saved, args);
-        POTASSCO_SCOPE_EXIT({ va_end(saved); });
-        auto avail = buffer.alloc(buffer.capacity() - buffer.size());
-        auto n     = std::vsnprintf(avail.data(), avail.size(), fmt, saved);
-        if (n < 0) {
-            return 0;
-        }
-        if (static_cast<std::size_t>(n) < avail.size()) {
-            buffer.pop(avail.size() - static_cast<std::size_t>(n));
-            return static_cast<std::size_t>(n);
-        }
-        if (truncate) {
-            return avail.size();
-        }
-        try {
-            buffer.pop(avail.size());
-            buffer.reserve(buffer.size() + static_cast<std::size_t>(n + 1));
-        }
-        catch (const std::exception&) {
-            // allocation error - truncate result
-            truncate = true;
-        }
-    }
-}
 
 } // namespace Detail
 namespace Parse {
@@ -331,6 +283,181 @@ auto TextStyle::Spec::fromString(std::string_view str, std::string_view::size_ty
 auto TextStyle::fromString(std::string_view str, std::string_view::size_type startPos) -> TextStyle {
     auto spec = Spec::fromString(str, startPos);
     return spec != Spec{} ? TextStyle(spec) : TextStyle();
+}
+/////////////////////////////////////////////////////////////////////////////////////////
+// BasicCharBuffer
+/////////////////////////////////////////////////////////////////////////////////////////
+BasicCharBuffer::BasicCharBuffer(const BasicCharBuffer& other) { // NOLINT
+    initState(other);
+    append(other.view());
+}
+BasicCharBuffer::BasicCharBuffer(BasicCharBuffer&& other) noexcept { // NOLINT
+    initState(other);
+    if (other.small()) {
+        append(other.view());
+    }
+    else {
+        new (storage_) Large{*other.large()};
+        storage_[max_small] = static_cast<char>(max_small + 1);
+    }
+    other.initState();
+}
+void BasicCharBuffer::clear() noexcept {
+    if (small()) {
+        initState();
+    }
+    else {
+        storage_[term_byte] = 0;
+        storage_[ts_byte]   = 0;
+        large()->size       = 0;
+    }
+}
+void BasicCharBuffer::release() noexcept {
+    auto* l = large();
+    SystemAllocator::deallocate(l->data, l->cap + 1);
+}
+auto BasicCharBuffer::operator=(const BasicCharBuffer& other) -> BasicCharBuffer& {
+    if (this != &other) {
+        clear();
+        storage_[term_byte] = other.storage_[term_byte];
+        storage_[ts_byte]   = other.storage_[ts_byte];
+        append(other.view());
+    }
+    return *this;
+}
+auto BasicCharBuffer::operator=(BasicCharBuffer&& other) noexcept -> BasicCharBuffer& { // NOLINT
+    if (this != &other) {
+        if (not small()) {
+            release();
+        }
+        initState(other);
+        if (other.small()) {
+            append(other.view());
+        }
+        else {
+            new (storage_) Large{*other.large()};
+            storage_[max_small] = static_cast<char>(max_small + 1);
+        }
+        other.initState();
+    }
+    return *this;
+}
+void BasicCharBuffer::setSize(uint32_t ns) {
+    assert(ns <= capacity());
+    if (small()) {
+        assert(ns <= max_small);
+        storage_[ns]        = 0;
+        storage_[max_small] = static_cast<char>(max_small - ns);
+    }
+    else {
+        auto* l     = large();
+        l->size     = ns;
+        l->data[ns] = 0;
+    }
+}
+void BasicCharBuffer::pop(uint32_t n) noexcept {
+    auto sz = size();
+    assert(n <= sz);
+    auto ns = sz - n;
+    setSize(ns);
+}
+
+auto BasicCharBuffer::expand(std::size_t n, bool commit) -> char* {
+    auto  sz  = size();
+    auto  ns  = safe_cast<uint32_t>(sz + n + 1) - 1;
+    char* out = nullptr;
+    if (ns > capacity()) {
+        auto nc = Detail::goodNextSize(std::max(1023u, ns) + 1, capacity(), 1u);
+        if (not small()) {
+            out      = static_cast<char*>(SystemAllocator::reallocate(large()->data, nc));
+            *large() = Large{out, sz, nc - 1};
+        }
+        else {
+            out = static_cast<char*>(SystemAllocator::reallocate(nullptr, nc));
+            std::memcpy(out, storage_, sz);
+            new (storage_) Large{out, sz, nc - 1};
+            storage_[max_small] = static_cast<char>(max_small + 1);
+        }
+        assert(not small());
+    }
+    else if (not small()) {
+        out = large()->data;
+    }
+    else {
+        out = storage_;
+    }
+    if (commit) { // NOLINT
+        setSize(ns);
+    }
+    return out + sz;
+}
+void BasicCharBuffer::appendImpl(std::string_view s) {
+    if (not s.empty()) {
+        auto* p = expand(s.size(), true);
+        std::memcpy(p, s.data(), s.size());
+    }
+}
+void BasicCharBuffer::push_back(char c) { *expand(1u, true) = c; }
+void BasicCharBuffer::appendImpl(std::size_t n, char c) {
+    auto* p = expand(n, true);
+    std::memset(p, c, n);
+}
+auto BasicCharBuffer::appendForOverwrite(std::size_t n) -> std::span<char> { return {expand(n, true), n}; }
+void BasicCharBuffer::writeField(const Field& f) {
+    char             temp[128];
+    char*            ep = std::end(temp);
+    std::string_view s;
+    switch (f.prec) {
+        case Field::str_field : s = f.f.s; break;
+        case Field::int_field : s = {temp, Detail::writeSigned(temp, ep, f.f.i)}; break;
+        case Field::uint_field: s = {temp, Detail::writeUnsigned(temp, ep, f.f.u)}; break;
+        default               : s = {temp, Detail::writeFloat(temp, ep, f.f.d, f.prec)}; break;
+    }
+    auto  w   = s.size() + (f.term != 0);
+    auto  lf  = std::cmp_greater(f.width, w) ? static_cast<std::size_t>(f.width) - w : 0;
+    auto  rf  = std::cmp_greater(-f.width, w) ? static_cast<std::size_t>(-f.width) - w : 0;
+    auto* oIt = std::fill_n(expand(w + lf + rf, true), lf, ' ');
+    oIt       = std::copy_n(s.data(), s.size(), oIt);
+    if (f.term != 0) {
+        *oIt++ = f.term;
+    }
+    std::fill_n(oIt, rf, ' ');
+}
+
+auto BasicCharBuffer::vFormatTo(const char* fmt, va_list args) noexcept -> std::size_t {
+    POTASSCO_ASSERT(fmt);
+    auto commit  = 0u;
+    auto sz      = size();
+    auto request = static_cast<std::size_t>(capacity() - sz);
+    for (va_list saved;;) {
+        va_copy(saved, args);
+        POTASSCO_SCOPE_EXIT({ va_end(saved); });
+        try {
+            // NB: Our buffer always has room for a null-terminator.
+            // We therefore can pass request + 1 to vsnprintf.
+            auto* out = expand(request, false);
+            auto  n   = std::vsnprintf(out, request + 1, fmt, saved);
+            if (std::cmp_less(n, request + 1)) {
+                commit = n > 0 ? static_cast<uint32_t>(n) : 0u;
+                break;
+            }
+            request = static_cast<std::size_t>(n);
+            if (storage_[max_small] == 0) {
+                setSize(sz); // restore old size, which was overwritten by vsnprintf's null-terminator
+            }
+        }
+        catch (const std::exception&) {
+            // allocation error - truncate result
+            break;
+        }
+    }
+    if (commit) {
+        assert(size() == sz || size() == sz + commit);
+        auto ns = sz + commit;
+        setSize(ns);
+        assert(buf()[ns] == 0);
+    }
+    return commit;
 }
 
 } // namespace Potassco

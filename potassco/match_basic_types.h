@@ -35,7 +35,7 @@ namespace Potassco {
  * \addtogroup ParseType
  */
 ///@{
-class DynamicBuffer;
+class BasicCharBuffer;
 //! A wrapper around std::istream that provides buffering and a simple interface for extracting characters and
 //! integers.
 class BufferedStream {
@@ -75,7 +75,7 @@ public:
      * \note The extracted newline character, if any, is not added to the buffer.
      * \return The number of characters copied to the given buffer.
      */
-    std::size_t readLine(DynamicBuffer& bufferOut);
+    std::size_t readLine(BasicCharBuffer& bufferOut);
     //! Returns the current line number in the input stream, i.e., the number of newline characters extracted so far.
     [[nodiscard]] unsigned line() const;
 

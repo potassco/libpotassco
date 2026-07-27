@@ -21,6 +21,8 @@
 #include <potassco/application.h>
 #include <potassco/basic_types.h>
 #include <potassco/error.h>
+#include <potassco/utils.h>
+
 #include <potassco/program_opts/typed_value.h>
 
 #include <catch2/catch_test_macros.hpp>
@@ -144,7 +146,7 @@ TEST_CASE("Test application formatting", "[app]") {
         s << app.error("An error");
         CHECK(s ==
               style("*** ERROR: (TestApp): ", Application::col_error).append(style("An error", Application::col_em)));
-        DynamicBuffer db;
+        BasicCharBuffer db;
         db << app.info("Some info");
         CHECK(db.view() ==
               style("*** Info : (TestApp): ", Application::col_info).append(style("Some info", Application::col_em)));
@@ -159,7 +161,7 @@ TEST_CASE("Test application formatting", "[app]") {
             }
         } span;
         db.clear();
-        span.buf = db.alloc(30);
+        span.buf = db.appendForOverwrite(30);
         span << app.info("Some info");
         auto exp = style("*** Info : (TestApp): ", Application::col_info)
                        .append(style("Some info", Application::col_em))

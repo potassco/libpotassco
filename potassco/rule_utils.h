@@ -62,7 +62,7 @@ struct Rule {
 //! A builder class for creating a rule.
 class RuleBuilder {
 public:
-    using trivially_relocatable = std::true_type; // NOLINT
+    POTASSCO_TRIVIALLY_RELOCATABLE();
 
     RuleBuilder()                         = default;
     RuleBuilder(const RuleBuilder& other) = default;
@@ -140,29 +140,32 @@ public:
     [[nodiscard]] auto isFact() const -> bool;
     //@}
 private:
+    auto               alloc(std::size_t n) -> std::span<char>;
+    [[nodiscard]] auto mem() const -> const char* { return mem_.data(); }
     struct Range {
         static constexpr auto  start_bit = 0u;
         static constexpr auto  end_bit   = 1u;
         static constexpr auto  mask      = 3u;
-        [[nodiscard]] uint32_t start() const { return clear_mask(start_type, mask); }
-        [[nodiscard]] uint32_t end() const { return clear_mask(end_flag, mask); }
-        [[nodiscard]] uint32_t type() const { return clear_mask(start_type, ~mask); }
-        [[nodiscard]] bool     started() const { return test_bit(end_flag, start_bit); }
-        [[nodiscard]] bool     finished() const { return test_bit(end_flag, end_bit); }
-        [[nodiscard]] bool     open() const { return not test_any(end_flag, mask); }
+        [[nodiscard]] uint32_t start() const { return clear_mask(startType, mask); }
+        [[nodiscard]] uint32_t end() const { return clear_mask(endFlag, mask); }
+        [[nodiscard]] uint32_t type() const { return clear_mask(startType, ~mask); }
+        [[nodiscard]] bool     started() const { return test_bit(endFlag, start_bit); }
+        [[nodiscard]] bool     finished() const { return test_bit(endFlag, end_bit); }
+        [[nodiscard]] bool     open() const { return not test_any(endFlag, mask); }
         [[nodiscard]] uint32_t size() const { return end() - start(); }
 
-        uint32_t start_type = 0; // 4-byte aligned, align-bits = type
-        uint32_t end_flag   = 0; // 4-byte aligned, align-bits = flags
+        uint32_t startType = 0; // 4-byte aligned, align-bits = type
+        uint32_t endFlag   = 0; // 4-byte aligned, align-bits = flags
     };
     void start(Range& r, uint32_t type, const Weight_t* bound = nullptr);
     void clear(Range& r);
     template <typename T>
     void extend(Range& r, const T& elem, const char* what);
 
-    DynamicBuffer mem_;
-    Range         head_{};
-    Range         body_{};
+    using Buffer = DynamicArray<char>;
+    Buffer mem_;
+    Range  head_{};
+    Range  body_{};
 };
 ///@}
 

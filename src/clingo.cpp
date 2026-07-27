@@ -43,7 +43,7 @@ static constexpr auto q(const T& arg) -> Augmented<std::remove_cvref_t<T>> {
 }
 template <typename E = std::logic_error, typename... Args>
 POTASSCO_ATTR_NORETURN static void throwStats(const Args&... args) {
-    BasicCharBufferT<1024> buffer;
+    BasicCharBuffer buffer;
     buffer.appendSep(" ", "bad stats access:", args...);
     throw E(buffer.c_str());
 }

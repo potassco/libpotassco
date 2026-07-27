@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <source_location>
 #include <string_view>
 #include <system_error>
@@ -188,6 +189,58 @@ auto getProcessTime() -> double;
  * \note The function returns a (quiet) NaN if the information is not available on the current platform.
  */
 auto getThreadTime() -> double;
+
+//! Abstraction over global "malloc-like" allocation functions.
+struct SystemAllocator {
+    static constexpr auto realloc_max_align = static_cast<std::size_t>(__STDCPP_DEFAULT_NEW_ALIGNMENT__);
+    static constexpr auto no_size_info      = static_cast<std::size_t>(-1);
+    static constexpr auto default_align     = static_cast<std::align_val_t>(__STDCPP_DEFAULT_NEW_ALIGNMENT__);
+
+    //! Rounds the given size up to a value that minimizes padding.
+    /*!
+     * \note This is a "best effort" function that might fall back to always returning the input size.
+     * \param sz The allocation size to round up.
+     * \param align The alignment requirements for the allocation.
+     * \return A value >= sz.
+     */
+    static auto goodAllocSize(std::size_t sz, std::align_val_t align = default_align) -> std::size_t;
+
+    //! Allocates `sz` number of bytes with the given alignment.
+    /*!
+     * \pre sz > 0.
+     * \param sz The number of bytes to allocate.
+     * \param align The alignment requirements for the allocation.
+     * \return A suitable aligned block of memory of `sz` bytes.
+     * \throw std::bad_alloc if memory allocation failed.
+     */
+    static void* allocate(std::size_t sz, std::align_val_t align = default_align);
+
+    //! Reallocates the given area of memory, which must be null or have been allocated via a call to `allocate`.
+    /*!
+     * \pre `mem` is null or was previously allocated via `allocate()`.
+     * \pre Any objects stored in `mem` must be "relocatable" (bitwise movable) and their alignment must not exceed
+     *      `realloc_max_align`.
+     * \param mem The memory block to reallocate.
+     * \param sz The new size.
+     * \return On success, a new block of memory of `sz` bytes. On failure, `mem` remains valid.
+     * \throw std::bad_alloc if memory allocation failed.
+     */
+    static void* reallocate(void* mem, std::size_t sz);
+
+    //! Frees the given memory block, which must have been allocated via a call to `allocate` or `reallocate`.
+    static void deallocate(void* mem, std::size_t sz = no_size_info, std::align_val_t align = default_align);
+
+    //! Tries to expand the given memory block to the new size without relocation.
+    /*!
+     * \pre `mem` was previously allocated via `allocate()` and `sz` is not less than the size that was allocated.
+     * \param mem The memory block to expand.
+     * \param align The alignment requirements for the allocation.
+     * \param[inout] sz The new minimal size.
+     * \return On success, the function returns the new size of the memory block, which is no less than `sz`. Otherwise,
+     *         the function returns 0.
+     */
+    static auto tryExpand(void* mem, std::size_t sz, std::align_val_t align = default_align) -> std::size_t;
+};
 
 } // namespace Potassco
 

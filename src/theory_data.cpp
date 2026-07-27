@@ -64,7 +64,7 @@ static uint64_t assertPtr(const void* p, TheoryTermType type) {
 auto TheoryTerm::type() const -> Type { return static_cast<TheoryTermType>(clear_mask(data_, ~c_type_mask)); }
 int  TheoryTerm::number() const {
     POTASSCO_CHECK(type() == TheoryTermType::number, Errc::invalid_argument, "Term is not a number");
-    return static_cast<int>(data_ >> 2);
+    return static_cast<int>(data_ >> 2u);
 }
 uintptr_t   TheoryTerm::getPtr() const { return static_cast<uintptr_t>(clear_mask(data_, c_type_mask)); }
 const char* TheoryTerm::symbol() const {
@@ -122,7 +122,7 @@ struct TheoryData::DestroyT {
     void operator()(T* x) const {
         if (x) {
             x->~T();
-            ::operator delete(x);
+            SystemAllocator::deallocate(x);
         }
     }
     void operator()(const TheoryTerm& raw) const {
@@ -132,7 +132,7 @@ struct TheoryData::DestroyT {
                 (*this)(raw.func());
             }
             else if (type == TheoryTermType::symbol) {
-                delete[] const_cast<char*>(raw.symbol());
+                SystemAllocator::deallocate(const_cast<char*>(raw.symbol()));
             }
         }
     }
@@ -141,13 +141,9 @@ struct TheoryData::Data {
     template <typename T, typename... Args>
     static T* allocConstruct(Args&&... args) {
         auto bytes = (sizeof(T) + ... + computeExtraBytes(args));
-        return new (::operator new(bytes)) T(std::forward<Args>(args)...);
+        return new (SystemAllocator::allocate(bytes)) T(std::forward<Args>(args)...);
     }
-    static char* allocCString(std::string_view in) {
-        auto str                        = new char[in.size() + 1];
-        *std::ranges::copy(in, str).out = 0;
-        return str;
-    }
+    static char*                 allocCString(std::string_view in) { return Detail::dupString(in); }
     DynamicArray<TheoryAtom*>    atoms;
     DynamicArray<TheoryElement*> elems;
     DynamicArray<TheoryTerm>     terms;
@@ -161,7 +157,7 @@ TheoryData::TheoryData() : data_(std::make_unique<Data>()) {}
 TheoryData::~TheoryData() { reset(); }
 void TheoryData::addTerm(Id_t termId, int number) {
     auto& term = setTerm(termId);
-    term       = (static_cast<uint64_t>(number) << 2) | to_underlying(TheoryTermType::number);
+    term       = (static_cast<uint64_t>(number) << 2u) | to_underlying(TheoryTermType::number);
 }
 void TheoryData::addTerm(Id_t termId, std::string_view name) {
     auto& term = setTerm(termId);

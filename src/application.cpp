@@ -209,7 +209,7 @@ void Application::handleException() {
     }
 }
 bool Application::unhandledException(const std::exception_ptr& e, std::string_view error, std::string_view info) {
-    BasicCharBufferT<1024> buffer;
+    BasicCharBuffer buffer;
     buffer << message(message_error, error, true);
     if (not info.empty()) {
         buffer.append("\n"sv) << message(message_info, info, true);

@@ -23,7 +23,7 @@
 //
 #include <potassco/aspif.h>
 #include <potassco/error.h>
-
+#include <potassco/format.h>
 #include <potassco/rule_utils.h>
 
 #include <ostream>
@@ -41,7 +41,7 @@ struct AspifInput::Extra {
     DynamicArray<Id_t>        ids;
     DynamicArray<Atom_t>      facts;
     DynamicArray<ConstString> factTerms;
-    DynamicBuffer             sym;
+    BasicCharBuffer           sym;
     uint32_t                  nextFact{0};
 };
 
@@ -193,7 +193,7 @@ void AspifInput::matchString() {
     data_->sym.clear();
     auto len = matchUint("non-negative string length expected");
     matchChar(' ');
-    require(not len || stream()->read(data_->sym.alloc(len)) == len, "invalid string");
+    require(not len || stream()->read(data_->sym.appendForOverwrite(len)) == len, "invalid string");
 }
 void AspifInput::matchIds() {
     auto len = matchUint("number of terms expected");
@@ -279,8 +279,8 @@ struct AspifOutput::Data {
         outTerms[termId] = termName;
     }
     struct OutTerm {
-        using trivially_relocatable = std::true_type; // NOLINT
-        OutTerm(std::string_view n = "") : name(n) {} // NOLINT
+        POTASSCO_TRIVIALLY_RELOCATABLE();
+        explicit(false) OutTerm(std::string_view n = "") : name(n) {}
         ConstString name;
         Atom_t      atom{0};
         Atom_t      last{0};

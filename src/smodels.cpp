@@ -24,6 +24,7 @@
 #include <potassco/smodels.h>
 
 #include <potassco/error.h>
+#include <potassco/format.h>
 #include <potassco/rule_utils.h>
 
 #include <cstring>
@@ -175,7 +176,7 @@ void SmodelsInput::readRules() {
                 require(opts_.claspExt, "unrecognized rule type");
                 if (rt == SmodelsType::clasp_assign_ext) {
                     auto rHead = matchAtom();
-                    out_.external(rHead, static_cast<TruthValue>((matchUint(0u, 2u, "0..2 expected") ^ 3) - 1));
+                    out_.external(rHead, static_cast<TruthValue>((matchUint(0u, 2u, "0..2 expected") ^ 3u) - 1));
                 }
                 else {
                     out_.external(matchAtom(), TruthValue::release);
@@ -189,19 +190,18 @@ void SmodelsInput::readSymbols() {
     if (not extra_ && (opts_.cEdge || opts_.cHeuristic)) {
         extra_ = std::make_unique<Extra>();
     }
-    DynamicBuffer scratch;
+    BasicCharBuffer scratch;
     for (Atom_t atom; (atom = matchAtomOrZero()) != 0;) {
         scratch.clear();
         matchChar(' ');
         stream()->readLine(scratch);
-        scratch.push(0);
-        auto name = scratch.view(0, scratch.size() - 1);
+        auto name = scratch.view();
         if (not extra_ || not mapSymbol(atom, name)) {
             out_.outputAtom(atom, name);
         }
         if (opts_.cHeuristic) {
             POTASSCO_CHECK_PRE(extra_->addAtom(name, atom).second, "Redefinition: atom '%s' already exists",
-                               scratch.data());
+                               scratch.c_str());
         }
     }
     if (extra_) {
@@ -443,7 +443,7 @@ void SmodelsOutput::outputAtom(Atom_t atom, std::string_view name) {
 void SmodelsOutput::external(Atom_t a, TruthValue t) {
     POTASSCO_CHECK_PRE(ext_, "external directive not supported in smodels format");
     if (t != TruthValue::release) {
-        startRule(SmodelsType::clasp_assign_ext).add(a).add((to_underlying(t) ^ 3) - 1).endRule();
+        startRule(SmodelsType::clasp_assign_ext).add(a).add((to_underlying(t) ^ 3u) - 1).endRule();
     }
     else {
         startRule(SmodelsType::clasp_release_ext).add(a).endRule();
