@@ -34,12 +34,11 @@
 namespace Potassco::Test {
 
 template <typename T>
-static std::optional<T> string_cast(const std::string& in) {
-    T out;
-    if (auto ec = Potassco::stringTo(in, out); ec != std::errc{}) {
-        return std::nullopt;
+static auto string_cast(const std::string& in) -> std::optional<T> {
+    if (T out{}; Potassco::Parse::ok(Potassco::stringTo(in, out))) {
+        return out;
     }
-    return out;
+    return std::nullopt;
 }
 
 TEST_CASE("String conversion", "[string]") {

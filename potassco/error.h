@@ -61,12 +61,15 @@ private:
     std::source_location location_;
     Errc                 errc_;
 };
-
+POTASSCO_WARNING_PUSH()
+POTASSCO_WARNING_IGNORE_MSVC(4722) // destructor never returns, potential memory leak
 template <typename ActionT>
 struct AtScopeExit {
     ~AtScopeExit() noexcept(false) { action(); }
     ActionT action;
 };
+POTASSCO_WARNING_POP()
+
 template <typename ActionT>
 AtScopeExit(ActionT) -> AtScopeExit<ActionT>; // NOLINT
 
