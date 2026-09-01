@@ -24,6 +24,7 @@
 #include <potassco/format.h>
 #include <potassco/program_opts/program_options.h>
 
+#include <exception>
 #include <span>
 #include <string>
 

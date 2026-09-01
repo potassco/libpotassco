@@ -27,6 +27,7 @@
 #include <potassco/program_opts/value.h>
 
 #include <cstdio>
+#include <exception>
 #include <functional>
 #include <iosfwd>
 #include <map>
