@@ -25,6 +25,7 @@
 //
 #pragma once
 #include <potassco/program_opts/value.h>
+#include <exception>
 
 #include <cstdio>
 #include <functional>

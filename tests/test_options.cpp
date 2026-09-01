@@ -19,6 +19,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 // IN THE SOFTWARE.
 #include <potassco/program_opts/errors.h>
+#include <exception>
 #include <potassco/program_opts/program_options.h>
 #include <potassco/program_opts/typed_value.h>
 

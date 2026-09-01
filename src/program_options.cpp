@@ -34,6 +34,7 @@
 #include <cctype>
 #include <climits>
 #include <cstring>
+#include <exception>
 #include <istream> // for CfgFileParser
 #include <ostream> // for op<<
 #include <span>

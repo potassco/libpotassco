@@ -37,6 +37,7 @@ POTASSCO_WARNING_IGNORE_MSVC(4996)
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 
 using namespace Potassco::ProgramOptions;
 using namespace std;

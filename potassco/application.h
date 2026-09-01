@@ -22,6 +22,7 @@
 #pragma once
 
 #include <potassco/format.h>
+#include <exception>
 #include <potassco/program_opts/program_options.h>
 
 #include <span>
