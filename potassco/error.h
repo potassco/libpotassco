@@ -85,7 +85,7 @@ AtScopeExit(ActionT) -> AtScopeExit<ActionT>; // NOLINT
  * \endcode
  */
 #define POTASSCO_SCOPE_EXIT(...)                                                                                       \
-    Potassco::AtScopeExit POTASSCO_CONCAT(e, __COUNTER__) { [&]() __VA_ARGS__ }
+    Potassco::AtScopeExit POTASSCO_CONCAT(e, __LINE__) { [&]() __VA_ARGS__ }
 
 namespace Detail {
 template <typename T>
