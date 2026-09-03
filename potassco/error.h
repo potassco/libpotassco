@@ -61,31 +61,6 @@ private:
     std::source_location location_;
     Errc                 errc_;
 };
-POTASSCO_WARNING_PUSH()
-POTASSCO_WARNING_IGNORE_MSVC(4722) // destructor never returns, potential memory leak
-template <typename ActionT>
-struct AtScopeExit {
-    ~AtScopeExit() noexcept(false) { action(); }
-    ActionT action;
-};
-POTASSCO_WARNING_POP()
-
-template <typename ActionT>
-AtScopeExit(ActionT) -> AtScopeExit<ActionT>; // NOLINT
-
-//! Helper macro for executing actions on scope exit.
-/*!
- * POTASSCO_SCOPE_EXIT can be used to ensure cleanup even in the case of exceptions.
- * E.g.,
- * \code
- *   auto* f = fopen("...");
- *   POTASSCO_SCOPE_EXIT({ fclose(f); });
- *   // do stuff that might throw
- *   return;
- * \endcode
- */
-#define POTASSCO_SCOPE_EXIT(...)                                                                                       \
-    Potassco::AtScopeExit POTASSCO_CONCAT(e, __COUNTER__) { [&]() __VA_ARGS__ }
 
 namespace Detail {
 template <typename T>

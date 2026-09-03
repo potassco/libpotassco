@@ -81,7 +81,9 @@
 #define POTASSCO_WARNING_IGNORE_CLANG(X) POTASSCO_PRAGMA_CLANG(diagnostic ignored X)
 #define POTASSCO_WARNING_BEGIN_RELAXED                                                                                 \
     POTASSCO_WARNING_PUSH()                                                                                            \
-    POTASSCO_WARNING_IGNORE_CLANG("-Wzero-length-array") POTASSCO_WARNING_IGNORE_CLANG("-Wsign-conversion")
+    POTASSCO_WARNING_IGNORE_CLANG("-Wzero-length-array")                                                               \
+    POTASSCO_WARNING_IGNORE_CLANG("-Wsign-conversion")                                                                 \
+    POTASSCO_WARNING_IGNORE_CLANG("-Wpedantic")
 #define POTASSCO_WARNING_END_RELAXED POTASSCO_WARNING_POP()
 #define POTASSCO_ATTR_INLINE         [[clang::always_inline]]
 #else
@@ -146,6 +148,35 @@ struct ExpressionInfo {
 #define POTASSCO_CURRENT_LOCATION() std::source_location::current()
 #define POTASSCO_CAPTURE_EXPRESSION(E)                                                                                 \
     Potassco::ExpressionInfo { .expression = #E, .location = POTASSCO_CURRENT_LOCATION() }
+
+POTASSCO_WARNING_PUSH()
+POTASSCO_WARNING_IGNORE_MSVC(4722) // destructor never returns, potential memory leak
+template <typename ActionT>
+struct AtScopeExit {
+    ~AtScopeExit() noexcept(false) { action(); }
+    ActionT action;
+};
+POTASSCO_WARNING_POP()
+
+template <typename ActionT>
+AtScopeExit(ActionT) -> AtScopeExit<ActionT>; // NOLINT
+
+//! Helper macro for executing actions on scope exit.
+/*!
+ * POTASSCO_SCOPE_EXIT can be used to ensure cleanup even in the case of exceptions.
+ * E.g.,
+ * \code
+ *   auto* f = fopen("...");
+ *   POTASSCO_SCOPE_EXIT({ fclose(f); });
+ *   // do stuff that might throw
+ *   return;
+ * \endcode
+ */
+#define POTASSCO_SCOPE_EXIT(...)                                                                                       \
+    POTASSCO_WARNING_BEGIN_RELAXED                                                                                     \
+    Potassco::AtScopeExit POTASSCO_CONCAT(e, __COUNTER__) {                                                            \
+        [&] { __VA_ARGS__ POTASSCO_WARNING_END_RELAXED }                                                               \
+    }
 
 //! Sets x87 floating-point unit to double precision if needed and returns the previous configuration.
 /*!
