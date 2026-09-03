@@ -23,7 +23,6 @@
 // IN THE SOFTWARE.
 //
 #include <potassco/enum.h>
-#include <potassco/error.h>
 #include <potassco/graph.h>
 #include <potassco/reify.h>
 #include <potassco/utils.h>

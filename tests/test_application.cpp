@@ -20,7 +20,6 @@
 // IN THE SOFTWARE.
 #include <potassco/application.h>
 #include <potassco/basic_types.h>
-#include <potassco/error.h>
 #include <potassco/utils.h>
 
 #include <potassco/program_opts/typed_value.h>

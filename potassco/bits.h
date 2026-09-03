@@ -24,7 +24,6 @@
 #include <potassco/platform.h>
 
 #include <bit>
-#include <cassert>
 #include <climits>
 #include <concepts>
 #if !defined(__cpp_lib_int_pow2) || __cpp_lib_int_pow2 < 202002L
@@ -56,7 +55,7 @@ using std::rotr;
 template <std::unsigned_integral T>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr T nth_bit(std::common_type_t<unsigned, T> n) {
     if (not std::is_constant_evaluated()) {
-        assert(n < (sizeof(T) * CHAR_BIT));
+        POTASSCO_DEBUG_ASSERT(n < (sizeof(T) * CHAR_BIT));
     }
     return static_cast<T>(1) << n;
 }

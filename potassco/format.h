@@ -25,7 +25,6 @@
 #include <potassco/bits.h>
 #include <potassco/enum.h>
 
-#include <cassert>
 #include <cstdarg>
 #include <span>
 #include <string>
@@ -458,7 +457,7 @@ public:
      * \pre not empty()
      */
     char& back() {
-        assert(not empty());
+        POTASSCO_DEBUG_ASSERT(not empty());
         return buf()[size() - 1];
     }
     //! Appends the given character to the buffer.

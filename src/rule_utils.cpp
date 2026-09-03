@@ -23,8 +23,6 @@
 //
 #include <potassco/rule_utils.h>
 
-#include <potassco/error.h>
-
 #include <algorithm>
 #include <utility>
 

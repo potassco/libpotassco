@@ -26,7 +26,6 @@
 #include <potassco/aspif.h>
 #include <potassco/aspif_text.h>
 #include <potassco/convert.h>
-#include <potassco/error.h>
 #include <potassco/reify.h>
 #include <potassco/smodels.h>
 

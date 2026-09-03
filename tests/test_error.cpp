@@ -65,7 +65,7 @@ static auto messageFmtEq(std::string_view fmt, const auto&... args) {
 POTASSCO_WARNING_PUSH()
 POTASSCO_WARNING_IGNORE_MSVC(4702) // unreachable code
 TEST_CASE("Assertion and Error", "[error]") {
-    auto makeError    = [](std::errc ec = std::errc::invalid_argument) { return Detail::translateEc(ec); };
+    auto makeError    = [](std::errc ec = std::errc::invalid_argument) { return translateEc(ec); };
     auto makeLocation = [](const std::source_location& loc, bool includeFile, const char* m = "") -> std::string {
         std::ostringstream os;
         if (not includeFile) {
@@ -184,7 +184,7 @@ TEST_CASE("Assertion and Error", "[error]") {
         SECTION("runtime error") {
             static_assert(errcMatch(Errc::overflow_error, std::errc::value_too_large), "unexpected mapping");
             REQUIRE_THROWS_AS(failThrow(makeError(std::errc::bad_file_descriptor), e, "my message"), RuntimeError);
-            REQUIRE_THROWS_AS(failThrow(Detail::translateEc(EINTR), e, "my message"), RuntimeError);
+            REQUIRE_THROWS_AS(failThrow(translateEc(EINTR), e, "my message"), RuntimeError);
 
             REQUIRE_THROWS_AS(failThrow(makeError(std::errc::value_too_large), e, "my message"), std::overflow_error);
         }

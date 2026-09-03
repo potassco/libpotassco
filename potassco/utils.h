@@ -34,6 +34,27 @@
 
 namespace Potassco {
 
+template <std::integral To, std::integral From>
+constexpr To safe_cast(From from) {
+    POTASSCO_CHECK(std::in_range<To>(from), Errc::out_of_range);
+    return static_cast<To>(from);
+}
+template <std::integral To, typename From>
+requires(std::is_enum_v<From>)
+constexpr To safe_cast(From from) {
+    return safe_cast<To>(to_underlying(from));
+}
+template <std::integral To = uint32_t, typename C>
+constexpr To size_cast(const C& c) {
+    static_assert(std::is_unsigned_v<decltype(c.size())>, "unsigned size expected");
+    if constexpr (std::is_unsigned_v<To> && sizeof(To) >= sizeof(decltype(c.size()))) {
+        return static_cast<To>(c.size());
+    }
+    else {
+        return safe_cast<To>(c.size());
+    }
+}
+
 //! Type trait checking whether a given type is trivially-relocatable (i.e. "bitwise-movable").
 /*!
  * By default, only trivially copyable types are considered trivially-relocatable. All other types require
@@ -338,7 +359,7 @@ public:
     }
     //! \copydoc const_reference operator[](size_type) const
     [[nodiscard]] constexpr auto operator[](size_type pos) -> reference {
-        assert(pos < size());
+        POTASSCO_DEBUG_ASSERT(pos < size());
         return data_[pos];
     }
     //! Returns a reference to the element at the given position.
@@ -350,10 +371,8 @@ public:
     }
     //! \copydoc at(size_type)
     [[nodiscard]] constexpr auto at(size_type pos) -> reference {
-        if (pos < size()) {
-            return data_[pos];
-        }
-        throw std::out_of_range("DynamicArray::at()");
+        POTASSCO_CHECK(pos < size(), Errc::out_of_range, "DynamicArray::at()");
+        return data_[pos];
     }
     //! Returns a reference to the first element of the array.
     /*!
@@ -420,7 +439,7 @@ public:
      */
     template <typename... Args>
     auto emplace(const_iterator pos, Args&&... args) -> iterator {
-        assert(pos >= begin() && pos <= end());
+        POTASSCO_DEBUG_ASSERT(pos >= begin() && pos <= end());
         auto idx  = static_cast<size_type>(pos - begin());
         auto tail = size() - idx;
         if (tail == 0u) {
@@ -497,7 +516,7 @@ public:
      * \pre not empty().
      */
     void pop_back() {
-        assert(not empty());
+        POTASSCO_DEBUG_ASSERT(not empty());
         destroy(end() - 1);
         --size_;
     }
@@ -507,7 +526,7 @@ public:
      */
     void pop(size_type n) {
         if (n) {
-            assert(n <= size());
+            POTASSCO_DEBUG_ASSERT(n <= size());
             destroy(end() - n, n);
             size_ -= n;
         }
@@ -519,7 +538,7 @@ public:
      * \return Iterator to the element following the erased one, or `end()` if no such element exists.
      */
     constexpr auto erase(const_iterator pos) -> iterator {
-        assert(pos >= begin() && pos < end());
+        POTASSCO_DEBUG_ASSERT(pos >= begin() && pos < end());
         auto p    = const_cast<pointer>(pos);
         auto next = p + 1;
         destroy(p);
@@ -575,7 +594,7 @@ public:
         else {
             pop(sz - count);
         }
-        assert(size() == count);
+        POTASSCO_DEBUG_ASSERT(size() == count);
     }
     //! Resizes the array to `count`.
     /*!
@@ -588,7 +607,7 @@ public:
         else {
             pop(sz - count);
         }
-        assert(size() == count);
+        POTASSCO_DEBUG_ASSERT(size() == count);
     }
 
     //! Removes all elements from the array without changing the array's capacity.
@@ -634,8 +653,8 @@ private:
     template <std::forward_iterator It>
     [[nodiscard]] constexpr auto checkRange(It first, It last) const -> size_type {
         auto diff = static_cast<std::size_t>(std::distance(first, last));
-        return std::cmp_less_equal(diff, max_size()) ? static_cast<size_type>(diff)
-                                                     : throw std::length_error("DynamicArray::appendRange");
+        POTASSCO_CHECK(std::cmp_less_equal(diff, max_size()), Errc::length_error, "DynamicArray::appendRange");
+        return static_cast<size_type>(diff);
     }
     void deallocate() { SystemAllocator::deallocate(data_, valSize(cap_)); }
     void realloc(size_type n) {
@@ -643,7 +662,8 @@ private:
         cap_  = n;
     }
     auto reallocNext(size_type sz, size_type n) -> pointer {
-        auto minS = max_size() - sz >= n ? sz + n : throw std::length_error("DynamicArray::push");
+        POTASSCO_CHECK(max_size() - sz >= n, Errc::length_error, "DynamicArray::push");
+        auto minS = sz + n;
         realloc(Detail::goodNextSize(minS, capacity(), val_size));
         return data_ + sz;
     }
@@ -792,7 +812,7 @@ public:
                 }
             }
             else {
-                throw std::length_error{"DynamicHashArray"};
+                POTASSCO_FAIL(Errc::length_error, "DynamicHashArray");
             }
         }
     }
@@ -876,9 +896,9 @@ public:
 
     //! Erases the given element via "Deletion with linear probing" (Algorithm R) from Knuth's TAOCP.
     void erase(pointer pos) {
-        assert(pos != nullptr);
+        POTASSCO_DEBUG_ASSERT(pos != nullptr);
         auto hole = static_cast<uint32_t>(pos - data());
-        assert(hole < capacity());
+        POTASSCO_DEBUG_ASSERT(hole < capacity());
         const auto m = mask();
         for (auto j = hole + 1; TraitsT::used(arr_[j &= m]); ++j) {
             const auto home = TraitsT::hashKey(arr_[j]);
@@ -1103,7 +1123,7 @@ public:
     //! Creates a copy of `other`.
     DynamicHashTable(const DynamicHashTable& other) : DynamicHashTable(other.size()) {
         auto todo = other.size();
-        assert(avail_ >= todo);
+        POTASSCO_DEBUG_ASSERT(avail_ >= todo);
         for (const auto* x = other.table_.data(); todo; ++x) {
             if (TraitsT::used(*x)) {
                 *table_.nextUnused(TraitsT::hashKey(*x)) = *x;
@@ -1179,7 +1199,7 @@ public:
             pos    = table_.nextUnused(h);
         }
         KeyT nk{std::forward<K>(key)};
-        assert(nk != HashTraits::empty());
+        POTASSCO_DEBUG_ASSERT(nk != HashTraits::empty());
         pos->key   = std::move(nk);
         pos->value = ValT{std::forward<Args>(args)...};
         --avail_;
@@ -1408,7 +1428,7 @@ public:
      * \note The reference is only valid until the next call to a mutating function.
      */
     [[nodiscard]] auto operator[](Id_t i) const -> const ConstString& {
-        assert(i < size());
+        POTASSCO_DEBUG_ASSERT(i < size());
         return elements()[i];
     }
     //! Checks if the set contains the given string.
@@ -1482,7 +1502,7 @@ constexpr void radixSort(R&& rng, RankFn rank, RadixConfig config = radix_def, T
     using Rank     = std::remove_cvref_t<std::invoke_result_t<RankFn&, T>>;
     using SizeType = std::common_type_t<std::size_t, Rank>;
     static_assert(std::is_nothrow_move_constructible_v<T>);
-    assert(std::size(rng) <= UINT32_MAX);
+    POTASSCO_DEBUG_ASSERT(std::size(rng) <= UINT32_MAX);
     const auto n = static_cast<uint32_t>(std::size(rng));
     if (n < 2) {
         return;
@@ -1559,7 +1579,7 @@ constexpr void radixSort(R&& rng, RankFn rank, RadixConfig config = radix_def, T
         for (uint32_t i = 0; i < n; ++i) {
             const auto d = digit(rank(src[i]), shift);
             const auto p = count[d]++;
-            assert(p < n);
+            POTASSCO_DEBUG_ASSERT(p < n);
             dest[p] = std::move(src[i]);
         }
 

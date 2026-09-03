@@ -25,7 +25,7 @@
 
 #include <cstdint>
 #include <cstdlib>
-#include <memory>
+#include <new>
 #include <source_location>
 #include <string_view>
 #include <system_error>
@@ -71,6 +71,7 @@
 #define POTASSCO_FUNC_NAME                __PRETTY_FUNCTION__
 #define POTASSCO_PRAGMA_TODO(X)           POTASSCO_PRAGMA(message("TODO: " X))
 #define POTASSCO_ATTRIBUTE_FORMAT(fp, ap) __attribute__((__format__(__printf__, fp, ap)))
+#define POTASSCO_PREFETCH(address, ...)   __builtin_prefetch(address POTASSCO_OPTARGS(__VA_ARGS__))
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
@@ -121,8 +122,11 @@
 #if !defined(POTASSCO_WARNING_IGNORE_CLANG)
 #define POTASSCO_WARNING_IGNORE_CLANG(...)
 #endif
-#ifndef POTASSCO_WARNING_IGNORE_MSVC
+#if !defined(POTASSCO_WARNING_IGNORE_MSVC)
 #define POTASSCO_WARNING_IGNORE_MSVC(...)
+#endif
+#if !defined(POTASSCO_PREFETCH)
+#define POTASSCO_PREFETCH(...)
 #endif
 
 #define POTASSCO_WARNING_IGNORE_GNU(X) POTASSCO_WARNING_IGNORE_GCC(X) POTASSCO_WARNING_IGNORE_CLANG(X)
@@ -143,7 +147,7 @@ struct ExpressionInfo {
     /*!
      * \note If the given location is not from the same source tree, `file_name()` is returned unmodified.
      */
-    static const char* relativeFileName(const std::source_location& loc);
+    static auto relativeFileName(const std::source_location& loc) -> const char*;
 };
 #define POTASSCO_CURRENT_LOCATION() std::source_location::current()
 #define POTASSCO_CAPTURE_EXPRESSION(E)                                                                                 \
@@ -177,6 +181,107 @@ AtScopeExit(ActionT) -> AtScopeExit<ActionT>; // NOLINT
     Potassco::AtScopeExit POTASSCO_CONCAT(e, __COUNTER__) {                                                            \
         [&] { __VA_ARGS__ POTASSCO_WARNING_END_RELAXED }                                                               \
     }
+
+enum class Errc {
+    precondition_fail = -1,
+    // std::bad_alloc
+    bad_alloc = static_cast<int>(std::errc::not_enough_memory),
+    // standard logic errors
+    length_error     = static_cast<int>(std::errc::argument_list_too_long),
+    invalid_argument = static_cast<int>(std::errc::invalid_argument),
+    domain_error     = static_cast<int>(std::errc::argument_out_of_domain),
+    out_of_range     = static_cast<int>(std::errc::result_out_of_range),
+    // standard runtime errors
+    overflow_error = static_cast<int>(std::errc::value_too_large),
+};
+
+template <typename T>
+constexpr auto translateEc(T in) {
+    if constexpr (std::is_same_v<T, int>) {
+        return static_cast<Potassco::Errc>(in >= 0 ? in : -in);
+    }
+    else if constexpr (std::is_same_v<T, std::errc>) {
+        return static_cast<Potassco::Errc>(in);
+    }
+    else {
+        return in;
+    }
+}
+
+//! Throws an exception of type defined the given error code.
+POTASSCO_ATTR_NORETURN extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char* fmt = nullptr,
+                                             ...) POTASSCO_ATTRIBUTE_FORMAT(3, 4);
+
+//! Calls the currently active abort handler.
+/*!
+ * \see Potassco::setAbortHandler(AbortHandler handler).
+ */
+POTASSCO_ATTR_NORETURN extern void failAbort(const ExpressionInfo& expressionInfo, const char* fmt = nullptr, ...)
+    POTASSCO_ATTRIBUTE_FORMAT(2, 3);
+
+//! Evaluates the given expression and calls `Potassco::failAbort()` if it is false.
+/*!
+ * \note The given expression is @b always evaluated. Use `POTASSCO_DEBUG_ASSERT()` for debug-only checks.
+ *
+ * \param exp Expression that shall be true.
+ * \param ... An optional message that is added to the error output on failure. The message can be a C-style format
+ *            string followed by corresponding arguments.
+ */
+#define POTASSCO_ASSERT(exp, ...)                                                                                      \
+    (void) ((!!(exp)) || (Potassco::failAbort(POTASSCO_CAPTURE_EXPRESSION(exp) POTASSCO_OPTARGS(__VA_ARGS__)), 0))
+
+//! Evaluates the given expression and calls failThrow(code, ...) with the given error code if it is false.
+/*!
+ * \note On failure, Potassco::failThrow(code, ...) is called if `code` is of type int, std::errc, or Errc.
+ *       Otherwise, failThrow(code, ...) must be a viable function found via ADL.
+ *
+ * \param exp  Expression that is expected to be true.
+ * \param code An error code describing the error if `exp` is false.
+ * \param ...  Optional parameters passed to the selected failThrow() overload on error.
+ */
+#define POTASSCO_CHECK(exp, code, ...)                                                                                 \
+    (void) ((!!(exp)) ||                                                                                               \
+            (failThrow(Potassco::translateEc((code)), POTASSCO_CAPTURE_EXPRESSION(exp) POTASSCO_OPTARGS(__VA_ARGS__)), \
+             0))
+
+//! Effect: POTASSCO_CHECK(false, code, ...)
+#define POTASSCO_FAIL(code, ...)                                                                                       \
+    ((void) (failThrow(Potassco::translateEc((code)),                                                                  \
+                       {{}, POTASSCO_CURRENT_LOCATION()} POTASSCO_OPTARGS(__VA_ARGS__)),                               \
+             0))
+
+//! Evaluates the given expression and calls Potassco::failThrow(Errc::precondition_fail, ...) if it is false.
+/*!
+ * \note The given expression is @b always evaluated. Use `POTASSCO_DEBUG_CHECK_PRE()` for debug-only checks.
+ * \note By default, precondition failures are mapped to std::invalid_argument exceptions.
+ *
+ * \param exp Expression that shall be true.
+ * \param ... An optional message that is added to the error output on failure. The message can be a C-style format
+ *            string followed by corresponding arguments.
+ */
+#define POTASSCO_CHECK_PRE(exp, ...) POTASSCO_CHECK(exp, Potassco::Errc::precondition_fail, __VA_ARGS__)
+
+//! Effect: POTASSCO_ASSERT(false, Msg, ...)
+#define POTASSCO_ASSERT_NOT_REACHED(Msg, ...)                                                                          \
+    Potassco::failAbort(POTASSCO_CAPTURE_EXPRESSION(not reached), Msg POTASSCO_OPTARGS(__VA_ARGS__))
+
+/*!
+ * \def POTASSCO_DEBUG_ASSERT(exp, ...)
+ * Like POTASSCO_ASSERT but only evaluated if `NDEBUG` is not defined.
+ */
+
+/*!
+ * \def POTASSCO_DEBUG_CHECK_PRE(exp, ...)
+ * Like POTASSCO_CHECK_PRE but only evaluated if `NDEBUG` is not defined.
+ */
+
+#ifdef NDEBUG
+#define POTASSCO_DEBUG_ASSERT(exp, ...)    static_cast<void>(0)
+#define POTASSCO_DEBUG_CHECK_PRE(exp, ...) static_cast<void>(0)
+#else
+#define POTASSCO_DEBUG_ASSERT(exp, ...)    POTASSCO_ASSERT(exp, __VA_ARGS__)
+#define POTASSCO_DEBUG_CHECK_PRE(exp, ...) POTASSCO_CHECK_PRE(exp, __VA_ARGS__)
+#endif
 
 //! Sets x87 floating-point unit to double precision if needed and returns the previous configuration.
 /*!

@@ -23,7 +23,6 @@
 //
 #include <potassco/smodels.h>
 
-#include <potassco/error.h>
 #include <potassco/format.h>
 #include <potassco/rule_utils.h>
 

@@ -22,7 +22,6 @@
 // IN THE SOFTWARE.
 //
 #include <potassco/aspif.h>
-#include <potassco/error.h>
 #include <potassco/format.h>
 #include <potassco/rule_utils.h>
 

@@ -22,7 +22,6 @@
 #include <potassco/program_opts/string_convert.h>
 
 #include <potassco/basic_types.h>
-#include <potassco/error.h>
 #include <potassco/format.h>
 #include <potassco/utils.h>
 
@@ -343,9 +342,9 @@ auto BasicCharBuffer::operator=(BasicCharBuffer&& other) noexcept -> BasicCharBu
     return *this;
 }
 void BasicCharBuffer::setSize(uint32_t ns) {
-    assert(ns <= capacity());
+    POTASSCO_DEBUG_ASSERT(ns <= capacity());
     if (small()) {
-        assert(ns <= max_small);
+        POTASSCO_DEBUG_ASSERT(ns <= max_small);
         storage_[ns]        = 0;
         storage_[max_small] = static_cast<char>(max_small - ns);
     }
@@ -357,7 +356,7 @@ void BasicCharBuffer::setSize(uint32_t ns) {
 }
 void BasicCharBuffer::pop(uint32_t n) noexcept {
     auto sz = size();
-    assert(n <= sz);
+    POTASSCO_DEBUG_ASSERT(n <= sz);
     auto ns = sz - n;
     setSize(ns);
 }
@@ -378,7 +377,7 @@ auto BasicCharBuffer::expand(std::size_t n, bool commit) -> char* {
             new (storage_) Large{out, sz, nc - 1};
             storage_[max_small] = static_cast<char>(max_small + 1);
         }
-        assert(not small());
+        POTASSCO_DEBUG_ASSERT(not small());
     }
     else if (not small()) {
         out = large()->data;
@@ -452,10 +451,10 @@ auto BasicCharBuffer::vFormatTo(const char* fmt, va_list args) noexcept -> std::
         }
     }
     if (commit) {
-        assert(size() == sz || size() == sz + commit);
+        POTASSCO_DEBUG_ASSERT(size() == sz || size() == sz + commit);
         auto ns = sz + commit;
         setSize(ns);
-        assert(buf()[ns] == 0);
+        POTASSCO_DEBUG_ASSERT(buf()[ns] == 0);
     }
     return commit;
 }

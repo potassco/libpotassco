@@ -23,7 +23,6 @@
 //
 #include <potassco/match_basic_types.h>
 
-#include <potassco/error.h>
 #include <potassco/format.h>
 #include <potassco/utils.h>
 

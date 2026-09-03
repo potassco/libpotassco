@@ -23,8 +23,6 @@
 //
 #include <potassco/platform.h>
 
-#include <potassco/error.h>
-
 #if __has_include(<fpu_control.h>)
 #include <fpu_control.h>
 #endif

@@ -24,8 +24,6 @@
 #include <potassco/theory_data.h>
 #include <potassco/utils.h>
 
-#include <potassco/error.h>
-
 #include <algorithm>
 #include <cstring>
 

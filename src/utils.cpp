@@ -23,8 +23,6 @@
 //
 #include <potassco/utils.h>
 
-#include <potassco/error.h>
-
 #include <memory>
 
 namespace Potassco {
@@ -99,7 +97,7 @@ void DynamicBitset::apply(uint64_t mask) {
     }
 }
 void DynamicBitset::popZero() {
-    assert(not empty());
+    POTASSCO_DEBUG_ASSERT(not empty());
     if (buffer_.back() == 0u) {
         auto n = buffer_.size() - 1;
         while (n && buffer_[n - 1] == 0u) { --n; }
@@ -161,7 +159,7 @@ void DynamicIndex::grow() {
 }
 bool DynamicIndex::erase(IndexRef r) {
     if (r.valid()) {
-        assert(static_cast<uint32_t>(r.bucket() - table_.data()) < buckets());
+        POTASSCO_DEBUG_ASSERT(static_cast<uint32_t>(r.bucket() - table_.data()) < buckets());
         *const_cast<Bucket*>(r.bucket()) = Bucket{.hash = 0u, .value = id_tomb};
         ++tombs_;
         --size_;

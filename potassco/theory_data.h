@@ -24,7 +24,6 @@
 #pragma once
 
 #include <potassco/basic_types.h>
-#include <potassco/error.h>
 
 namespace Potassco {
 

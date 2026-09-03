@@ -24,7 +24,6 @@
 #include <potassco/aspif_text.h>
 
 #include <potassco/aspif.h>
-#include <potassco/error.h>
 #include <potassco/format.h>
 #include <potassco/rule_utils.h>
 #include <potassco/theory_data.h>

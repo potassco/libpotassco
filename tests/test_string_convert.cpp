@@ -20,7 +20,6 @@
 // IN THE SOFTWARE.
 #include <potassco/program_opts/string_convert.h>
 
-#include <potassco/error.h>
 #include <potassco/format.h>
 
 #include <catch2/catch_template_test_macros.hpp>

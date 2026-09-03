@@ -23,7 +23,6 @@
 //
 #include <potassco/convert.h>
 
-#include <potassco/error.h>
 #include <potassco/format.h>
 #include <potassco/rule_utils.h>
 
@@ -378,7 +377,7 @@ void SmodelsConvert::flushHeuristic() {
         if (auto* ma = data_->mapped(heu.atom); ma != nullptr) {
             if (not ma->hasName()) {
                 data_->addOutput(*ma, ma->makePred(data_->scratch));
-                assert(ma->hasName());
+                POTASSCO_DEBUG_ASSERT(ma->hasName());
             }
             out_.outputAtom(heu.cond, heu.makePred(data_->scratch, data_->strings[ma->name].view()));
         }
