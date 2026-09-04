@@ -54,6 +54,20 @@ constexpr To size_cast(const C& c) {
         return safe_cast<To>(c.size());
     }
 }
+template <typename T, typename... Args>
+POTASSCO_ATTR_INLINE constexpr void destroy([[maybe_unused]] T* first, [[maybe_unused]] Args... args) {
+    if constexpr (not std::is_trivially_destructible_v<T>) {
+        if constexpr (requires { std::destroy_at(first, args...); }) {
+            std::destroy_at(first, args...);
+        }
+        else if constexpr (requires { std::destroy_n(first, args...); }) {
+            std::destroy_n(first, args...);
+        }
+        else {
+            std::destroy(first, args...);
+        }
+    }
+}
 
 //! Type trait checking whether a given type is trivially-relocatable (i.e. "bitwise-movable").
 /*!
@@ -683,16 +697,6 @@ private:
             size_ += n;
         }
     }
-    POTASSCO_ATTR_INLINE constexpr void destroy(pointer first) {
-        if constexpr (not std::is_trivially_destructible_v<T>) {
-            std::destroy_at(first);
-        }
-    }
-    POTASSCO_ATTR_INLINE constexpr void destroy(pointer first, size_type n) {
-        if constexpr (not std::is_trivially_destructible_v<T>) {
-            std::destroy_n(first, n);
-        }
-    }
     pointer   data_{nullptr};
     size_type size_{0};
     size_type cap_{0};
@@ -916,9 +920,7 @@ public:
 
 private:
     void deallocate() {
-        if constexpr (not std::is_trivially_destructible_v<T>) {
-            std::destroy_n(arr_.data(), arr_.size());
-        }
+        destroy(arr_.data(), arr_.size());
         SystemAllocator::deallocate(arr_.data(), arr_.size() * sizeof(T));
     }
     using ArrayType = std::span<T>;
