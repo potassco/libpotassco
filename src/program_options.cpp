@@ -44,7 +44,7 @@ using namespace std::literals;
 ///////////////////////////////////////////////////////////////////////////////
 // DefaultFormat
 ///////////////////////////////////////////////////////////////////////////////
-static std::string quote(std::string_view x) { return std::string(1, '\'').append(x).append(1, '\''); }
+static auto quote(std::string_view x) -> std::string { return std::string(1, '\'').append(x).append(1, '\''); }
 static auto apply(std::string& buffer, DefaultFormat::StyleCb cb, DefaultFormat::Element e, bool open) -> std::string& {
     return cb ? buffer.append(cb(e, open)) : buffer;
 }
@@ -54,7 +54,7 @@ static auto styled(std::string& buffer, DefaultFormat::StyleCb cb, DefaultFormat
     (buffer.append(args), ...);
     return apply(buffer, cb, e, false);
 }
-std::size_t DefaultFormat::columnWidth(const Option& o) {
+auto DefaultFormat::columnWidth(const Option& o) -> std::size_t {
     auto width = static_cast<std::size_t>(2); // indent
     if (o.alias()) {
         width += 3; // -o,
@@ -74,7 +74,7 @@ std::size_t DefaultFormat::columnWidth(const Option& o) {
     }
     return width;
 }
-std::string& DefaultFormat::format(std::string& buffer, const Option& o, std::size_t maxWidth, StyleCb cb) {
+auto DefaultFormat::format(std::string& buffer, const Option& o, std::size_t maxWidth, StyleCb cb) -> std::string& {
     const auto width   = columnWidth(o);
     auto       arg     = o.argName();
     auto       negName = arg.empty() && o.negatable() ? "[no-]"sv : ""sv;
@@ -105,7 +105,7 @@ std::string& DefaultFormat::format(std::string& buffer, const Option& o, std::si
     }
     return buffer.append(1, '\n');
 }
-std::string& DefaultFormat::format(std::string& buffer, const OptionGroup& g, StyleCb cb) {
+auto DefaultFormat::format(std::string& buffer, const OptionGroup& g, StyleCb cb) -> std::string& {
     if (auto length = g.caption().length(); length) {
         buffer.reserve(buffer.size() + length + 4);
         styled(buffer.append(1, '\n'), cb, Element::caption, g.caption(), ":"sv).append(2, '\n');
@@ -180,7 +180,7 @@ bool Option::assign(std::string_view value, bool def) {
     }
     return false;
 }
-std::string& Option::description(std::string& out) const {
+auto Option::description(std::string& out) const -> std::string& {
     std::string_view desc = description();
     out.reserve(out.size() + desc.length());
     for (;;) {
@@ -213,17 +213,17 @@ void OptionGroup::addOption(std::unique_ptr<Option> option) {
     SharedOption opt(option.release());
     options_.push_back(std::move(opt));
 }
-void    OptionGroup::addOption(SharedOption option) { options_.push_back(std::move(option)); }
-Option* OptionGroup::find(std::string_view name) const {
+void OptionGroup::addOption(SharedOption option) { options_.push_back(std::move(option)); }
+auto OptionGroup::find(std::string_view name) const -> Option* {
     auto it = std::ranges::find_if(options_, [&](const SharedOption& opt) { return opt->name() == name; });
     return it != options_.end() ? it->get() : nullptr;
 }
-Option* OptionGroup::find(char alias) const {
+auto OptionGroup::find(char alias) const -> Option* {
     auto it = std::ranges::find_if(options_, [&](const SharedOption& opt) { return opt->alias() == alias; });
     return it != options_.end() ? it->get() : nullptr;
 }
 
-std::size_t OptionGroup::maxColumn(OptionOutput& out, DescriptionLevel level) const {
+auto OptionGroup::maxColumn(OptionOutput& out, DescriptionLevel level) const -> std::size_t {
     std::size_t maxW = 0;
     for (const auto& opt : options_) {
         if (opt->descLevel() <= level) {
@@ -316,7 +316,7 @@ auto OptionContext::findGroupKey(std::string_view name) const -> std::size_t {
     auto it = std::ranges::find_if(groups_, [&](const OptionGroup& grp) { return grp.caption() == name; });
     return it != groups_.end() ? static_cast<std::size_t>(it - groups_.begin()) : static_cast<std::size_t>(-1);
 }
-OptionGroup& OptionContext::addGroup(std::string_view name, DescriptionLevel level, std::size_t* idx) {
+auto OptionContext::addGroup(std::string_view name, DescriptionLevel level, std::size_t* idx) -> OptionGroup& {
     auto k = findGroupKey(name);
     if (k >= groups_.size()) {
         // add as a new group
@@ -331,7 +331,7 @@ OptionGroup& OptionContext::addGroup(std::string_view name, DescriptionLevel lev
     return myGroup;
 }
 
-OptionContext& OptionContext::add(const OptionGroup& group) {
+auto OptionContext::add(const OptionGroup& group) -> OptionContext& {
     auto& myGroup = addGroup(group.caption(), group.descLevel());
     for (const auto& opt : group.options()) {
         addToIndex(opt);
@@ -339,7 +339,7 @@ OptionContext& OptionContext::add(const OptionGroup& group) {
     }
     return *this;
 }
-OptionContext& OptionContext::add(OptionGroup&& group) {
+auto OptionContext::add(OptionGroup&& group) -> OptionContext& {
     auto& myGroup  = addGroup(group.caption(), group.descLevel());
     auto  startPos = myGroup.size();
     if (startPos == 0) {
@@ -353,7 +353,7 @@ OptionContext& OptionContext::add(OptionGroup&& group) {
     for (const auto& opt : std::span{myGroup.options_}.subspan(startPos)) { addToIndex(opt); }
     return *this;
 }
-OptionContext& OptionContext::add(std::size_t groupId, std::unique_ptr<Option> opt) {
+auto OptionContext::add(std::size_t groupId, std::unique_ptr<Option> opt) -> OptionContext& {
     auto& grp    = groups_.at(groupId);
     auto  shared = OptionGroup::SharedOption{opt.release()};
     addToIndex(shared);
@@ -366,7 +366,7 @@ auto OptionContext::addOptions(std::string_view caption, DescriptionLevel descLe
     return OptionGroup::Init{*this, idx};
 }
 
-OptionContext& OptionContext::addAlias(std::size_t idx, std::string_view aliasName) {
+auto OptionContext::addAlias(std::size_t idx, std::string_view aliasName) -> OptionContext& {
     if (idx < options_.size() && not aliasName.empty()) {
         if (auto [it, ins] = index_.try_emplace(std::string{aliasName}, idx); not ins) {
             throw DuplicateOption(caption(), it->first);
@@ -374,13 +374,13 @@ OptionContext& OptionContext::addAlias(std::size_t idx, std::string_view aliasNa
     }
     return *this;
 }
-const OptionGroup& OptionContext::group(std::string_view name) const {
+auto OptionContext::group(std::string_view name) const -> const OptionGroup& {
     if (auto x = findGroupKey(name); x < groups_.size()) {
         return groups_[x];
     }
     throw ContextError(caption(), ContextError::unknown_group, name);
 }
-OptionContext& OptionContext::add(const OptionContext& other) {
+auto OptionContext::add(const OptionContext& other) -> OptionContext& {
     if (this == &other) {
         return *this;
     }
@@ -432,7 +432,7 @@ auto OptionContext::findOption(std::string_view name, FindType t) const -> std::
     throw UnknownOption(caption(), name);
 }
 
-OptionOutput& OptionContext::description(OptionOutput& out) const {
+auto OptionContext::description(OptionOutput& out) const -> OptionOutput& {
     DescriptionLevel dl = descLevel_;
     if (out.printContext(*this) && not groups_.empty()) {
         std::size_t maxW = 23;
@@ -468,7 +468,7 @@ static void appendDefaults(std::string& out, const OptionGroup& group, Descripti
         }
     }
 }
-std::string OptionContext::defaults(std::size_t n) const {
+auto OptionContext::defaults(std::size_t n) const -> std::string {
     std::string defs;
     if (not groups_.empty()) {
         std::string tmp;
@@ -481,7 +481,7 @@ std::string OptionContext::defaults(std::size_t n) const {
     }
     return defs;
 }
-std::ostream& operator<<(std::ostream& os, const OptionContext& grp) {
+auto operator<<(std::ostream& os, const OptionContext& grp) -> std::ostream& {
     OptionPrinter out(os);
     grp.description(out);
     return os;
@@ -515,7 +515,7 @@ auto OptionParser::getOption(std::string_view name, FindType ft) const -> Option
 }
 void OptionParser::applyValue(Option& opt, std::string_view value) { ctx_->setValue(opt, value); }
 
-ParseContext& OptionParser::parse() {
+auto OptionParser::parse() -> ParseContext& {
     try {
         doParse();
         ctx_->finish(nullptr);
@@ -592,8 +592,8 @@ public:
         , flags_(f) {}
 
 private:
-    virtual std::string_view next() = 0;
-    void                     doParse() override {
+    virtual auto next() -> std::string_view = 0;
+    void         doParse() override {
         for (std::string_view curr; not(curr = next()).empty() && curr != "--"sv;) {
             if (curr.starts_with("--")) {
                 handleLongOpt(curr.substr(2));
@@ -691,7 +691,7 @@ public:
         , argv_(argv) {}
 
 private:
-    std::string_view next() override {
+    auto next() -> std::string_view override {
         if (not argv_.empty()) {
             std::string_view r(argv_.front());
             argv_ = argv_.subspan(1);
@@ -709,10 +709,10 @@ public:
         , cmd_(cmd) {
         tok_.reserve(80);
     }
-    CommandStringParser& operator=(const CommandStringParser&) = delete;
+    auto operator=(const CommandStringParser&) -> CommandStringParser& = delete;
 
 private:
-    std::string_view next() override {
+    auto next() -> std::string_view override {
         // skip leading white
         while (not cmd_.empty() && std::isspace(static_cast<unsigned char>(cmd_.front()))) { cmd_.remove_prefix(1); }
         if (cmd_.empty()) {
@@ -826,17 +826,18 @@ private:
     std::istream& in_;
 };
 } // end unnamed namespace
-ParseContext& parseCommandArray(ParseContext& ctx, std::span<const char* const> args, PosOption pos, unsigned flags) {
+auto parseCommandArray(ParseContext& ctx, std::span<const char* const> args, PosOption pos,
+                       unsigned flags) -> ParseContext& {
     return ArgvParser(ctx, args, std::move(pos), flags).parse();
 }
-ParseContext& parseCommandString(ParseContext& ctx, std::string_view args, PosOption pos, unsigned flags) {
+auto parseCommandString(ParseContext& ctx, std::string_view args, PosOption pos, unsigned flags) -> ParseContext& {
     return CommandStringParser(ctx, args, std::move(pos), flags).parse();
 }
-ParseContext& parseCfgFile(ParseContext& ctx, std::istream& is) { return CfgFileParser(ctx, is).parse(); }
+auto parseCfgFile(ParseContext& ctx, std::istream& is) -> ParseContext& { return CfgFileParser(ctx, is).parse(); }
 ///////////////////////////////////////////////////////////////////////////////
 // Errors
 ///////////////////////////////////////////////////////////////////////////////
-static std::string format(SyntaxError::Type t, std::string_view key) {
+static auto format(SyntaxError::Type t, std::string_view key) -> std::string {
     return std::string("SyntaxError: "sv).append(quote(key)).append([](SyntaxError::Type type) {
         switch (type) {
             case SyntaxError::missing_value : return " requires a value!"sv;
@@ -846,14 +847,15 @@ static std::string format(SyntaxError::Type t, std::string_view key) {
         }
     }(t));
 }
-static std::string formatContext(std::string_view ctx) {
+static auto formatContext(std::string_view ctx) -> std::string {
     std::string ret;
     if (not ctx.empty()) {
         ret.append("In context "sv).append(quote(ctx)).append(": "sv);
     }
     return ret;
 }
-static std::string format(ContextError::Type t, std::string_view ctx, std::string_view key, std::string_view alt) {
+static auto format(ContextError::Type t, std::string_view ctx, std::string_view key,
+                   std::string_view alt) -> std::string {
     std::string ret = formatContext(ctx);
     switch (t) {
         case ContextError::duplicate_option: ret.append("duplicate option: "sv); break;
@@ -868,8 +870,8 @@ static std::string format(ContextError::Type t, std::string_view ctx, std::strin
     }
     return ret;
 }
-static std::string format(ValueError::Type t, std::string_view ctx, std::string_view key, std::string_view value,
-                          std::string_view msg) {
+static auto format(ValueError::Type t, std::string_view ctx, std::string_view key, std::string_view value,
+                   std::string_view msg) -> std::string {
     std::string ret = formatContext(ctx);
     switch (t) {
         case ValueError::multiple_occurrences: ret.append("multiple occurrences: "sv); break;

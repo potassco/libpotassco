@@ -109,8 +109,8 @@ public:
      */
     explicit AspifOutput(std::ostream& os, uint32_t version = 0);
     ~AspifOutput() override;
-    AspifOutput(const AspifOutput&)            = delete;
-    AspifOutput& operator=(const AspifOutput&) = delete;
+    AspifOutput(const AspifOutput&)                    = delete;
+    auto operator=(const AspifOutput&) -> AspifOutput& = delete;
 
     //! Writes an aspif header to the stream.
     void initProgram(bool incremental) override;
@@ -169,18 +169,18 @@ private:
     struct Data;
     using DataPtr = std::unique_ptr<Data>;
     //! Starts writing an aspif directive.
-    AspifOutput& startDir(AspifType r);
+    auto startDir(AspifType r) -> AspifOutput&;
     //! Writes `x`.
     template <typename T>
-    AspifOutput& add(T x);
+    auto add(T x) -> AspifOutput&;
     //! Writes `size(lits)` followed by the elements in `lits`.
     template <typename T>
-    AspifOutput& add(std::span<T> lits);
+    auto add(std::span<T> lits) -> AspifOutput&;
     //! Writes `size(str)` followed by the characters in `str`.
-    AspifOutput& add(std::string_view str);
+    auto add(std::string_view str) -> AspifOutput&;
     //! Terminates the active directive by writing a newline.
-    AspifOutput& endDir();
-    void         auxRule(Atom_t head, LitSpan body);
+    auto endDir() -> AspifOutput&;
+    void auxRule(Atom_t head, LitSpan body);
     //! Maps input to output literals.
     template <typename T>
     auto map(std::span<T>& lits) -> std::span<T>;

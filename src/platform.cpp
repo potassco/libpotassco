@@ -172,7 +172,7 @@ static auto getThreadTime() -> DurationType {
 }
 #elif defined(WIN32_LEAN_AND_MEAN)
 using DurationType = std::chrono::duration<int64_t, std::ratio<1, std::nano::den / 100>>;
-static DurationType toDuration(const FILETIME& t) {
+static auto toDuration(const FILETIME& t) -> DurationType {
     union Convert {
         FILETIME time;
         __int64  asUint;
@@ -262,7 +262,7 @@ static auto enableTerminalColors([[maybe_unused]] FILE* file) -> std::errc {
 #if defined(_MSC_VER) || defined(_WIN32)
 #pragma fenv_access(on)
 #endif
-static unsigned setFpuPrecision(unsigned* r) {
+static auto setFpuPrecision(unsigned* r) -> unsigned {
 #if defined(_FPU_GETCW) && defined(_FPU_SETCW) && defined(_FPU_DOUBLE)
     fpu_control_t cw;
     _FPU_GETCW(cw);
@@ -286,7 +286,7 @@ static unsigned setFpuPrecision(unsigned* r) {
     return 0u;
 }
 #else
-static constexpr unsigned setFpuPrecision(unsigned*) { return 0u; }
+static constexpr auto setFpuPrecision(unsigned*) -> unsigned { return 0u; }
 #endif
 ///////////////////////////////////////////////////////////////////////////
 // System allocator
@@ -362,7 +362,7 @@ auto setAlarm(uint32_t millis, AlarmFunc f) -> std::errc {
 auto getProcessTime() -> double { return std::chrono::duration<double>(PlatformApi::getProcessTime()).count(); }
 auto getThreadTime() -> double { return std::chrono::duration<double>(PlatformApi::getThreadTime()).count(); }
 
-const char* ExpressionInfo::relativeFileName(const std::source_location& loc) {
+auto ExpressionInfo::relativeFileName(const std::source_location& loc) -> const char* {
     auto res = loc.file_name();
     for (auto cmp = c_file; *res && not cmp.empty() && *res == cmp.front(); cmp.remove_prefix(1), ++res) {}
     return res;

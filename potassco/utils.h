@@ -821,7 +821,7 @@ public:
         }
     }
     DynamicHashArray(DynamicHashArray&& other) noexcept : arr_(std::exchange(other.arr_, {})) {}
-    DynamicHashArray& operator=(DynamicHashArray&& other) noexcept {
+    auto operator=(DynamicHashArray&& other) noexcept -> DynamicHashArray& {
         if (data() != other.data()) {
             deallocate();
             arr_ = std::exchange(other.arr_, {});
@@ -968,9 +968,9 @@ public:
     //! Move-constructs the index from `other`.
     DynamicIndex(DynamicIndex&& other) noexcept;
     //! Replaces this index with a copy of `other`.
-    DynamicIndex& operator=(const DynamicIndex& other);
+    auto operator=(const DynamicIndex& other) -> DynamicIndex&;
     //! Replaces this index with `other`.
-    DynamicIndex& operator=(DynamicIndex&& other) noexcept;
+    auto operator=(DynamicIndex&& other) noexcept -> DynamicIndex&;
 
     //! Returns the number of elements in the index.
     [[nodiscard]] constexpr auto size() const noexcept -> uint32_t { return size_; }
@@ -1141,14 +1141,14 @@ public:
         , size_(std::exchange(other.size_, 0u))
         , avail_(std::exchange(other.avail_, 0u)) {}
     //! Replaces this table with a copy of `other`.
-    DynamicHashTable& operator=(const DynamicHashTable& other) {
+    auto operator=(const DynamicHashTable& other) -> DynamicHashTable& {
         if (this != &other) {
             *this = DynamicHashTable(other);
         }
         return *this;
     }
     //! Replaces this map with `other`.
-    DynamicHashTable& operator=(DynamicHashTable&& other) noexcept {
+    auto operator=(DynamicHashTable&& other) noexcept -> DynamicHashTable& {
         if (this != &other) {
             table_ = std::move(other.table_);
             size_  = std::exchange(other.size_, 0u);
@@ -1302,8 +1302,8 @@ public:
         moveFrom(std::move(o));
     }
     constexpr ~ConstString() { release(); }
-    ConstString&           operator=(const ConstString& other);
-    constexpr ConstString& operator=(ConstString&& other) noexcept {
+    auto           operator=(const ConstString& other) -> ConstString&;
+    constexpr auto operator=(ConstString&& other) noexcept -> ConstString& {
         if (this != &other) {
             release();
             moveFrom(std::move(other));
@@ -1412,11 +1412,11 @@ public:
     POTASSCO_TRIVIALLY_RELOCATABLE();
     OrderedStringSet() = default;
     explicit OrderedStringSet(bool allowShort);
-    OrderedStringSet(const OrderedStringSet&)            = delete;
-    OrderedStringSet(OrderedStringSet&&) noexcept        = default;
-    OrderedStringSet& operator=(const OrderedStringSet&) = delete;
-    OrderedStringSet& operator=(OrderedStringSet&&)      = default;
-    ~OrderedStringSet()                                  = default;
+    OrderedStringSet(const OrderedStringSet&)                    = delete;
+    OrderedStringSet(OrderedStringSet&&) noexcept                = default;
+    auto operator=(const OrderedStringSet&) -> OrderedStringSet& = delete;
+    auto operator=(OrderedStringSet&&) -> OrderedStringSet&      = default;
+    ~OrderedStringSet()                                          = default;
 
     //! Returns the number of elements in the set.
     [[nodiscard]] auto size() const -> uint32_t { return strings_.size(); }
@@ -1467,6 +1467,380 @@ private:
     DynamicIndex              index_;
     DynamicArray<ConstString> strings_;
     bool                      allowShort_{true};
+};
+
+//! A (contiguous dynamically growing) buffer containing two independently typed sequences growing toward each other.
+/*!
+ * The "left" sequence grows from left to right, while the "right" sequence grows from right to left.
+ * On overlap, the buffer is extended.
+ *
+ * \param L Trivially relocatable value type of left sequence.
+ * \param R Trivially relocatable value type of right sequence.
+ * \param I Max size on stack (must be a multiple of the architecture's pointer size). Excess size is used as
+ *          SBO-capacity for the buffer.
+ */
+template <TriviallyRelocatable L, TriviallyRelocatable R, unsigned I = 0u>
+requires(I % alignof(void*) == 0 && std::max(std::max(alignof(L), alignof(R)), alignof(void*)) % alignof(void*) == 0)
+class BidirectionalBuffer {
+    static constexpr auto header_size  = static_cast<uint32_t>(sizeof(uint32_t) * 3u);
+    static constexpr auto ptr_size     = static_cast<uint32_t>(sizeof(void*));
+    static constexpr auto data_align   = static_cast<uint32_t>(std::max(alignof(L), alignof(R)));
+    static constexpr auto min_grow_cap = static_cast<uint32_t>(4u * std::max(sizeof(L), sizeof(R)));
+    // Offsets and alignment requirements for supporting inline elements:
+    // - data_off: offset for inline elements
+    // - ptr_off : offset for heap pointer
+    static constexpr auto data_off = clear_mask(header_size + (data_align - 1u), data_align - 1u);
+    static constexpr auto ptr_off  = clear_mask(header_size + (ptr_size - 1u), ptr_size - 1u);
+
+public:
+    POTASSCO_TRIVIALLY_RELOCATABLE();
+    // NOLINTBEGIN
+    using this_type                 = BidirectionalBuffer;
+    using left_type                 = L;
+    using right_type                = R;
+    using size_type                 = uint32_t;
+    using left_seq_type             = std::span<left_type>;
+    using c_left_seq_type           = std::span<const left_type>;
+    static constexpr auto small_cap = (I >= (ptr_off + ptr_size)) ? (I - data_off) : 0u;
+    // NOLINTEND
+
+    //! Creates an empty buffer.
+    constexpr BidirectionalBuffer() = default;
+    //! Creates a copy of other.
+    BidirectionalBuffer(const this_type& other)
+        requires(std::is_copy_constructible_v<left_type> && std::is_copy_constructible_v<right_type>)
+    {
+        copyData(other);
+    }
+    //! Relocates the contents from `other`.
+    BidirectionalBuffer(this_type&& other) noexcept { moveData(std::move(other)); }
+    //! Replaces the contents of this buffer with copies of the values in `other`.
+    BidirectionalBuffer& operator=(const this_type& other)
+        requires(std::is_copy_constructible_v<left_type> && std::is_copy_constructible_v<right_type>)
+    {
+        if (this != &other) {
+            clear();
+            copyData(other);
+        }
+        return *this;
+    }
+    //! Replaces the contents of this buffer with the contents of `other`.
+    auto operator=(this_type&& other) noexcept -> BidirectionalBuffer& {
+        if (this != &other) {
+            reset();
+            moveData(std::move(other));
+        }
+        return *this;
+    }
+    //! Destroys the buffer and its contents.
+    ~BidirectionalBuffer() { reset(); }
+
+    //! Returns whether the buffer is empty.
+    [[nodiscard]] constexpr bool empty() const noexcept { return size() == 0u; }
+    //! Returns the number of elements in the buffer.
+    [[nodiscard]] constexpr auto size() const noexcept -> size_type { return left_ + right_; }
+    //! Returns the number of elements in the "left" sequence.
+    [[nodiscard]] constexpr auto sizeLeft() const noexcept -> size_type { return left_; }
+    //! Returns the number of elements in the "right" sequence.
+    [[nodiscard]] constexpr auto sizeRight() const noexcept -> size_type { return right_; }
+    //! Returns a pointer to the beginning of the "left" sequence.
+    /*!
+     * The elements in the range [dataBegin(), dataBegin() + sizeLeft()) make up the "left" sequence.
+     */
+    [[nodiscard]] constexpr auto dataBegin() const noexcept -> const left_type* { return ptr<left_type>(data()); }
+    //! \copydoc dataBegin() const
+    [[nodiscard]] constexpr auto dataBegin() noexcept -> left_type* { return ptr<left_type>(data()); }
+    //! Returns a pointer "before-the-beginning" of the "right" sequence.
+    /*!
+     * \note The elements in the range [dataEnd() - sizeRight(), dataEnd()) make up the "right" sequence
+     *       but in reverse order. Iterate over `right()` or use a reverse iterator from dataEnd() to
+     *       dataEnd() - sizeRight() to access the sequence in the correct order.
+     */
+    [[nodiscard]] constexpr auto dataEnd() const noexcept -> const right_type* { return ptr<right_type>(end()); }
+    //! \copydoc dataEnd() const
+    [[nodiscard]] constexpr auto dataEnd() noexcept -> right_type* { return ptr<right_type>(end()); }
+    //! Returns a reference to the first element of the "left" sequence.
+    [[nodiscard]] constexpr auto frontLeft() const noexcept -> const left_type& { return *dataBegin(); }
+    //! \copydoc frontLeft() const
+    [[nodiscard]] constexpr auto frontLeft() noexcept -> left_type& { return *dataBegin(); }
+    //! Returns a reference to the first element of the "right" sequence.
+    [[nodiscard]] constexpr auto frontRight() const noexcept -> const right_type& { return dataEnd()[-1]; }
+    //! \copydoc frontRight() const
+    [[nodiscard]] constexpr auto frontRight() noexcept -> right_type& { return dataEnd()[-1]; }
+    //! Returns a reference to the last element of the "left" sequence.
+    [[nodiscard]] constexpr auto backLeft() const noexcept -> const left_type& { return dataBegin()[sizeLeft() - 1]; }
+    //! \copydoc backLeft() const
+    [[nodiscard]] constexpr auto backLeft() noexcept -> left_type& { return dataBegin()[sizeLeft() - 1]; }
+    //! Returns a reference to the last element of the "right" sequence.
+    [[nodiscard]] constexpr auto backRight() const noexcept -> const right_type& { return *(dataEnd() - sizeRight()); }
+    //! \copydoc backRight() const
+    [[nodiscard]] constexpr auto backRight() noexcept -> right_type& { return *(dataEnd() - sizeRight()); }
+    //! Returns the "left" sequence of this buffer.
+    [[nodiscard]] constexpr auto left() const noexcept -> c_left_seq_type { return {dataBegin(), sizeLeft()}; }
+    //! \copydoc left() const
+    [[nodiscard]] constexpr auto left() noexcept -> left_seq_type { return {dataBegin(), sizeLeft()}; }
+    //! Returns the "right" sequence of this buffer.
+    [[nodiscard]] constexpr auto right() const noexcept -> decltype(auto) { return rightImpl(*this); }
+    //! \copydoc right() const
+    [[nodiscard]] constexpr auto right() noexcept -> decltype(auto) { return rightImpl(*this); }
+
+    //! Removes all elements from the buffer without changing the buffer's capacity.
+    void clear() {
+        Potassco::destroy(dataBegin(), left_);
+        Potassco::destroy(dataEnd() - right_, right_);
+        left_ = right_ = 0u;
+    }
+    //! Resets the buffer to its default-constructed state by removing all elements and realising any allocated storage.
+    void reset() {
+        clear();
+        if (cap_ != small_cap) {
+            Potassco::SystemAllocator::deallocate(data());
+            cap_ = small_cap;
+            if constexpr (small_cap == 0u) {
+                mem_ = nullptr;
+            }
+        }
+    }
+    //! Appends `l` to the end of the "left" sequence.
+    void pushLeft(const left_type& l) {
+        if (auto n = static_cast<size_type>(sizeof(left_type)); not avail(n)) {
+            grow(n);
+        }
+        std::construct_at(dataBegin() + left_, l);
+        ++left_;
+    }
+    //! Appends `r` to the end of the "right" sequence.
+    void pushRight(const right_type& r) {
+        if (auto n = static_cast<size_type>(sizeof(right_type)); not avail(n)) {
+            grow(n);
+        }
+        std::construct_at(dataEnd() - (right_ + 1), r);
+        ++right_;
+    }
+    //! Removes the last element of the "left" sequence.
+    /*!
+     * \pre sizeLeft() > 0u.
+     */
+    void popLeft() {
+        POTASSCO_DEBUG_ASSERT(sizeLeft() > 0u);
+        --left_;
+        Potassco::destroy(dataBegin() + left_);
+    }
+    //! Removes the last element of the "right" sequence.
+    /*!
+     * \pre sizeRight() > 0u.
+     */
+    void popRight() {
+        POTASSCO_DEBUG_ASSERT(sizeRight() > 0u);
+        Potassco::destroy(dataEnd() - right_);
+        --right_;
+    }
+    //! Erases the element at `pos` from the "left" sequence.
+    /*!
+     * \pre `pos` is a valid pointer in `[dataBegin(), dataBegin() + sizeLeft())`.
+     */
+    void eraseLeft(const left_type* pos) {
+        auto* leftEnd = dataBegin() + left_;
+        POTASSCO_DEBUG_ASSERT(pos >= dataBegin() && pos < leftEnd);
+        Potassco::destroy(pos);
+        if (auto tail = static_cast<size_type>(leftEnd - (pos + 1)); tail) {
+            std::memmove(ptr<void>(const_cast<left_type*>(pos)), ptr<const void>(pos + 1), sizeof(left_type) * tail);
+        }
+        --left_;
+    }
+    //! Erases the element at `pos` from the "right" sequence.
+    /*!
+     * \pre `pos` is a valid pointer in `[dataEnd() - sizeRight(), dataEnd())`.
+     */
+    void eraseRight(const right_type* pos) {
+        auto* start = dataEnd() - right_;
+        POTASSCO_DEBUG_ASSERT(pos < dataEnd() && pos >= start);
+        Potassco::destroy(pos);
+        if (auto tail = static_cast<size_type>(pos - start); tail) {
+            std::memmove(ptr<void>(start + 1), ptr<void>(start), tail * sizeof(right_type));
+        }
+        --right_;
+    }
+    //! Truncates the "left" sequence to the range `[dataBegin(), leftEnd)`.
+    /*!
+     * \pre leftEnd <= dataBegin() + sizeLeft().
+     */
+    void truncateLeft(const left_type* leftEnd) {
+        if (auto n = static_cast<size_type>(leftEnd - dataBegin()); n < left_) {
+            Potassco::destroy(dataBegin() + n, left_ - n);
+            left_ = n;
+        }
+    }
+    //! Truncates the "right" sequence to the range `[rightEnd, dataEnd())`.
+    /*!
+     * \pre rightEnd >= dataEnd() - sizeRight().
+     */
+    void truncateRight(const right_type* rightEnd) {
+        if (auto n = static_cast<size_type>(dataEnd() - rightEnd); n < right_) {
+            Potassco::destroy(dataEnd() - right_, right_ - n);
+            right_ = n;
+        }
+    }
+    //! Relocates the buffer back to its small buffer if possible.
+    void tryShrinkToSmall() requires(small_cap != 0)
+    {
+        if (cap_ > small_cap && small_cap >= used()) {
+            auto* d = data();
+            copyBuffer(mem_, small_cap, d, cap_, left_, right_);
+            cap_ = small_cap;
+            Potassco::SystemAllocator::deallocate(d);
+        }
+    }
+
+    //! Erases all elements satisfying the given predicate from the "left" sequence.
+    template <std::predicate<left_type&> P>
+    friend auto eraseLeftIf(this_type& self, P pred) -> size_type {
+        auto  sz = self.sizeLeft(), rem = 0u;
+        auto *first = self.dataBegin(), *end = first + sz;
+        if (auto it = std::find_if(first, end, std::ref(pred)); it != end) {
+            auto j = it;
+            Potassco::destroy(it);
+            for (++it; it != end; ++it) {
+                if (not pred(*it)) {
+                    Detail::destructiveMove(j++, it);
+                }
+                else {
+                    Potassco::destroy(it);
+                }
+            }
+            rem = sz - (self.left_ = static_cast<size_type>(j - first));
+        }
+        return rem;
+    }
+
+    //! Erases all elements satisfying the given predicate from the "right" sequence.
+    template <std::predicate<right_type&> P>
+    friend auto eraseRightIf(this_type& self, P pred) -> size_type {
+        auto  rem = 0u;
+        auto *it = self.dataEnd(), *end = it - self.sizeRight();
+        while (it != end && not pred(it[-1])) { --it; }
+        if (it != end) {
+            auto j = it--;
+            Potassco::destroy(it);
+            while (it != end) {
+                if (--it; not pred(*it)) {
+                    *--j = *it;
+                }
+                else {
+                    Potassco::destroy(it);
+                }
+            }
+            self.right_ -= (rem = static_cast<size_type>(j - it));
+        }
+        return rem;
+    }
+
+private:
+    template <typename SelfT>
+    [[nodiscard]] static constexpr auto rightImpl(SelfT&& t) noexcept -> decltype(auto) {
+        auto* p = t.dataEnd();
+        return std::ranges::subrange{std::make_reverse_iterator(p), std::make_reverse_iterator(p - t.sizeRight())};
+    }
+    template <typename T, typename U>
+    [[nodiscard]] static constexpr auto ptr(U* p) -> std::conditional_t<std::is_const_v<U>, const T*, T*> {
+        return static_cast<std::conditional_t<std::is_const_v<U>, const T*, T*>>(p);
+    }
+    [[nodiscard]] constexpr auto data() const noexcept -> const void* { return const_cast<this_type*>(this)->data(); }
+    [[nodiscard]] constexpr auto end() const noexcept -> const void* { return const_cast<this_type*>(this)->end(); }
+    [[nodiscard]] constexpr auto used() const noexcept -> size_type {
+        return left_ * sizeof(left_type) + right_ * sizeof(right_type);
+    }
+    [[nodiscard]] constexpr bool avail(size_type sz) const noexcept { return used() + sz <= cap_; }
+    [[nodiscard]] constexpr auto end() noexcept -> void* { return ptr<std::byte>(data()) + cap_; }
+    [[nodiscard]] constexpr auto data() noexcept -> void* {
+        if constexpr (small_cap == 0u) {
+            return mem_;
+        }
+        else {
+            return cap_ == small_cap ? mem_ : smallPtr();
+        }
+    }
+    template <bool Relocate = true>
+    static void copyBuffer(void* target, uint32_t tCap, const void* source, uint32_t sCap, uint32_t l,
+                           uint32_t r) noexcept {
+        if (l) {
+            if constexpr (Relocate) {
+                std::memcpy(target, source, l * sizeof(left_type));
+            }
+            else {
+                Detail::uninitialized_copy_n(ptr<const left_type>(source), l, ptr<left_type>(target));
+            }
+        }
+        if (r) {
+            const auto  bytes = r * sizeof(right_type);
+            const void* s     = ptr<std::byte>(source) + (sCap - bytes);
+            void*       t     = ptr<std::byte>(target) + (tCap - bytes);
+            if constexpr (Relocate) {
+                std::memcpy(t, s, bytes);
+            }
+            else {
+                Detail::uninitialized_copy_n(ptr<right_type>(s), r, ptr<right_type>(t));
+            }
+        }
+    }
+
+    void moveData(this_type&& other) noexcept {
+        cap_   = std::exchange(other.cap_, small_cap);
+        left_  = std::exchange(other.left_, 0u);
+        right_ = std::exchange(other.right_, 0u);
+        if constexpr (small_cap == 0u) {
+            mem_ = std::exchange(other.mem_, nullptr);
+        }
+        else if (cap_ == small_cap) {
+            copyBuffer(mem_, small_cap, other.mem_, small_cap, left_, right_);
+        }
+        else {
+            smallPtr() = other.smallPtr();
+        }
+    }
+    void copyData(const this_type& other) {
+        POTASSCO_DEBUG_ASSERT(used() == 0u);
+        if (auto u = other.used(); u) {
+            if (u > cap_) {
+                grow(u - cap_);
+            }
+            static constexpr auto copy_is_relocate =
+                std::is_trivially_copy_constructible_v<left_type> && std::is_trivially_copy_constructible_v<right_type>;
+            copyBuffer<copy_is_relocate>(data(), cap_, other.data(), other.cap_, other.left_, other.right_);
+            left_  = other.left_;
+            right_ = other.right_;
+        }
+    }
+    void grow(uint32_t n) {
+        auto nextCap = std::max((((cap_ / n) * 3u) >> 1u) * n, cap_ + n);
+        POTASSCO_CHECK(nextCap > cap_, Potassco::Errc::length_error, "LrArray::push");
+        if (nextCap < min_grow_cap) {
+            nextCap = min_grow_cap;
+        }
+        auto* old = data();
+        auto* mem = ptr<std::byte>(Potassco::SystemAllocator::allocate(nextCap));
+        copyBuffer(mem, nextCap, old, cap_, left_, right_);
+        if (std::exchange(cap_, nextCap) != small_cap) {
+            Potassco::SystemAllocator::deallocate(old);
+        }
+        if constexpr (small_cap == 0u) {
+            mem_ = mem;
+        }
+        else {
+            smallPtr() = mem;
+        }
+        POTASSCO_DEBUG_ASSERT(data() == mem);
+    }
+    auto smallPtr() -> void*& { return *reinterpret_cast<void**>(mem_ + (ptr_off - data_off)); }
+
+    using MemT = std::conditional_t<small_cap != 0u, std::byte[small_cap + (small_cap == 0u)], std::byte*>;
+    static constexpr auto mem_align  = small_cap > 0u ? data_align : ptr_size;
+    static constexpr auto this_align = std::max(mem_align, ptr_size);
+
+    alignas(this_align) uint32_t cap_{small_cap}; // data() capacity in bytes
+    uint32_t left_{0};              // number of left-elements (range from [data(); data() + left_*sizeof(L))
+    uint32_t right_{0};             // number of right-elements (range from [end() - right_*sizeof(R); end())
+    alignas(mem_align) MemT mem_{}; // storage (pointer to heap or inline data)
 };
 
 struct RadixConfig {

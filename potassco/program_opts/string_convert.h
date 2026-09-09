@@ -33,10 +33,11 @@
 
 namespace Potassco {
 namespace Detail {
-std::from_chars_result parseChar(std::string_view in, char& out);
-std::from_chars_result parseUnsigned(std::string_view in, std::uintmax_t& out, std::uintmax_t max);
-std::from_chars_result parseSigned(std::string_view in, std::intmax_t& out, std::intmax_t min, std::intmax_t max);
-std::from_chars_result parseFloat(std::string_view in, double& out, double min, double max);
+auto parseChar(std::string_view in, char& out) -> std::from_chars_result;
+auto parseUnsigned(std::string_view in, std::uintmax_t& out, std::uintmax_t max) -> std::from_chars_result;
+auto parseSigned(std::string_view in, std::intmax_t& out, std::intmax_t min,
+                 std::intmax_t max) -> std::from_chars_result;
+auto parseFloat(std::string_view in, double& out, double min, double max) -> std::from_chars_result;
 } // namespace Detail
 namespace Parse {
 template <typename T>
@@ -49,10 +50,10 @@ constexpr auto ok(T ec) {
         return ec.ec == std::errc{};
     }
 }
-constexpr std::from_chars_result error(std::string_view& x, std::errc ec = std::errc::invalid_argument) {
+constexpr auto error(std::string_view& x, std::errc ec = std::errc::invalid_argument) -> std::from_chars_result {
     return {.ptr = std::data(x), .ec = ec};
 }
-constexpr std::from_chars_result success(std::string_view& x, std::size_t pop) {
+constexpr auto success(std::string_view& x, std::size_t pop) -> std::from_chars_result {
     assert(pop <= x.length());
     x.remove_prefix(pop);
     return {.ptr = std::data(x), .ec = {}};
@@ -65,11 +66,11 @@ bool eqIgnoreCase(std::string_view, std::string_view, std::size_t n);
 // chars -> T
 ///////////////////////////////////////////////////////////////////////////////
 template <typename T>
-constexpr std::errc    extract(std::string_view& in, T& out);
-std::from_chars_result fromChars(std::string_view in, bool& out);
+constexpr auto extract(std::string_view& in, T& out) -> std::errc;
+auto           fromChars(std::string_view in, bool& out) -> std::from_chars_result;
 template <std::integral T>
 requires(not std::is_same_v<T, bool>)
-std::from_chars_result fromChars(std::string_view in, T& out) {
+auto fromChars(std::string_view in, T& out) -> std::from_chars_result {
     std::from_chars_result res; // NOLINT
     if constexpr (std::is_unsigned_v<T>) {
         std::uintmax_t temp;
@@ -95,7 +96,7 @@ std::from_chars_result fromChars(std::string_view in, T& out) {
     return res;
 }
 template <std::floating_point T>
-std::from_chars_result fromChars(std::string_view in, T& out) {
+auto fromChars(std::string_view in, T& out) -> std::from_chars_result {
     double temp;
     auto   r = Detail::parseFloat(in, temp, std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max());
     if (Parse::ok(r)) {
@@ -103,11 +104,11 @@ std::from_chars_result fromChars(std::string_view in, T& out) {
     }
     return r;
 }
-inline std::from_chars_result fromChars(std::string_view in, std::string& out) {
+inline auto fromChars(std::string_view in, std::string& out) -> std::from_chars_result {
     out.append(in);
     return Parse::success(in, in.size());
 }
-inline std::from_chars_result fromChars(std::string_view in, std::string_view& out) {
+inline auto fromChars(std::string_view in, std::string_view& out) -> std::from_chars_result {
     out = in;
     return Parse::success(in, in.size());
 }
@@ -115,7 +116,7 @@ inline std::from_chars_result fromChars(std::string_view in, std::string_view& o
 // Parses T[,U] optionally enclosed in parentheses.
 // TODO: Why do we allow single values? This should be ok only if U is std::optional.
 template <typename T, typename U>
-std::from_chars_result fromChars(std::string_view in, std::pair<T, U>& out) {
+auto fromChars(std::string_view in, std::pair<T, U>& out) -> std::from_chars_result {
     auto temp(out);
     bool m = Parse::matchOpt(in, '(');
     if (auto r = extract(in, temp.first); not Parse::ok(r)) {
@@ -137,7 +138,7 @@ requires requires(C c, std::string_view in) {
     typename C::value_type;
     c.push_back(std::declval<typename C::value_type>());
 }
-std::from_chars_result fromChars(std::string_view in, C& out) {
+auto fromChars(std::string_view in, C& out) -> std::from_chars_result {
     auto m = Parse::matchOpt(in, '[');
     for (typename C::value_type temp{}; not in.empty();) {
         if (auto r = extract(in, temp); not Parse::ok(r)) {
@@ -155,7 +156,7 @@ std::from_chars_result fromChars(std::string_view in, C& out) {
 }
 
 template <HasEnumEntries EnumT>
-std::from_chars_result fromChars(std::string_view in, EnumT& out) {
+auto fromChars(std::string_view in, EnumT& out) -> std::from_chars_result {
     // try numeric extraction first
     using U = std::underlying_type_t<EnumT>;
     using T = std::conditional_t<not std::is_same_v<U, char>, U, int>;
@@ -184,7 +185,7 @@ std::from_chars_result fromChars(std::string_view in, EnumT& out) {
 }
 
 template <typename T>
-constexpr std::errc extract(std::string_view& in, T& out) {
+constexpr auto extract(std::string_view& in, T& out) -> std::errc {
     auto r = fromChars(in, out);
     if (Parse::ok(r)) {
         auto dist = static_cast<std::size_t>(r.ptr - in.data());
@@ -198,7 +199,7 @@ constexpr std::errc extract(std::string_view& in, T& out) {
 // string -> T
 ///////////////////////////////////////////////////////////////////////////////
 template <typename T>
-std::errc stringTo(std::string_view arg, T& x) {
+auto stringTo(std::string_view arg, T& x) -> std::errc {
     if (auto r = fromChars(arg, x); not Parse::ok(r)) {
         return r.ec;
     }

@@ -279,7 +279,7 @@ void AspifTextInput::matchAgg() {
     }
 }
 
-Lit_t AspifTextInput::matchLit() {
+auto AspifTextInput::matchLit() -> Lit_t {
     int s = matchOpt("not "sv) ? -1 : 1;
     return static_cast<Lit_t>(matchId()) * s;
 }
@@ -289,7 +289,7 @@ int AspifTextInput::matchInt() {
     skipWs();
     return i;
 }
-Atom_t AspifTextInput::matchId() {
+auto AspifTextInput::matchId() -> Atom_t {
     auto c = get();
     auto n = peek();
     require(isLower(c), "<id> expected");
@@ -361,7 +361,7 @@ void AspifTextInput::matchStr() {
     push('"');
 }
 
-DomModifier AspifTextInput::matchHeuMod() {
+auto AspifTextInput::matchHeuMod() -> DomModifier {
     auto first = peek();
     for (const auto& [k, n] : enum_entries<DomModifier>()) {
         if (not n.empty() && n[0] == first && ProgramReader::match(n)) {
@@ -380,7 +380,7 @@ struct AspifTextOutput::Data {
     using OutVec  = DynamicArray<Id_t>;
     using TermVec = DynamicArray<Id_t>;
     using AtomMap = SimpleHashMap<Atom_t, Id_t, id_max>;
-    [[nodiscard]] LitSpan theoryCondition(Id_t id) const {
+    [[nodiscard]] auto theoryCondition(Id_t id) const -> LitSpan {
         return {conditions.data() + id + 1, static_cast<size_t>(conditions[id])};
     }
     Id_t addTheoryCondition(LitSpan cond) {
@@ -436,19 +436,19 @@ struct AspifTextOutput::Data {
 
     template <typename T>
     requires(std::is_integral_v<T> || std::is_enum_v<T>)
-    Data& push(T x) {
+    auto push(T x) -> Data& {
         directives.push_back(static_cast<uint32_t>(x));
         POTASSCO_CHECK(static_cast<T>(directives.back()) == x, Errc::out_of_range);
         return *this;
     }
     template <std::integral T>
     requires(sizeof(T) == sizeof(uint32_t))
-    Data& push(std::span<T> span) {
+    auto push(std::span<T> span) -> Data& {
         push(span.size());
         directives.append(span.begin(), span.end());
         return *this;
     }
-    Data& push(WeightLitSpan span) {
+    auto push(WeightLitSpan span) -> Data& {
         directives.reserve(safe_cast<RawVec::size_type>(directives.size() + (2 * span.size()) + 1));
         push(span.size());
         for (const auto& [lit, weight] : span) {
@@ -457,17 +457,17 @@ struct AspifTextOutput::Data {
         }
         return *this;
     }
-    void          endStep(std::ostream&, bool more);
-    void          visitTheoryAtoms(std::ostream& os);
-    void          showAtom(std::ostream& os, std::string_view name, BasicCharBuffer& temp,
-                           std::pair<std::string_view, int>& last);
-    std::ostream& printTheoryAtom(std::ostream&, const TheoryAtom&);
-    std::ostream& appendTerm(std::ostream&, Id_t tId) const;
-    std::ostream& printName(std::ostream& os, Lit_t lit);
-    std::ostream& printName(std::ostream& os, Atom_t at) { return printName(os, lit(at)); }
-    std::ostream& printCondition(std::ostream&, const uint32_t*& pos, const char* init = "");
-    std::ostream& printMinimize(std::ostream&, const uint32_t*& pos);
-    std::ostream& printAggregate(std::ostream&, const uint32_t*& pos, bool weights);
+    void endStep(std::ostream&, bool more);
+    void visitTheoryAtoms(std::ostream& os);
+    void showAtom(std::ostream& os, std::string_view name, BasicCharBuffer& temp,
+                  std::pair<std::string_view, int>& last);
+    auto printTheoryAtom(std::ostream&, const TheoryAtom&) -> std::ostream&;
+    auto appendTerm(std::ostream&, Id_t tId) const -> std::ostream&;
+    auto printName(std::ostream& os, Lit_t lit) -> std::ostream&;
+    auto printName(std::ostream& os, Atom_t at) -> std::ostream& { return printName(os, lit(at)); }
+    auto printCondition(std::ostream&, const uint32_t*& pos, const char* init = "") -> std::ostream&;
+    auto printMinimize(std::ostream&, const uint32_t*& pos) -> std::ostream&;
+    auto printAggregate(std::ostream&, const uint32_t*& pos, bool weights) -> std::ostream&;
     template <typename T = uint32_t>
     static constexpr T next(const uint32_t*& pos) {
         return static_cast<T>(*pos++);
@@ -611,7 +611,7 @@ void AspifTextOutput::theoryAtom(Id_t atomOrZero, Id_t termId, IdSpan elements, 
     data_->theory.addAtom(atomOrZero, termId, elements, op, rhs);
 }
 
-std::ostream& AspifTextOutput::Data::appendTerm(std::ostream& os, Id_t tId) const {
+auto AspifTextOutput::Data::appendTerm(std::ostream& os, Id_t tId) const -> std::ostream& {
     const auto& term = theory.getTerm(tId);
     if (term.type() == TheoryTermType::number) {
         return os << term.number();
@@ -639,7 +639,7 @@ std::ostream& AspifTextOutput::Data::appendTerm(std::ostream& os, Id_t tId) cons
     return os << parens.substr(1, 1);
 }
 
-std::ostream& AspifTextOutput::Data::printTheoryAtom(std::ostream& os, const TheoryAtom& atom) {
+auto AspifTextOutput::Data::printTheoryAtom(std::ostream& os, const TheoryAtom& atom) -> std::ostream& {
     appendTerm(os << '&', atom.term()) << '{';
     auto sep = ""sv;
     for (auto e : atom.elements()) {
@@ -682,7 +682,7 @@ void AspifTextOutput::Data::visitTheoryAtoms(std::ostream& os) {
         }
     }
 }
-std::ostream& AspifTextOutput::Data::printName(std::ostream& os, Lit_t lit) {
+auto AspifTextOutput::Data::printName(std::ostream& os, Lit_t lit) -> std::ostream& {
     if (lit < 0) {
         os << "not ";
     }
@@ -700,13 +700,13 @@ std::ostream& AspifTextOutput::Data::printName(std::ostream& os, Lit_t lit) {
     return os;
 }
 
-std::ostream& AspifTextOutput::Data::printCondition(std::ostream& os, const uint32_t*& pos, const char* init) {
+auto AspifTextOutput::Data::printCondition(std::ostream& os, const uint32_t*& pos, const char* init) -> std::ostream& {
     const auto* sep     = init;
     const auto* sepNext = ", ";
     for (auto n = next(pos); n--; sep = sepNext) { printName(os << sep, next<Lit_t>(pos)); }
     return os;
 }
-std::ostream& AspifTextOutput::Data::printAggregate(std::ostream& os, const uint32_t*& pos, bool weights) {
+auto AspifTextOutput::Data::printAggregate(std::ostream& os, const uint32_t*& pos, bool weights) -> std::ostream& {
     os << next<Weight_t>(pos) << " #" << (weights ? "sum" : "count") << '{';
     const auto* sep = "";
     for (auto n = next(pos), i = static_cast<decltype(n)>(0); n--; sep = "; ") {
@@ -720,7 +720,7 @@ std::ostream& AspifTextOutput::Data::printAggregate(std::ostream& os, const uint
     }
     return os << "}";
 }
-std::ostream& AspifTextOutput::Data::printMinimize(std::ostream& os, const uint32_t*& pos) {
+auto AspifTextOutput::Data::printMinimize(std::ostream& os, const uint32_t*& pos) -> std::ostream& {
     auto prio = next<Weight_t>(pos);
     os << "#minimize{";
     const auto* sep = "";

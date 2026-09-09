@@ -34,7 +34,7 @@ using namespace std::literals;
 // AspifInput
 /////////////////////////////////////////////////////////////////////////////////////////
 struct AspifInput::Extra {
-    Atom_t                    popFact() { return facts.at(nextFact++ % facts.size()); }
+    auto                      popFact() -> Atom_t { return facts.at(nextFact++ % facts.size()); }
     [[nodiscard]] bool        hasFact() const { return not facts.empty(); }
     RuleBuilder               rule;
     DynamicArray<Id_t>        ids;
@@ -266,8 +266,8 @@ int readAspif(std::istream& prg, AbstractProgram& out) {
 /////////////////////////////////////////////////////////////////////////////////////////
 // AspifOutput
 /////////////////////////////////////////////////////////////////////////////////////////
-constexpr auto       max_aspif_version = 2u;
-static std::ostream& operator<<(std::ostream& os, WeightLit wl) { return os << lit(wl) << " " << weight(wl); }
+constexpr auto max_aspif_version = 2u;
+static auto operator<<(std::ostream& os, WeightLit wl) -> std::ostream& { return os << lit(wl) << " " << weight(wl); }
 
 struct AspifOutput::Data {
     void addTerm(Id_t termId, std::string_view termName) {
@@ -295,13 +295,13 @@ AspifOutput::AspifOutput(std::ostream& os, uint32_t version) : os_(os) {
     version_ = version ? version : max_aspif_version;
 }
 AspifOutput::~AspifOutput() = default;
-auto         AspifOutput::version() const -> unsigned { return version_; }
-AspifOutput& AspifOutput::startDir(AspifType r) {
+auto AspifOutput::version() const -> unsigned { return version_; }
+auto AspifOutput::startDir(AspifType r) -> AspifOutput& {
     os_ << to_underlying(r);
     return *this;
 }
 template <typename T>
-AspifOutput& AspifOutput::add(T x) {
+auto AspifOutput::add(T x) -> AspifOutput& {
     if constexpr (std::is_enum_v<T>) {
         os_ << " " << to_underlying(x);
     }
@@ -311,12 +311,12 @@ AspifOutput& AspifOutput::add(T x) {
     return *this;
 }
 template <typename T>
-AspifOutput& AspifOutput::add(std::span<T> lits) {
+auto AspifOutput::add(std::span<T> lits) -> AspifOutput& {
     os_ << " " << lits.size();
     for (const auto& l : lits) { os_ << " " << l; }
     return *this;
 }
-AspifOutput& AspifOutput::add(std::string_view str) {
+auto AspifOutput::add(std::string_view str) -> AspifOutput& {
     os_ << " " << str.size() << " ";
     os_.write(std::data(str), std::ssize(str));
     return *this;
@@ -372,7 +372,7 @@ auto AspifOutput::map(std::span<T>& lits) -> std::span<T> {
         }
     }
 }
-AspifOutput& AspifOutput::endDir() {
+auto AspifOutput::endDir() -> AspifOutput& {
     os_ << '\n';
     return *this;
 }

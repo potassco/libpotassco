@@ -32,8 +32,8 @@ using ErrorBuffer = BasicCharBuffer;
 
 static constinit AbortHandler abort_handler = nullptr;
 
-static ErrorBuffer& appendInfo(ErrorBuffer& buffer, std::string_view type, const ExpressionInfo& expressionInfo,
-                               bool addFile) {
+static auto appendInfo(ErrorBuffer& buffer, std::string_view type, const ExpressionInfo& expressionInfo,
+                       bool addFile) -> ErrorBuffer& {
     buffer.append(addFile ? ExpressionInfo::relativeFileName(expressionInfo.location)
                           : expressionInfo.location.function_name());
     buffer.append(":"sv).append(expressionInfo.location.line());
@@ -102,14 +102,14 @@ extern void failThrow(Errc ec, const ExpressionInfo& expressionInfo, const char*
     }
 }
 
-extern AbortHandler setAbortHandler(AbortHandler handler) { return std::exchange(abort_handler, handler); }
+extern auto setAbortHandler(AbortHandler handler) -> AbortHandler { return std::exchange(abort_handler, handler); }
 
-std::string_view RuntimeError::message() const noexcept {
+auto RuntimeError::message() const noexcept -> std::string_view {
     auto ret = std::string_view(what());
     return ret.substr(0, ret.find('\n'));
 }
 
-std::string_view RuntimeError::details() const noexcept {
+auto RuntimeError::details() const noexcept -> std::string_view {
     auto ret = std::string_view(what());
     auto pos = ret.find('\n');
     return ret.substr(pos < ret.size() ? pos + 1 : ret.size());

@@ -213,27 +213,27 @@ constexpr bool validAtom(T n) {
     return std::cmp_greater_equal(n, atom_min) && std::cmp_less_equal(n, atom_max);
 }
 //! Identity function for atoms.
-constexpr Atom_t atom(Atom_t atom) { return atom; }
+constexpr auto atom(Atom_t atom) -> Atom_t { return atom; }
 //! Returns the atom of the given literal.
-constexpr Atom_t atom(Lit_t lit) { return static_cast<Atom_t>(lit >= 0 ? lit : -lit); }
+constexpr auto atom(Lit_t lit) -> Atom_t { return static_cast<Atom_t>(lit >= 0 ? lit : -lit); }
 //! Returns the atom of the given weight literal.
-constexpr Atom_t atom(const WeightLit& w) { return atom(w.lit); }
+constexpr auto atom(const WeightLit& w) -> Atom_t { return atom(w.lit); }
 //! Returns the positive literal of the given atom.
-constexpr Lit_t lit(Atom_t atom) { return static_cast<Lit_t>(atom); }
+constexpr auto lit(Atom_t atom) -> Lit_t { return static_cast<Lit_t>(atom); }
 //! Identity function for literals.
-constexpr Lit_t lit(Lit_t lit) { return lit; }
+constexpr auto lit(Lit_t lit) -> Lit_t { return lit; }
 //! Returns the literal of the given weight literal.
-constexpr Lit_t lit(const WeightLit& w) { return w.lit; }
+constexpr auto lit(const WeightLit& w) -> Lit_t { return w.lit; }
 //! Returns the negative literal of the given atom.
-constexpr Lit_t neg(Atom_t a) { return -lit(a); }
+constexpr auto neg(Atom_t a) -> Lit_t { return -lit(a); }
 //! Returns the complement of the given literal.
-constexpr Lit_t neg(Lit_t lit) { return -lit; }
+constexpr auto neg(Lit_t lit) -> Lit_t { return -lit; }
 //! Returns the weight of the given atom, which is always 1.
-constexpr Weight_t weight(Atom_t) { return 1; }
+constexpr auto weight(Atom_t) -> Weight_t { return 1; }
 //! Returns the weight of the given literal, which is always 1.
-constexpr Weight_t weight(Lit_t) { return 1; }
+constexpr auto weight(Lit_t) -> Weight_t { return 1; }
 //! Returns the weight of the given weight literal.
-constexpr Weight_t weight(const WeightLit& w) { return w.weight; }
+constexpr auto weight(const WeightLit& w) -> Weight_t { return w.weight; }
 //! A 32-bit integer hash function inspired by Wang/Jenkin.
 constexpr Id_t hashId(Id_t key) {
     key  = ~key + (key << 15);

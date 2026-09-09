@@ -29,7 +29,7 @@
 
 namespace Potassco {
 template <typename T>
-static constexpr std::size_t computeExtraBytes(const T& arg [[maybe_unused]]) {
+static constexpr auto computeExtraBytes(const T& arg [[maybe_unused]]) -> std::size_t {
     if constexpr (requires { arg.size(); }) {
         return arg.size() * sizeof(typename T::value_type);
     }
@@ -51,9 +51,9 @@ struct TheoryTerm::FuncData {
     POTASSCO_WARNING_END_RELAXED
 };
 
-constexpr auto  c_nul_term  = static_cast<uint64_t>(-1);
-constexpr auto  c_type_mask = static_cast<uint64_t>(3);
-static uint64_t assertPtr(const void* p, TheoryTermType type) {
+constexpr auto c_nul_term  = static_cast<uint64_t>(-1);
+constexpr auto c_type_mask = static_cast<uint64_t>(3);
+static auto    assertPtr(const void* p, TheoryTermType type) -> uint64_t {
     auto data = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(p));
     auto mask = static_cast<uint32_t>(type);
     POTASSCO_ASSERT(not test_any(data, mask), "Invalid pointer alignment");
@@ -64,13 +64,13 @@ int  TheoryTerm::number() const {
     POTASSCO_CHECK(type() == TheoryTermType::number, Errc::invalid_argument, "Term is not a number");
     return static_cast<int>(data_ >> 2u);
 }
-uintptr_t   TheoryTerm::getPtr() const { return static_cast<uintptr_t>(clear_mask(data_, c_type_mask)); }
-const char* TheoryTerm::symbol() const {
+auto TheoryTerm::getPtr() const -> uintptr_t { return static_cast<uintptr_t>(clear_mask(data_, c_type_mask)); }
+auto TheoryTerm::symbol() const -> const char* {
     POTASSCO_CHECK(type() == Type::symbol, Errc::invalid_argument, "Term is not a symbol");
     return reinterpret_cast<const char*>(getPtr());
 }
-TheoryTerm::FuncData* TheoryTerm::func() const { return reinterpret_cast<FuncData*>(getPtr()); }
-int                   TheoryTerm::compound() const {
+auto TheoryTerm::func() const -> FuncData* { return reinterpret_cast<FuncData*>(getPtr()); }
+int  TheoryTerm::compound() const {
     POTASSCO_CHECK(type() == Type::compound, Errc::invalid_argument, "Term is not a compound");
     return func()->base;
 }
@@ -80,12 +80,12 @@ Id_t TheoryTerm::function() const {
     POTASSCO_CHECK(isFunction(), Errc::invalid_argument, "Term is not a function");
     return static_cast<Id_t>(func()->base);
 }
-TupleType TheoryTerm::tuple() const {
+auto TheoryTerm::tuple() const -> TupleType {
     POTASSCO_CHECK(isTuple(), Errc::invalid_argument, "Term is not a tuple");
     return static_cast<TupleType>(func()->base);
 }
-uint32_t TheoryTerm::size() const { return type() == Type::compound ? func()->size : 0; }
-auto     TheoryTerm::begin() const -> iterator { return type() == Type::compound ? func()->args : nullptr; }
+auto TheoryTerm::size() const -> uint32_t { return type() == Type::compound ? func()->size : 0; }
+auto TheoryTerm::begin() const -> iterator { return type() == Type::compound ? func()->args : nullptr; }
 auto TheoryTerm::end() const -> iterator { return type() == Type::compound ? func()->args + func()->size : nullptr; }
 TheoryElement::TheoryElement(IdSpan terms, const Id_t* c)
     : nTerms_(static_cast<uint32_t>(terms.size()))
@@ -110,8 +110,8 @@ TheoryAtom::TheoryAtom(Id_t a, Id_t term, IdSpan args, const Id_t* op, const Id_
     }
 }
 
-const Id_t* TheoryAtom::guard() const { return guard_ != 0 ? &term_[nTerms_] : nullptr; }
-const Id_t* TheoryAtom::rhs() const { return guard_ != 0 ? &term_[nTerms_ + 1] : nullptr; }
+auto TheoryAtom::guard() const -> const Id_t* { return guard_ != 0 ? &term_[nTerms_] : nullptr; }
+auto TheoryAtom::rhs() const -> const Id_t* { return guard_ != 0 ? &term_[nTerms_ + 1] : nullptr; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // TheoryData
 //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -141,7 +141,7 @@ struct TheoryData::Data {
         auto bytes = (sizeof(T) + ... + computeExtraBytes(args));
         return new (SystemAllocator::allocate(bytes)) T(std::forward<Args>(args)...);
     }
-    static char*                 allocCString(std::string_view in) { return Detail::dupString(in); }
+    static auto                  allocCString(std::string_view in) -> char* { return Detail::dupString(in); }
     DynamicArray<TheoryAtom*>    atoms;
     DynamicArray<TheoryElement*> elems;
     DynamicArray<TheoryTerm>     terms;
@@ -200,7 +200,7 @@ void TheoryData::addAtom(Id_t atomOrZero, Id_t termId, IdSpan elems, Id_t op, Id
     data_->atoms.push_back(Data::allocConstruct<TheoryAtom>(atomOrZero, termId, elems, &op, &rhs));
 }
 
-TheoryTerm& TheoryData::setTerm(Id_t id) {
+auto TheoryData::setTerm(Id_t id) -> TheoryTerm& {
     if (not hasTerm(id)) {
         data_->terms.resize(std::max(numTerms(), id + 1), c_nul_term);
     }
@@ -227,23 +227,23 @@ void TheoryData::update() {
     data_->frame.term = numTerms();
     data_->frame.elem = numElems();
 }
-bool     TheoryData::empty() const { return data_->terms.empty() && data_->elems.empty() && data_->atoms.empty(); }
-uint32_t TheoryData::numAtoms() const { return data_->atoms.size(); }
-uint32_t TheoryData::numTerms() const { return data_->terms.size(); }
-uint32_t TheoryData::numElems() const { return data_->elems.size(); }
-void     TheoryData::resizeAtoms(uint32_t n) { data_->atoms.resize(n); }
-void     TheoryData::destroyAtom(TheoryAtom* atom) { DestroyT{}(atom); }
-auto     TheoryData::atoms() const -> AtomView { return data_->atoms; }
-auto     TheoryData::currAtoms() const -> AtomView { return atoms().subspan(data_->frame.atom); }
-bool     TheoryData::hasTerm(Id_t id) const { return id < numTerms() && data_->terms[id].data_ != c_nul_term; }
-bool     TheoryData::isNewTerm(Id_t id) const { return hasTerm(id) && id >= data_->frame.term; }
-bool     TheoryData::hasElement(Id_t id) const { return id < numElems() && data_->elems[id] != nullptr; }
-bool     TheoryData::isNewElement(Id_t id) const { return hasElement(id) && id >= data_->frame.elem; }
-auto     TheoryData::getTerm(Id_t id) const -> TheoryTerm {
+bool TheoryData::empty() const { return data_->terms.empty() && data_->elems.empty() && data_->atoms.empty(); }
+auto TheoryData::numAtoms() const -> uint32_t { return data_->atoms.size(); }
+auto TheoryData::numTerms() const -> uint32_t { return data_->terms.size(); }
+auto TheoryData::numElems() const -> uint32_t { return data_->elems.size(); }
+void TheoryData::resizeAtoms(uint32_t n) { data_->atoms.resize(n); }
+void TheoryData::destroyAtom(TheoryAtom* atom) { DestroyT{}(atom); }
+auto TheoryData::atoms() const -> AtomView { return data_->atoms; }
+auto TheoryData::currAtoms() const -> AtomView { return atoms().subspan(data_->frame.atom); }
+bool TheoryData::hasTerm(Id_t id) const { return id < numTerms() && data_->terms[id].data_ != c_nul_term; }
+bool TheoryData::isNewTerm(Id_t id) const { return hasTerm(id) && id >= data_->frame.term; }
+bool TheoryData::hasElement(Id_t id) const { return id < numElems() && data_->elems[id] != nullptr; }
+bool TheoryData::isNewElement(Id_t id) const { return hasElement(id) && id >= data_->frame.elem; }
+auto TheoryData::getTerm(Id_t id) const -> TheoryTerm {
     POTASSCO_CHECK(hasTerm(id), Errc::out_of_range, "Unknown term '%u'", id);
     return data_->terms[id];
 }
-const TheoryElement& TheoryData::getElement(Id_t id) const {
+auto TheoryData::getElement(Id_t id) const -> const TheoryElement& {
     POTASSCO_CHECK(hasElement(id), Errc::out_of_range, "Unknown element '%u'", id);
     return *data_->elems[id];
 }

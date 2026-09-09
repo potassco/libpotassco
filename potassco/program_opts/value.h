@@ -121,7 +121,7 @@ public:
     /*
      * \note In the context of an option, the default name is "<arg>" or "" if `flag()` is set.
      */
-    constexpr ValueDesc& arg(Str n) & {
+    constexpr auto arg(Str n) & -> ValueDesc& {
         arg_ = n;
         return *this;
     }
@@ -132,7 +132,7 @@ public:
      *       E.g., on the command-line one has to use `--option=value` or `-ovalue` but \b not
      *       `--option value` or `-o value`.
      */
-    constexpr ValueDesc& implicit(Str str) & {
+    constexpr auto implicit(Str str) & -> ValueDesc& {
         imp_      = str;
         implicit_ = 1;
         return *this;
@@ -143,7 +143,7 @@ public:
      *
      * Used for options like `--help` or `--version`.
      */
-    constexpr ValueDesc& flag() & {
+    constexpr auto flag() & -> ValueDesc& {
         flag_     = 1;
         implicit_ = 1;
         return *this;
@@ -153,12 +153,12 @@ public:
      * If an option `--option` is negatable, passing `--no-option` on the command-line will assign the value
      * `no` to the option (i.e., `--no-option` is treated as `--option=no`).
      */
-    constexpr ValueDesc& negatable() & {
+    constexpr auto negatable() & -> ValueDesc& {
         negatable_ = 1;
         return *this;
     }
     //! Marks the option as composing, i.e., acceptíng multiple values (from one or multiple sources).
-    constexpr ValueDesc& composing() & {
+    constexpr auto composing() & -> ValueDesc& {
         composing_ = 1;
         return *this;
     }
@@ -166,7 +166,7 @@ public:
     /*!
      * If `hasDefault` is true, the option is assumed to initially have its default value.
      */
-    constexpr ValueDesc& defaultsTo(Str s, bool hasDefault = false) & {
+    constexpr auto defaultsTo(Str s, bool hasDefault = false) & -> ValueDesc& {
         def_       = s;
         defaulted_ = hasDefault;
         return *this;
@@ -176,7 +176,7 @@ public:
      * Description levels can be used to suppress certain options when generating
      * option descriptions.
      */
-    constexpr ValueDesc& level(DescriptionLevel lev) & {
+    constexpr auto level(DescriptionLevel lev) & -> ValueDesc& {
         level_ = static_cast<unsigned>(lev);
         return *this;
     }
@@ -185,13 +185,15 @@ public:
      * R-Value overloads
      */
     //@{
-    constexpr ValueDesc&& arg(Str n) && { return std::move(arg(n)); }
-    constexpr ValueDesc&& implicit(Str str) && { return std::move(implicit(str)); }
-    constexpr ValueDesc&& flag() && { return std::move(flag()); }
-    constexpr ValueDesc&& negatable() && { return std::move(negatable()); }
-    constexpr ValueDesc&& composing() && { return std::move(composing()); }
-    constexpr ValueDesc&& defaultsTo(Str s, bool hasDefault = false) && { return std::move(defaultsTo(s, hasDefault)); }
-    constexpr ValueDesc&& level(DescriptionLevel lev) && { return std::move(level(lev)); }
+    constexpr auto arg(Str n) && -> ValueDesc&& { return std::move(arg(n)); }
+    constexpr auto implicit(Str str) && -> ValueDesc&& { return std::move(implicit(str)); }
+    constexpr auto flag() && -> ValueDesc&& { return std::move(flag()); }
+    constexpr auto negatable() && -> ValueDesc&& { return std::move(negatable()); }
+    constexpr auto composing() && -> ValueDesc&& { return std::move(composing()); }
+    constexpr auto defaultsTo(Str s, bool hasDefault = false) && -> ValueDesc&& {
+        return std::move(defaultsTo(s, hasDefault));
+    }
+    constexpr auto level(DescriptionLevel lev) && -> ValueDesc&& { return std::move(level(lev)); }
     //@}
 
     /*!

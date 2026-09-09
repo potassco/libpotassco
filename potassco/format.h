@@ -33,9 +33,9 @@ namespace Potassco {
 struct Field;
 class BasicCharBuffer;
 namespace Detail {
-char* writeSigned(char* first, char* last, std::intmax_t);
-char* writeUnsigned(char* first, char* last, std::uintmax_t);
-char* writeFloat(char* first, char* last, double, int p = -1);
+auto writeSigned(char* first, char* last, std::intmax_t) -> char*;
+auto writeUnsigned(char* first, char* last, std::uintmax_t) -> char*;
+auto writeFloat(char* first, char* last, double, int p = -1) -> char*;
 struct TypeWithToChars {};
 enum class AugmentStyle {
     quoted,
@@ -320,7 +320,7 @@ public:
         rep_[max_len] = static_cast<char>(max_len - n);
     }
     //! Creates a TextStyle from a string representation in simplified ansi notation (e.g. "1;31" for bold red).
-    static TextStyle fromString(std::string_view str, std::string_view::size_type startPos = 0);
+    static auto fromString(std::string_view str, std::string_view::size_type startPos = 0) -> TextStyle;
 
     //! Returns the ANSI escape sequence for this text style.
     [[nodiscard]] constexpr auto view() const -> std::string_view {
@@ -456,7 +456,7 @@ public:
     /*!
      * \pre not empty()
      */
-    char& back() {
+    auto back() -> char& {
         POTASSCO_DEBUG_ASSERT(not empty());
         return buf()[size() - 1];
     }
@@ -556,7 +556,7 @@ S& toChars(S& out, const Field& f) {
 }
 
 template <typename T, typename... Args>
-std::string toString(const T& t, const Args&... args) {
+auto toString(const T& t, const Args&... args) -> std::string {
     std::string res;
     std::ignore = toChars(res, t), (toChars(res.append(1, ','), args), ...);
     return res;

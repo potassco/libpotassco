@@ -67,10 +67,10 @@ public:
     RuleBuilder()                         = default;
     RuleBuilder(const RuleBuilder& other) = default;
     RuleBuilder(RuleBuilder&& other) noexcept;
-    ~RuleBuilder()                                   = default;
-    RuleBuilder& operator=(const RuleBuilder& other) = default;
-    RuleBuilder& operator=(RuleBuilder&& other) noexcept;
-    void         swap(RuleBuilder& other) noexcept;
+    ~RuleBuilder()                                           = default;
+    auto operator=(const RuleBuilder& other) -> RuleBuilder& = default;
+    auto operator=(RuleBuilder&& other) noexcept -> RuleBuilder&;
+    void swap(RuleBuilder& other) noexcept;
     /*!
      * \name Start functions.
      * Functions for starting the definition of a rule's head or body.
@@ -80,15 +80,15 @@ public:
      */
     //@{
     //! Start definition of the rule's head, which can be either disjunctive or a choice.
-    RuleBuilder& start(HeadType ht = HeadType::disjunctive);
+    auto start(HeadType ht = HeadType::disjunctive) -> RuleBuilder&;
     //! Start definition of a `minimize` rule. No head allowed.
-    RuleBuilder& startMinimize(Weight_t prio);
+    auto startMinimize(Weight_t prio) -> RuleBuilder&;
     //! Start definition of a conjunction to be used as the rule's body.
-    RuleBuilder& startBody();
+    auto startBody() -> RuleBuilder&;
     //! Start definition of a sum aggregate to be used as the rule's body.
-    RuleBuilder& startSum(Weight_t bound);
+    auto startSum(Weight_t bound) -> RuleBuilder&;
     //! Update lower bound of sum aggregate.
-    RuleBuilder& setBound(Weight_t bound);
+    auto setBound(Weight_t bound) -> RuleBuilder&;
     //@}
 
     /*!
@@ -99,26 +99,26 @@ public:
      */
     //@{
     //! Add the given atom to the rule's head.
-    RuleBuilder& addHead(Atom_t a);
+    auto addHead(Atom_t a) -> RuleBuilder&;
     //! Add lit to the rule's body.
-    RuleBuilder& addGoal(Lit_t lit);
-    RuleBuilder& addGoal(WeightLit lit);
-    RuleBuilder& addGoal(Lit_t lit, Weight_t w) { return addGoal(WeightLit{.lit = lit, .weight = w}); }
+    auto addGoal(Lit_t lit) -> RuleBuilder&;
+    auto addGoal(WeightLit lit) -> RuleBuilder&;
+    auto addGoal(Lit_t lit, Weight_t w) -> RuleBuilder& { return addGoal(WeightLit{.lit = lit, .weight = w}); }
     //@}
 
     //! Stop definition of rule and add rule to out if given.
     /*!
      * Once `end()` was called, the active rule is considered frozen.
      */
-    RuleBuilder& end(AbstractProgram* out = nullptr);
+    auto end(AbstractProgram* out = nullptr) -> RuleBuilder&;
     //! Discard active rule and unfreeze builder.
-    RuleBuilder& clear();
+    auto clear() -> RuleBuilder&;
     //! Discard the body of the active rule but keep the head if any.
-    RuleBuilder& clearBody();
+    auto clearBody() -> RuleBuilder&;
     //! Discard the head of the active rule but keep the body if any.
-    RuleBuilder& clearHead();
+    auto clearHead() -> RuleBuilder&;
     //! Weaken the active sum aggregate to a normal body or count aggregate.
-    RuleBuilder& weaken(BodyType to, bool resetWeights = true);
+    auto weaken(BodyType to, bool resetWeights = true) -> RuleBuilder&;
 
     /*!
      * \name Query functions.
@@ -143,16 +143,17 @@ private:
     auto               alloc(std::size_t n) -> std::span<char>;
     [[nodiscard]] auto mem() const -> const char* { return mem_.data(); }
     struct Range {
-        static constexpr auto  start_bit = 0u;
-        static constexpr auto  end_bit   = 1u;
-        static constexpr auto  mask      = 3u;
-        [[nodiscard]] uint32_t start() const { return clear_mask(startType, mask); }
-        [[nodiscard]] uint32_t end() const { return clear_mask(endFlag, mask); }
-        [[nodiscard]] uint32_t type() const { return clear_mask(startType, ~mask); }
-        [[nodiscard]] bool     started() const { return test_bit(endFlag, start_bit); }
-        [[nodiscard]] bool     finished() const { return test_bit(endFlag, end_bit); }
-        [[nodiscard]] bool     open() const { return not test_any(endFlag, mask); }
-        [[nodiscard]] uint32_t size() const { return end() - start(); }
+        static constexpr auto start_bit = 0u;
+        static constexpr auto end_bit   = 1u;
+        static constexpr auto mask      = 3u;
+
+        [[nodiscard]] auto start() const -> uint32_t { return clear_mask(startType, mask); }
+        [[nodiscard]] auto end() const -> uint32_t { return clear_mask(endFlag, mask); }
+        [[nodiscard]] auto type() const -> uint32_t { return clear_mask(startType, ~mask); }
+        [[nodiscard]] bool started() const { return test_bit(endFlag, start_bit); }
+        [[nodiscard]] bool finished() const { return test_bit(endFlag, end_bit); }
+        [[nodiscard]] bool open() const { return not test_any(endFlag, mask); }
+        [[nodiscard]] auto size() const -> uint32_t { return end() - start(); }
 
         uint32_t startType = 0; // 4-byte aligned, align-bits = type
         uint32_t endFlag   = 0; // 4-byte aligned, align-bits = flags

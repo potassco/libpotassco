@@ -38,7 +38,7 @@ using namespace std::literals;
 struct SmodelsConvert::SmData {
     using ScratchType = BasicCharBuffer;
     template <typename... Args>
-    static std::string_view makePred(ScratchType& buffer, std::string_view name, const Args&... args) {
+    static auto makePred(ScratchType& buffer, std::string_view name, const Args&... args) -> std::string_view {
         static_assert(sizeof...(Args) > 0, "at least one arg expected");
         buffer.clear();
         buffer.append(name).append("("sv);
@@ -60,7 +60,7 @@ struct SmodelsConvert::SmData {
         uint32_t extn : 2 {0};  // value if atom is external
     };
     struct Heuristic {
-        std::string_view makePred(ScratchType& buffer, std::string_view atomName) const {
+        auto makePred(ScratchType& buffer, std::string_view atomName) const -> std::string_view {
             return SmData::makePred(buffer, "_heuristic"sv, atomName, enum_name(type), bias, prio);
         }
         Atom_t      atom;

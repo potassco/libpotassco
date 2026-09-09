@@ -63,7 +63,7 @@ public:
     //! Returns the number stored in this or throws if type() != Number.
     [[nodiscard]] int number() const;
     //! Returns the symbol stored in this or throws if type() != Symbol.
-    [[nodiscard]] const char* symbol() const;
+    [[nodiscard]] auto symbol() const -> const char*;
     //! Returns the compound id (either term id or tuple type) stored in this or throws if type() != Compound.
     [[nodiscard]] int compound() const;
     //! Returns whether this is a function.
@@ -73,22 +73,22 @@ public:
     //! Returns whether this is a tuple.
     [[nodiscard]] bool isTuple() const;
     //! Returns the tuple id stored in this or throws if not isTuple().
-    [[nodiscard]] TupleType tuple() const;
+    [[nodiscard]] auto tuple() const -> TupleType;
     //! Returns the number of arguments in this term.
-    [[nodiscard]] uint32_t size() const;
+    [[nodiscard]] auto size() const -> uint32_t;
     //! Returns an iterator pointing to the first argument of this term.
-    [[nodiscard]] iterator begin() const;
+    [[nodiscard]] auto begin() const -> iterator;
     //! Returns an iterator marking the end of the arguments of this term.
-    [[nodiscard]] iterator end() const;
+    [[nodiscard]] auto end() const -> iterator;
     //! Returns the range [begin(), end()).
-    [[nodiscard]] IdSpan terms() const { return {begin(), size()}; }
+    [[nodiscard]] auto terms() const -> IdSpan { return {begin(), size()}; }
 
 private:
     TheoryTerm(uint64_t d) noexcept : data_(d) {}
     struct FuncData;
     friend class TheoryData;
-    [[nodiscard]] uintptr_t getPtr() const;
-    [[nodiscard]] FuncData* func() const;
+    [[nodiscard]] auto getPtr() const -> uintptr_t;
+    [[nodiscard]] auto func() const -> FuncData*;
 
     uint64_t data_ = 0;
 };
@@ -96,19 +96,19 @@ private:
 //! A basic building block for a theory atom.
 class TheoryElement {
 public:
-    TheoryElement(const TheoryElement&)            = delete;
-    TheoryElement& operator=(const TheoryElement&) = delete;
+    TheoryElement(const TheoryElement&)                    = delete;
+    auto operator=(const TheoryElement&) -> TheoryElement& = delete;
 
     //! Iterator type for iterating over the terms of an element.
     using iterator = const Id_t*; // NOLINT
     //! Returns the number of terms belonging to this element.
-    [[nodiscard]] uint32_t size() const { return nTerms_; }
+    [[nodiscard]] auto size() const -> uint32_t { return nTerms_; }
     //! Returns an iterator pointing to the first term of this element.
-    [[nodiscard]] iterator begin() const { return term_; }
+    [[nodiscard]] auto begin() const -> iterator { return term_; }
     //! Returns an iterator one past the last term of this element.
-    [[nodiscard]] iterator end() const { return begin() + size(); }
+    [[nodiscard]] auto end() const -> iterator { return begin() + size(); }
     //! Returns the terms of this element.
-    [[nodiscard]] IdSpan terms() const { return {begin(), size()}; }
+    [[nodiscard]] auto terms() const -> IdSpan { return {begin(), size()}; }
     //! Returns the condition associated with this element.
     [[nodiscard]] Id_t condition() const;
 
@@ -126,8 +126,8 @@ private:
 //! A theory atom.
 class TheoryAtom {
 public:
-    TheoryAtom(const TheoryAtom&)            = delete;
-    TheoryAtom& operator=(const TheoryAtom&) = delete;
+    TheoryAtom(const TheoryAtom&)                    = delete;
+    auto operator=(const TheoryAtom&) -> TheoryAtom& = delete;
     //! Iterator type for iterating over the elements of a theory atom.
     using iterator = const Id_t*; // NOLINT
     //! Returns the associated program atom or 0 if this originated from a directive.
@@ -135,17 +135,17 @@ public:
     //! Returns the term associated with this atom.
     [[nodiscard]] Id_t term() const { return termId_; }
     //! Returns the number of elements in this atom.
-    [[nodiscard]] uint32_t size() const { return nTerms_; }
+    [[nodiscard]] auto size() const -> uint32_t { return nTerms_; }
     //! Returns an iterator pointing to the first element of this atom.
-    [[nodiscard]] iterator begin() const { return term_; }
+    [[nodiscard]] auto begin() const -> iterator { return term_; }
     //! Returns an iterator marking the end of elements of this atom.
-    [[nodiscard]] iterator end() const { return begin() + size(); }
+    [[nodiscard]] auto end() const -> iterator { return begin() + size(); }
     //! Returns the range [begin(), end()).
-    [[nodiscard]] IdSpan elements() const { return {begin(), size()}; }
+    [[nodiscard]] auto elements() const -> IdSpan { return {begin(), size()}; }
     //! Returns a pointer to the id of the theory operator associated with this atom or 0 if the atom has no guard.
-    [[nodiscard]] const Id_t* guard() const;
+    [[nodiscard]] auto guard() const -> const Id_t*;
     //! Returns a pointer to the term id of the right-hand side of the theory operator or 0 if the atom has no guard.
-    [[nodiscard]] const Id_t* rhs() const;
+    [[nodiscard]] auto rhs() const -> const Id_t*;
 
 private:
     friend class TheoryData;
@@ -225,11 +225,11 @@ public:
     //! Returns whether this object is empty, i.e., does not store any terms, elements, or atoms.
     [[nodiscard]] bool empty() const;
     //! Returns the number of stored theory terms.
-    [[nodiscard]] uint32_t numTerms() const;
+    [[nodiscard]] auto numTerms() const -> uint32_t;
     //! Returns the number of stored theory elements.
-    [[nodiscard]] uint32_t numElems() const;
+    [[nodiscard]] auto numElems() const -> uint32_t;
     //! Returns the number of stored theory atoms.
-    [[nodiscard]] uint32_t numAtoms() const;
+    [[nodiscard]] auto numAtoms() const -> uint32_t;
     //! Returns a view over all theory atoms.
     [[nodiscard]] auto atoms() const -> AtomView;
     //! Returns a view over all theory atoms added after the last call to update.
@@ -245,7 +245,7 @@ public:
     //! Returns the term with the given id or throws if no such term exists.
     [[nodiscard]] Term getTerm(Id_t id) const;
     //! Returns the element with the given id or throws if no such element exists.
-    [[nodiscard]] const Element& getElement(Id_t id) const;
+    [[nodiscard]] auto getElement(Id_t id) const -> const Element&;
 
     //! Removes all theory atoms `a` for which `f(a)` returns true.
     template <class F>
@@ -292,7 +292,7 @@ public:
 
 private:
     struct DestroyT;
-    TheoryTerm& setTerm(Id_t);
+    auto        setTerm(Id_t) -> TheoryTerm&;
     void        resizeAtoms(uint32_t n);
     static void destroyAtom(TheoryAtom*);
     // NOLINTBEGIN(modernize-use-nodiscard)

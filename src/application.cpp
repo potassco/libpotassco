@@ -169,7 +169,7 @@ int Application::main(int argc, char** argv) {
     return main(std::span<const char* const>(argv, sz).subspan(sz > 0));
 }
 
-Application* Application::getInstance() { return g_instance; }
+auto Application::getInstance() -> Application* { return g_instance; }
 
 static constexpr auto col_def = TextStyle();
 
@@ -294,7 +294,7 @@ void Application::processSignal(int sigNum) {
 
 bool Application::onSignal(int x) { fastExit(128 + x); }
 
-static std::string_view prefix(Application::MessageType t) {
+static auto prefix(Application::MessageType t) -> std::string_view {
     switch (t) {
         default                          : return "<?>"sv;
         case Application::message_error  : return "*** ERROR: "sv;
@@ -429,16 +429,16 @@ bool Application::applyOptions(std::span<const char* const> args) {
             static constexpr auto col_none = TextStyle();
             struct Fmt {
                 explicit Fmt(bool col) : cb(col ? style : nullptr) {}
-                static std::string& format(std::string& buffer, const OptionContext& ctx) {
+                static auto format(std::string& buffer, const OptionContext& ctx) -> std::string& {
                     return DefaultFormat::format(buffer, ctx);
                 }
-                std::string& format(std::string& buffer, const OptionGroup& g) const {
+                auto format(std::string& buffer, const OptionGroup& g) const -> std::string& {
                     return DefaultFormat::format(buffer, g, cb);
                 }
-                std::string& format(std::string& buffer, const Option& o, std::size_t colWidth) const {
+                auto format(std::string& buffer, const Option& o, std::size_t colWidth) const -> std::string& {
                     return DefaultFormat::format(buffer, o, colWidth, cb);
                 }
-                static std::size_t columnWidth(const Option& o) { return DefaultFormat::columnWidth(o); }
+                static auto columnWidth(const Option& o) -> std::size_t { return DefaultFormat::columnWidth(o); }
 
                 void formatUsage(std::string& buffer, std::string_view prg, std::string_view options,
                                  std::string_view defaults) const {
@@ -450,7 +450,7 @@ bool Application::applyOptions(std::span<const char* const> args) {
                         append(buffer, defaults, col_def_cmd);
                     }
                 }
-                std::string& append(std::string& buffer, std::string_view txt, const TextStyle& ts) const {
+                auto append(std::string& buffer, std::string_view txt, const TextStyle& ts) const -> std::string& {
                     toChars(buffer, styled(txt, cb ? ts : col_none));
                     return buffer;
                 }
@@ -488,8 +488,8 @@ bool Application::applyOptions(std::span<const char* const> args) {
     return true;
 }
 
-unsigned Application::getVerbose() const { return verbose_; }
-unsigned Application::getTimeLimit() const { return timeout_; }
-void     Application::setVerbose(unsigned v) { verbose_ = v; }
+auto Application::getVerbose() const -> unsigned { return verbose_; }
+auto Application::getTimeLimit() const -> unsigned { return timeout_; }
+void Application::setVerbose(unsigned v) { verbose_ = v; }
 
 } // namespace Potassco

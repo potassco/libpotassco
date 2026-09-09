@@ -28,6 +28,7 @@
 
 #include <potassco/utils.h>
 
+#include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
@@ -70,7 +71,29 @@ static auto operator==(const DynamicArray<T>& lhs, const R& rhs) -> decltype(std
 
 } // namespace Potassco
 namespace Potassco::Test::Utils {
+namespace {
+template <typename TagT, unsigned Align>
+struct Tracked {
+    POTASSCO_TRIVIALLY_RELOCATABLE();
+    static inline int live = 0;
+    explicit(false) Tracked(int32_t v) : value(v) { ++live; }
+    Tracked(const Tracked& o) : value(o.value) { ++live; }
+    Tracked& operator=(const Tracked& o) = default;
+    ~Tracked() { --live; }
 
+    friend bool operator==(const Tracked& lhs, const Tracked& rhs) { return lhs.value == rhs.value; }
+
+    alignas(Align) int32_t value;
+};
+template <unsigned L, unsigned R, unsigned S, unsigned C>
+struct BufferTestType {
+    static constexpr auto left_align  = L;
+    static constexpr auto right_align = R;
+    static constexpr auto I           = S;
+    static constexpr auto stack       = S != 0 ? S : (12 + (sizeof(void*) - 1) + sizeof(void*)) & ~(sizeof(void*) - 1);
+    static constexpr auto cap         = C;
+};
+} // namespace
 TEST_CASE("Test Traits", "[util]") {
     STATIC_REQUIRE(TriviallyRelocatable<Atom_t>);
     STATIC_REQUIRE(TriviallyRelocatable<Lit_t>);
@@ -702,6 +725,324 @@ TEST_CASE("Test DynamicArray", "[util]") {
             REQUIRE(std::ranges::equal(dt, std::array{"B"sv, "E"sv}, val_cmp));
         }
     }
+}
+static constexpr auto leftValues(const auto& a) -> std::vector<int> {
+    std::vector<int> v;
+    for (const auto& x : a.left()) { v.push_back(x.value); }
+    return v;
+}
+static constexpr auto rightValues(const auto& a) -> std::vector<int> {
+    std::vector<int> v;
+    for (const auto& x : a.right()) { v.push_back(x.value); }
+    return v;
+}
+TEMPLATE_TEST_CASE("BidirectionalBuffer", "[core]", (BufferTestType<4, 4, 0u, 0u>), (BufferTestType<4, 4, 64u, 52u>),
+                   (BufferTestType<4, 8, 0u, 0u>), (BufferTestType<4, 8, 64u, 48u>) ) {
+    using L = Tracked<struct LeftType, TestType::left_align>;
+    using R = Tracked<struct RightType, TestType::right_align>;
+
+    using BufferT = BidirectionalBuffer<L, R, TestType::I>;
+    STATIC_REQUIRE(std::is_same_v<typename BufferT::left_type, L>);
+    STATIC_REQUIRE(std::is_same_v<typename BufferT::right_type, R>);
+    STATIC_REQUIRE(sizeof(BufferT) == TestType::stack);
+    STATIC_REQUIRE(BufferT::small_cap == TestType::cap);
+    STATIC_REQUIRE(Potassco::TriviallyRelocatable<BufferT>);
+    static constexpr auto has_sbo = BufferT::small_cap > 0u;
+    STATIC_REQUIRE(alignof(BufferT) ==
+                   std::max(std::max(TestType::left_align, TestType::right_align) * static_cast<std::size_t>(has_sbo),
+                            alignof(void*)));
+
+    REQUIRE(L::live == 0);
+    REQUIRE(R::live == 0);
+    BufferT v;
+
+    SECTION("empty") {
+        CHECK(v.empty());
+        CHECK(v.size() == 0u);
+        CHECK(v.sizeLeft() == 0u);
+        CHECK(v.sizeRight() == 0u);
+        STATIC_REQUIRE(std::is_same_v<decltype(v.dataBegin()), L*>);
+        STATIC_REQUIRE(std::is_same_v<decltype(v.dataEnd()), R*>);
+        if constexpr (has_sbo) {
+            CHECK(v.dataBegin() != nullptr);
+            CHECK(v.dataEnd() != nullptr);
+        }
+        else {
+            CHECK(v.dataBegin() == nullptr);
+            CHECK(v.dataEnd() == nullptr);
+        }
+        CHECK(v.left().empty());
+        CHECK(v.right().empty());
+    }
+
+    SECTION("push") {
+        v.pushLeft(L{10});
+        v.pushLeft(L{11});
+        v.pushRight(R{20});
+        v.pushRight(R{21});
+        v.pushRight(R{22});
+
+        CHECK_FALSE(v.empty());
+        CHECK(v.size() == 5u);
+        CHECK(v.sizeLeft() == 2u);
+        CHECK(v.sizeRight() == 3u);
+        CHECK(L::live == 2);
+        CHECK(R::live == 3);
+        // right sequence is stored in reverse: dataRight()[-1] is the first pushed element.
+        CHECK(v.frontLeft().value == 10);
+        CHECK(v.frontRight().value == 20);
+        CHECK(v.dataEnd()[-1].value == 20);
+        CHECK(v.dataEnd()[-2].value == 21);
+        CHECK(v.dataEnd()[-3].value == 22);
+        CHECK(leftValues(v) == std::vector{10, 11});
+        CHECK(rightValues(v) == std::vector{20, 21, 22});
+
+        const auto& cv = v;
+        CHECK(cv.frontLeft().value == 10);
+        CHECK(cv.frontRight().value == 20);
+        CHECK(cv.dataBegin()[1].value == 11);
+        STATIC_REQUIRE(std::is_const_v<std::remove_reference_t<decltype(*cv.dataBegin())>>);
+        STATIC_REQUIRE(std::is_const_v<std::remove_reference_t<decltype(*cv.dataEnd())>>);
+    }
+
+    SECTION("grow") {
+        auto*            inlineData = v.dataBegin();
+        std::vector<int> expL, expR;
+        for (int i = 0; i < 16; ++i) {
+            v.pushLeft(L{i});
+            expL.push_back(i);
+            v.pushRight(R{100 + i});
+            expR.push_back(100 + i);
+        }
+        CHECK(v.sizeLeft() == 16u);
+        CHECK(v.sizeRight() == 16u);
+        CHECK(leftValues(v) == expL);
+        CHECK(rightValues(v) == expR);
+        CHECK(L::live == 16);
+        CHECK(R::live == 16);
+        CHECK(v.dataBegin() != inlineData); // relocated off the inline buffer onto the heap
+    }
+    SECTION("pop") {
+        for (int i = 0; i < 4; ++i) { v.pushLeft(L{i}); }
+        for (int i = 0; i < 4; ++i) { v.pushRight(R{10 + i}); }
+        v.popLeft();
+        CHECK(leftValues(v) == std::vector{0, 1, 2});
+        CHECK(L::live == 3);
+        v.popRight();
+        CHECK(rightValues(v) == std::vector{10, 11, 12});
+        CHECK(R::live == 3);
+        while (not v.empty()) {
+            if (v.sizeLeft()) {
+                v.popLeft();
+            }
+            else {
+                v.popRight();
+            }
+        }
+        CHECK(L::live == 0);
+        CHECK(R::live == 0);
+    }
+    SECTION("eraseLeftAtMiddleEndFront") {
+        for (int i = 0; i < 3; ++i) { v.pushLeft(L{i}); } // {0, 1, 2}
+        v.eraseLeft(v.dataBegin() + 1);
+        CHECK(leftValues(v) == std::vector{0, 2});
+        CHECK(L::live == 2);
+        v.eraseLeft(v.dataBegin() + 1); // last element, no tail to move
+        CHECK(leftValues(v) == std::vector{0});
+        v.eraseLeft(v.dataBegin());
+        CHECK(v.sizeLeft() == 0u);
+        CHECK(L::live == 0);
+    }
+    SECTION("eraseRightAtMiddleEndFront") {
+        for (int i = 0; i < 5; ++i) { v.pushRight(R{20 + i}); } // insertion order {20..24}
+        CHECK(R::live == 5);
+        v.eraseRight(v.dataEnd() - v.sizeRight()); // innermost (last pushed, 24)
+        CHECK(rightValues(v) == std::vector{20, 21, 22, 23});
+        CHECK(R::live == 4);
+        v.eraseRight(v.dataEnd() - 1); // front-of-right (first pushed, 20)
+        CHECK(rightValues(v) == std::vector{21, 22, 23});
+        CHECK(R::live == 3);
+        v.eraseRight(v.dataEnd() - 2); // middle (22)
+        CHECK(rightValues(v) == std::vector{21, 23});
+        CHECK(R::live == 2);
+    }
+    SECTION("truncate") {
+        for (int i = 0; i < 4; ++i) { v.pushLeft(L{i}); }       // {0, 1, 2, 3}
+        for (int i = 0; i < 4; ++i) { v.pushRight(R{10 + i}); } // {10, 11, 12, 13}
+        v.truncateLeft(v.dataBegin() + v.sizeLeft());           // no-op
+        CHECK(v.sizeLeft() == 4u);
+        v.truncateLeft(v.dataBegin() + 2);
+        CHECK(leftValues(v) == std::vector{0, 1});
+        CHECK(L::live == 2);
+        v.truncateRight(v.dataEnd() - v.sizeRight()); // no-op
+        CHECK(v.sizeRight() == 4u);
+        v.truncateRight(v.dataEnd() - 2); // keep the two first-pushed elements
+        CHECK(rightValues(v) == std::vector{10, 11});
+        CHECK(R::live == 2);
+        v.truncateLeft(v.dataBegin());
+        v.truncateRight(v.dataEnd());
+        CHECK(v.empty());
+        CHECK(L::live == 0);
+        CHECK(R::live == 0);
+    }
+    SECTION("clearKeepCapButResetReleasesIt") {
+        auto initial = v.dataBegin();
+        for (int i = 0; i < 10; ++i) { v.pushLeft(L{i}); }
+        for (int i = 0; i < 10; ++i) { v.pushRight(R{i}); } // large enough to be on the heap
+        auto* buf = v.dataBegin();
+        v.clear();
+        CHECK(v.empty());
+        CHECK(L::live == 0);
+        CHECK(R::live == 0);
+        CHECK(v.dataBegin() == buf); // capacity retained, same buffer
+        v.pushLeft(L{99});
+        CHECK(v.dataBegin() == buf); // reused without reallocating
+        CHECK(v.frontLeft().value == 99);
+        v.reset();
+        CHECK(v.empty());
+        CHECK(v.dataBegin() == initial);
+        CHECK(L::live == 0);
+    }
+    if constexpr (has_sbo) {
+        SECTION("tryShrinkToSmall") {
+            auto*            inlineData = v.dataBegin();
+            std::vector<int> exp;
+            constexpr auto   n = static_cast<uint32_t>(BufferT::small_cap / sizeof(typename BufferT::right_type));
+            for (int i = 0; v.sizeRight() <= n; ++i) {
+                v.pushRight(R{i});
+                exp.push_back(i);
+            }
+            CHECK(v.dataEnd() != nullptr);
+            CHECK(v.dataBegin() != inlineData);
+            v.tryShrinkToSmall(); // no-op: still too large to fit inline
+            CHECK(v.dataBegin() != inlineData);
+            CHECK(rightValues(v).size() == exp.size());
+
+            while (v.sizeRight() >= n) {
+                v.popRight();
+                exp.pop_back();
+            }
+            v.tryShrinkToSmall();
+            CHECK(v.dataBegin() == inlineData); // back on the inline buffer
+            CHECK(rightValues(v) == exp);
+            CHECK(R::live == static_cast<int>(exp.size()));
+            v.tryShrinkToSmall(); // no-op when already inline
+            CHECK(v.dataBegin() == inlineData);
+        }
+    }
+    SECTION("copy") {
+        for (int i = 0; i < 3; ++i) { v.pushLeft(L{i}); }
+        for (int i = 0; i < 3; ++i) { v.pushRight(R{10 + i}); }
+        int liveL = L::live, liveR = R::live; // == 3, 3
+
+        BufferT c(v);
+        CHECK(L::live == liveL * 2); // element copy-ctor called
+        CHECK(R::live == liveR * 2);
+        CHECK(leftValues(c) == std::vector{0, 1, 2});
+        CHECK(rightValues(c) == std::vector{10, 11, 12});
+        c.pushLeft(L{99}); // independent from source
+        CHECK(v.sizeLeft() == 3u);
+        CHECK(leftValues(v) == std::vector{0, 1, 2});
+
+        BufferT e;
+        e = v; // assignment onto empty target
+        CHECK(leftValues(e) == std::vector{0, 1, 2});
+        CHECK(rightValues(e) == std::vector{10, 11, 12});
+
+        BufferT big;
+        for (int i = 0; i < 8; ++i) { big.pushLeft(L{i}); }
+        liveL = L::live;
+        big   = v; // assignment onto a larger, populated target (target's own elements destroyed)
+        CHECK(leftValues(big) == std::vector{0, 1, 2});
+        CHECK(rightValues(big) == std::vector{10, 11, 12});
+        CHECK(L::live == (liveL - 8) + 3);
+
+        BufferT* self = &v; // self copy-assignment (avoids -Wself-assign)
+        v             = *self;
+        CHECK(leftValues(v) == std::vector{0, 1, 2});
+        CHECK(rightValues(v) == std::vector{10, 11, 12});
+    }
+    SECTION("move") {
+        for (int i = 0; i < 3; ++i) { v.pushLeft(L{i}); }
+        for (int i = 0; i < 3; ++i) { v.pushRight(R{10 + i}); }
+
+        BufferT m(std::move(v));
+        CHECK(v.empty()); // NOLINT(*-use-after-move)
+        CHECK(leftValues(m) == std::vector{0, 1, 2});
+        CHECK(rightValues(m) == std::vector{10, 11, 12});
+        CHECK(L::live == 3);
+        CHECK(R::live == 3);
+
+        BufferT t;
+        for (int i = 0; i < 5; ++i) { t.pushLeft(L{7}); }
+        CHECK(L::live == 8);
+        t = std::move(m); // move-assign must destroy the target's own elements first
+        CHECK(m.empty()); // NOLINT(*-use-after-move)
+        CHECK(leftValues(t) == std::vector{0, 1, 2});
+        CHECK(rightValues(t) == std::vector{10, 11, 12});
+        CHECK(L::live == 3);
+        CHECK(R::live == 3);
+
+        BufferT* self = &t; // self move-assignment is a no-op
+        t             = std::move(*self);
+        CHECK(leftValues(t) == std::vector{0, 1, 2});
+        CHECK(rightValues(t) == std::vector{10, 11, 12});
+
+        if constexpr (has_sbo) {
+            BufferT small;
+            for (int i = 0; i < 3; ++i) { small.pushLeft(L{i}); } // stays inline
+            BufferT movedInline(std::move(small));
+            CHECK(small.empty()); // NOLINT(*-use-after-move)
+            CHECK(leftValues(movedInline) == std::vector{0, 1, 2});
+
+            BufferT        grown;
+            auto*          initial = grown.dataEnd();
+            constexpr auto n       = static_cast<uint32_t>(BufferT::small_cap / sizeof(typename BufferT::right_type));
+            for (int i = 0; std::cmp_less_equal(i, n); ++i) { grown.pushRight(R{i}); } // on the heap
+            auto* heapData = grown.dataEnd();
+            REQUIRE(heapData != initial);
+            BufferT movedHeap(std::move(grown));
+            CHECK(grown.empty());                   // NOLINT(*-use-after-move)
+            CHECK(movedHeap.dataEnd() == heapData); // pointer stolen, not copied
+            CHECK(rightValues(movedHeap).size() == n + 1);
+        }
+    }
+    SECTION("eraseIf") {
+        for (int i = 0; i < 10; ++i) {
+            v.pushLeft(L{i});
+            v.pushRight(R{i});
+        }
+        REQUIRE(eraseLeftIf(v, [](const auto& x) { return x.value & 1; }) == 5);
+        REQUIRE(leftValues(v) == std::vector{0, 2, 4, 6, 8});
+        REQUIRE(L::live == 5);
+        REQUIRE(eraseRightIf(v, [](const auto& x) { return (x.value & 1) == 0u; }) == 5);
+        REQUIRE(rightValues(v) == std::vector{1, 3, 5, 7, 9});
+        REQUIRE(R::live == 5);
+        std::vector rem = {0, 4, 8};
+        REQUIRE(eraseLeftIf(v, [&](const auto& x) { return std::ranges::find(rem, x.value) != rem.end(); }) == 3);
+        REQUIRE(leftValues(v) == std::vector{2, 6});
+        rem = {3, 5};
+        REQUIRE(eraseRightIf(v, [&](const auto& x) { return std::ranges::find(rem, x.value) != rem.end(); }) == 2);
+        REQUIRE(rightValues(v) == std::vector{1, 7, 9});
+
+        REQUIRE(eraseLeftIf(v, [&](const auto&) { return false; }) == 0);
+        REQUIRE(eraseRightIf(v, [&](const auto&) { return false; }) == 0);
+        REQUIRE(leftValues(v) == std::vector{2, 6});
+        REQUIRE(rightValues(v) == std::vector{1, 7, 9});
+        REQUIRE(L::live == 2);
+        REQUIRE(R::live == 3);
+
+        REQUIRE(eraseLeftIf(v, [&](const auto&) { return true; }) == 2);
+        REQUIRE(eraseRightIf(v, [&](const auto&) { return true; }) == 3);
+        REQUIRE(leftValues(v) == std::vector<int>{});
+        REQUIRE(rightValues(v) == std::vector<int>{});
+        REQUIRE(L::live == 0);
+        REQUIRE(R::live == 0);
+    }
+
+    v.reset();
+    REQUIRE(L::live == 0);
+    REQUIRE(R::live == 0);
 }
 
 TEST_CASE("Test HashMap", "[util]") {

@@ -68,19 +68,21 @@ public:
      */
     //@{
     //! Returns the name of this application.
-    [[nodiscard]] virtual std::string_view getName() const = 0;
+    [[nodiscard]] virtual auto getName() const -> std::string_view = 0;
     //! Returns the version number of this application.
-    [[nodiscard]] virtual std::string_view getVersion() const = 0;
+    [[nodiscard]] virtual auto getVersion() const -> std::string_view = 0;
     //! Returns the list of signals this application wants to handle.
     [[nodiscard]] virtual std::span<const int> getSignals() const { return {}; }
     //! Returns the usage information of this application.
-    [[nodiscard]] virtual std::string_view getUsage() const { return "[options]"; }
+    [[nodiscard]] virtual auto getUsage() const -> std::string_view { return "[options]"; }
     //! Returns the application's help option and its description.
-    [[nodiscard]] virtual HelpOpt getHelpOption() const { return {"Print help information and exit", 1}; }
+    [[nodiscard]] virtual auto getHelpOption() const -> HelpOpt { return {"Print help information and exit", 1}; }
     //! Returns details about the application's verbose option.
-    [[nodiscard]] virtual VerboseOpt getVerboseOption() const { return {""}; }
+    [[nodiscard]] virtual auto getVerboseOption() const -> VerboseOpt { return {""}; }
     //! Returns the name of the option that should receive the given positional value or an empty view if not supported.
-    [[nodiscard]] virtual std::string_view getPositional([[maybe_unused]] std::string_view value) const { return {}; }
+    [[nodiscard]] virtual auto getPositional([[maybe_unused]] std::string_view value) const -> std::string_view {
+        return {};
+    }
     //@}
 
     /*!
@@ -96,9 +98,9 @@ public:
     //! Returns the application's exit code.
     [[nodiscard]] int getExitCode() const;
     //! Returns the application's current verbosity level.
-    [[nodiscard]] unsigned getVerbose() const;
+    [[nodiscard]] auto getVerbose() const -> unsigned;
     //! Returns the current time limit in milliseconds or 0 if no time limit is set.
-    [[nodiscard]] unsigned getTimeLimit() const;
+    [[nodiscard]] auto getTimeLimit() const -> unsigned;
     //! Stops running application with the given exit code and error message.
     /*!
      * The function sets the given code as exit code and then stops the running application by calling
@@ -113,7 +115,7 @@ public:
      */
     void stop(int code);
     //! Returns the application object that is running.
-    static Application* getInstance();
+    static auto getInstance() -> Application*;
 
     enum MessageType { message_error, message_warning, message_info };
 
@@ -201,7 +203,7 @@ private:
         MessageType        level;
         uint8_t            exception;
     };
-    friend std::ostream& operator<<(std::ostream& os, const Prefix& p) {
+    friend auto operator<<(std::ostream& os, const Prefix& p) -> std::ostream& {
         p.app->write(Sink{os}, p);
         return os;
     }
@@ -211,7 +213,7 @@ private:
         return b;
     }
     void              write(Sink s, const Prefix& p) const;
-    static Sink&      colorize(Sink& sink, std::string_view msg, const TextStyle& color, bool exception);
+    static auto       colorize(Sink& sink, std::string_view msg, const TextStyle& color, bool exception) -> Sink&;
     bool              applyOptions(std::span<const char* const> args);
     void              handleException();
     bool              unhandledException(const std::exception_ptr& e, std::string_view error, std::string_view info);

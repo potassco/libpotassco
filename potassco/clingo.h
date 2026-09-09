@@ -52,41 +52,41 @@ public:
     //! Returns the id of the solver this assignment is associated with.
     [[nodiscard]] virtual Id_t solverId() const = 0;
     //! Returns the number of variables in the assignment.
-    [[nodiscard]] virtual uint32_t size() const = 0;
+    [[nodiscard]] virtual auto size() const -> uint32_t = 0;
     //! Returns the number of unassigned variables in the assignment.
-    [[nodiscard]] virtual uint32_t unassigned() const = 0;
+    [[nodiscard]] virtual auto unassigned() const -> uint32_t = 0;
     //! Returns whether the current assignment is conflicting.
     [[nodiscard]] virtual bool hasConflict() const = 0;
     //! Returns the number of decision literals in the assignment.
-    [[nodiscard]] virtual uint32_t level() const = 0;
+    [[nodiscard]] virtual auto level() const -> uint32_t = 0;
     //! Returns the number of decision literals that will not be backtracked while solving.
-    [[nodiscard]] virtual uint32_t rootLevel() const = 0;
+    [[nodiscard]] virtual auto rootLevel() const -> uint32_t = 0;
     //! Returns whether `lit` is a valid literal in this assignment.
     [[nodiscard]] virtual bool hasLit(Lit_t lit) const = 0;
     //! Returns the truth value currently assigned to `lit` or `TruthValue::free` if `lit` is unassigned.
-    [[nodiscard]] virtual TruthValue value(Lit_t lit) const = 0;
+    [[nodiscard]] virtual auto value(Lit_t lit) const -> TruthValue = 0;
     //! Returns the decision level on which `lit` was assigned or `UINT32_MAX` if `lit` is unassigned.
-    [[nodiscard]] virtual uint32_t level(Lit_t lit) const = 0;
+    [[nodiscard]] virtual auto level(Lit_t lit) const -> uint32_t = 0;
     //! Returns the decision literal of the given decision level.
-    [[nodiscard]] virtual Lit_t decision(uint32_t) const = 0;
+    [[nodiscard]] virtual auto decision(uint32_t) const -> Lit_t = 0;
     //! Returns the number of literals in the assignment trail.
-    [[nodiscard]] virtual uint32_t trailSize() const = 0;
+    [[nodiscard]] virtual auto trailSize() const -> uint32_t = 0;
     //! Returns the literal in the trail at the given position.
     /*!
      * \pre <tt>pos \< trailSize()</tt>
      */
-    [[nodiscard]] virtual Lit_t trailAt(uint32_t pos) const = 0;
+    [[nodiscard]] virtual auto trailAt(uint32_t pos) const -> Lit_t = 0;
     //! Returns the trail position of the first literal assigned at the given level.
     /*!
      * \pre <tt>level \<= level()</tt>
      */
-    [[nodiscard]] virtual uint32_t trailBegin(uint32_t level) const = 0;
+    [[nodiscard]] virtual auto trailBegin(uint32_t level) const -> uint32_t = 0;
     //! Returns the one-past-the-end position of literals assigned at the given decision level.
     /*!
      * \note Literals assigned at the given level are in the half-open range [trailBegin(), trailEnd()).
      * \pre level \<= level()
      */
-    [[nodiscard]] uint32_t trailEnd(uint32_t level) const;
+    [[nodiscard]] auto trailEnd(uint32_t level) const -> uint32_t;
 
     //! Returns whether the current assignment is total.
     /*!
@@ -162,8 +162,8 @@ public:
          * \note Variables added during propagation are volatile, i.e., they are only valid within the current solving
          *       step.
          */
-        [[nodiscard]] virtual Lit_t addVariable(bool freeze) = 0;
-        [[nodiscard]] Lit_t         addVariable() { return addVariable(true); }
+        [[nodiscard]] virtual auto addVariable(bool freeze) -> Lit_t = 0;
+        [[nodiscard]] auto         addVariable() -> Lit_t { return addVariable(true); }
 
         //! Propagates any newly implied literals.
         virtual bool propagate() = 0;
@@ -280,7 +280,7 @@ public:
      * \note If the function returns 0 or a literal that is already assigned, the returned lit
      *       is implicitly replaced with fallback.
      */
-    virtual Lit_t decide(const AbstractAssignment& assignment, Lit_t fallback) = 0;
+    virtual auto decide(const AbstractAssignment& assignment, Lit_t fallback) -> Lit_t = 0;
 };
 
 //! Supported (solver) statistics types.
@@ -314,11 +314,11 @@ public:
     virtual ~AbstractStatistics();
 
     //! Returns the root key of this statistic object.
-    [[nodiscard]] virtual Key_t root() const = 0;
+    [[nodiscard]] virtual auto root() const -> Key_t = 0;
     //! Returns the type of the object with the given key.
     [[nodiscard]] virtual Type type(Key_t key) const = 0;
     //! Returns the child count of the object with the given key or 0 if it is a value.
-    [[nodiscard]] virtual size_t size(Key_t key) const = 0;
+    [[nodiscard]] virtual auto size(Key_t key) const -> size_t = 0;
     //! Returns whether the object with the given key can be updated.
     [[nodiscard]] virtual bool writable(Key_t key) const = 0;
 
@@ -331,7 +331,7 @@ public:
     /*!
      * \pre <tt>index \< size(key)</tt>
      */
-    [[nodiscard]] virtual Key_t at(Key_t arr, size_t index) const = 0;
+    [[nodiscard]] virtual auto at(Key_t arr, size_t index) const -> Key_t = 0;
 
     //! Appends a statistic object to the end of the given array.
     /*!
@@ -341,7 +341,7 @@ public:
      * \return The key of the created statistic object.
      *
      */
-    virtual Key_t push(Key_t arr, Type type) = 0;
+    virtual auto push(Key_t arr, Type type) -> Key_t = 0;
     //@}
 
     /*!
@@ -354,10 +354,10 @@ public:
      * \pre <tt>i \< size(mapK)</tt>
      * \note The order of elements in a map is unspecified and might change after a solve operation.
      */
-    [[nodiscard]] virtual std::string_view key(Key_t mapK, size_t i) const = 0;
+    [[nodiscard]] virtual auto key(Key_t mapK, size_t i) const -> std::string_view = 0;
 
     //! Returns the element stored in the map under the given name.
-    [[nodiscard]] virtual Key_t get(Key_t mapK, std::string_view at) const = 0;
+    [[nodiscard]] virtual auto get(Key_t mapK, std::string_view at) const -> Key_t = 0;
 
     //! Searches the given map for an element.
     /*!
@@ -381,7 +381,7 @@ public:
      *       the function either returns its key provided that the types match,
      *       or otherwise signals failure by throwing a std::logic_error.
      */
-    virtual Key_t add(Key_t mapK, std::string_view name, Type type) = 0;
+    virtual auto add(Key_t mapK, std::string_view name, Type type) -> Key_t = 0;
     //@}
     /*!
      * \name Value
@@ -389,7 +389,7 @@ public:
      */
     //@{
     //! Returns the statistic value associated with the given key.
-    [[nodiscard]] virtual double value(Key_t key) const = 0;
+    [[nodiscard]] virtual auto value(Key_t key) const -> double = 0;
 
     //! Sets value as value for the given statistic object.
     /*!

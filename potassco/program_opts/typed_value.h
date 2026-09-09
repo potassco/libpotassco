@@ -159,12 +159,12 @@ auto values(std::vector<std::pair<std::string, EnumT>> vec) -> ParseValues<EnumT
  * \param parser The (optional) parser to use for converting from string to T.
  */
 template <typename T, typename P = DefaultParser>
-ValueDesc storeTo(T& v, P&& parser = P()) {
+auto storeTo(T& v, P&& parser = P()) -> ValueDesc {
     return value<Store<T, std::decay_t<P>>>(v, std::forward<P>(parser));
 }
 
 template <typename T>
-ValueDesc storeTo(T& v, T init) {
+auto storeTo(T& v, T init) -> ValueDesc {
     return storeTo(v = std::move(init));
 }
 
@@ -177,7 +177,7 @@ ValueDesc storeTo(T& v, T init) {
  * \see OptionGroup::addOptions()
  */
 template <typename T, ActionFunction<T> C, typename P = DefaultParser>
-ValueDesc action(C&& action, P&& parser = P()) {
+auto action(C&& action, P&& parser = P()) -> ValueDesc {
     return value<TypedAction<T, std::decay_t<C>, std::decay_t<P>>>(std::forward<C>(action), std::forward<P>(parser));
 }
 
@@ -196,7 +196,7 @@ constexpr inline auto store_false = [](std::string_view v, bool& b) {
  * \param pa An optional parser for converting a string into a boolean value.
  */
 template <typename F, typename P = DefaultParser>
-ValueDesc flag(F&& b, P&& pa = P()) {
+auto flag(F&& b, P&& pa = P()) -> ValueDesc {
     static_assert(std::is_same_v<F, bool&> or ActionFunction<F, bool>,
                   "'b' must be a modifiable lvalue reference to bool or a callable");
     if constexpr (ActionFunction<F, bool>) {
@@ -207,7 +207,7 @@ ValueDesc flag(F&& b, P&& pa = P()) {
     }
 }
 template <typename P = DefaultParser>
-ValueDesc flag(bool& b, bool init, P&& pa = P()) {
+auto flag(bool& b, bool init, P&& pa = P()) -> ValueDesc {
     return storeTo(b = init, std::forward<P>(pa)).flag();
 }
 
@@ -222,7 +222,7 @@ ValueDesc flag(bool& b, bool init, P&& pa = P()) {
  * \see OptionGroup::addOptions()
  */
 template <ActionFunction<std::string_view> C>
-ValueDesc parse(C&& parser) {
+auto parse(C&& parser) -> ValueDesc {
     return value<Custom<std::decay_t<C>>>(std::forward<C>(parser));
 }
 

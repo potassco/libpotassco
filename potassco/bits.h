@@ -173,13 +173,13 @@ template <std::unsigned_integral T>
 static_assert(left_most_bit(0b00000000u) == 0b00000000u && left_most_bit(0b00010100u) == 0b00010000u);
 //! Returns the log2 of `x`.
 template <std::unsigned_integral T>
-POTASSCO_FORCE_INLINE constexpr unsigned log2(T x) noexcept {
+POTASSCO_FORCE_INLINE constexpr auto log2(T x) noexcept -> unsigned {
     return static_cast<unsigned>(std::bit_width(x)) - static_cast<unsigned>(x != 0u);
 }
 static_assert(log2(0u) == 0u && log2(1u) == 0u && log2(2u) == 1u && log2(4u) == 2u && log2(255u) == 7u);
 //! Returns the number of set bits in the value of x.
 template <std::unsigned_integral T>
-POTASSCO_FORCE_INLINE constexpr unsigned bit_count(T x) noexcept {
+POTASSCO_FORCE_INLINE constexpr auto bit_count(T x) noexcept -> unsigned {
     return static_cast<unsigned>(std::popcount(x));
 }
 static_assert(bit_count(0u) == 0u && bit_count(1u) == 1u && bit_count(127u) == 7u);
@@ -201,11 +201,11 @@ public:
         for (StorageType zero{}; auto e : elems) { set_ |= Potassco::set_bit(zero, bit(e)); }
     }
     //! Constructs a bitset with all bits in `r` set.
-    static constexpr Bitset fromRep(StorageType r) noexcept { return Bitset(r); }
+    static constexpr auto fromRep(StorageType r) noexcept -> Bitset { return Bitset(r); }
     //! Returns whether the set contains the given element.
     [[nodiscard]] constexpr bool contains(ElemType e) const { return Potassco::test_bit(set_, bit(e)); }
     //! Returns the number of elements in the set, i.e., the number of bits set.
-    [[nodiscard]] constexpr unsigned count() const noexcept { return Potassco::bit_count(set_); }
+    [[nodiscard]] constexpr auto count() const noexcept -> unsigned { return Potassco::bit_count(set_); }
     //! Adds the given element to the set and returns true if it was not already in the set.
     constexpr bool add(ElemType e) { return not contains(e) && Potassco::store_set_bit(set_, bit(e)); }
     //! Removes the given element from the set and returns true if it was in the set.
@@ -215,13 +215,13 @@ public:
     //! Removes all elements from the set.
     constexpr void clear() noexcept { set_ = {}; }
 
-    [[nodiscard]] constexpr StorageType rep() const noexcept { return set_; }
+    [[nodiscard]] constexpr auto rep() const noexcept -> StorageType { return set_; }
 
     friend constexpr bool operator==(Bitset lhs, Bitset rhs) noexcept  = default;
     friend constexpr auto operator<=>(Bitset lhs, Bitset rhs) noexcept = default;
 
 private:
-    POTASSCO_FORCE_INLINE static constexpr unsigned bit(ElemType e) { return static_cast<unsigned>(+e); }
+    POTASSCO_FORCE_INLINE static constexpr auto bit(ElemType e) -> unsigned { return static_cast<unsigned>(+e); }
     constexpr explicit Bitset(StorageType r) : set_(r) {}
     StorageType set_{0};
 };

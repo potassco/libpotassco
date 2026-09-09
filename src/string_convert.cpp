@@ -55,7 +55,7 @@ static constexpr void skipws(std::string_view& in) {
     return in.remove_prefix(std::min(p, in.size()));
 }
 
-std::from_chars_result parseChar(std::string_view in, char& out) {
+auto parseChar(std::string_view in, char& out) -> std::from_chars_result {
     static constexpr auto c_from = "fnrtv"sv;
     static constexpr auto c_to   = "\f\n\r\t\v"sv;
 
@@ -72,7 +72,7 @@ std::from_chars_result parseChar(std::string_view in, char& out) {
     return Parse::success(in, 1);
 }
 
-std::from_chars_result parseUnsigned(std::string_view in, std::uintmax_t& out, std::uintmax_t max) {
+auto parseUnsigned(std::string_view in, std::uintmax_t& out, std::uintmax_t max) -> std::from_chars_result {
     skipws(in);
     if (in.starts_with('-')) {
         if (not in.starts_with("-1")) {
@@ -102,7 +102,8 @@ std::from_chars_result parseUnsigned(std::string_view in, std::uintmax_t& out, s
     return r;
 }
 
-std::from_chars_result parseSigned(std::string_view in, std::intmax_t& out, std::intmax_t min, std::intmax_t max) {
+auto parseSigned(std::string_view in, std::intmax_t& out, std::intmax_t min,
+                 std::intmax_t max) -> std::from_chars_result {
     skipws(in);
     if (bool isMax = in.starts_with("imax"); isMax || in.starts_with("imin")) {
         out = isMax ? max : min;
@@ -125,7 +126,7 @@ std::from_chars_result parseSigned(std::string_view in, std::intmax_t& out, std:
 }
 
 template <typename T = double>
-static std::from_chars_result parseFloatImpl(std::string_view in, T& out) {
+static auto parseFloatImpl(std::string_view in, T& out) -> std::from_chars_result {
     if constexpr (requires { std::from_chars(in.data(), in.data() + in.size(), out); }) {
         return std::from_chars(in.data(), in.data() + in.size(), out);
     }
@@ -138,7 +139,7 @@ static std::from_chars_result parseFloatImpl(std::string_view in, T& out) {
                     std::istream::imbue(classic); // mimic from_chars, which is locale independent
                 }
             }
-            std::from_chars_result extract(std::string_view& inView, double& d) {
+            auto extract(std::string_view& inView, double& d) -> std::from_chars_result {
                 for (auto cv = inView;;) {
                     auto* buf = const_cast<char*>(cv.data());
                     std::streambuf::setg(buf, buf, buf + std::ssize(cv));
@@ -159,7 +160,7 @@ static std::from_chars_result parseFloatImpl(std::string_view in, T& out) {
     }
 }
 
-std::from_chars_result parseFloat(std::string_view in, double& out, double min, double max) {
+auto parseFloat(std::string_view in, double& out, double min, double max) -> std::from_chars_result {
     skipws(in);
     Parse::matchOpt(in, '+');
     auto r = parseFloatImpl(in, out);
@@ -169,21 +170,21 @@ std::from_chars_result parseFloat(std::string_view in, double& out, double min, 
     return r;
 }
 
-char* writeSigned(char* first, char* last, std::intmax_t in) {
+auto writeSigned(char* first, char* last, std::intmax_t in) -> char* {
     auto r = std::to_chars(first, last, in);
     POTASSCO_CHECK(r.ec == std::errc{}, r.ec, "std::to_chars could not convert signed integer %zd",
                    static_cast<std::ptrdiff_t>(in));
     return r.ptr;
 }
 
-char* writeUnsigned(char* first, char* last, std::uintmax_t in) {
+auto writeUnsigned(char* first, char* last, std::uintmax_t in) -> char* {
     auto r = std::to_chars(first, last, in);
     POTASSCO_CHECK(r.ec == std::errc{}, r.ec, "std::to_chars could not convert unsigned integer %zu",
                    static_cast<size_t>(in));
     return r.ptr;
 }
 
-char* writeFloat(char* first, char* last, double in, int p) {
+auto writeFloat(char* first, char* last, double in, int p) -> char* {
     auto fmt = std::chars_format::fixed;
     if (p <= 0) { // Set precision = 6 to match the default behavior of (s)printf.
         p   = 6;
@@ -217,7 +218,7 @@ bool matchOpt(std::string_view& in, char v) {
 
 } // namespace Parse
 
-std::from_chars_result fromChars(std::string_view in, bool& out) {
+auto fromChars(std::string_view in, bool& out) -> std::from_chars_result {
     if (in.empty()) {
         return Parse::error(in);
     }

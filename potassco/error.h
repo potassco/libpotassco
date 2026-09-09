@@ -37,10 +37,10 @@ public:
         , location_(location)
         , errc_(ec) {}
 
-    [[nodiscard]] Errc                        errc() const noexcept { return errc_; }
-    [[nodiscard]] const std::source_location& location() const noexcept { return location_; }
-    [[nodiscard]] std::string_view            message() const noexcept;
-    [[nodiscard]] std::string_view            details() const noexcept;
+    [[nodiscard]] Errc errc() const noexcept { return errc_; }
+    [[nodiscard]] auto location() const noexcept -> const std::source_location& { return location_; }
+    [[nodiscard]] auto message() const noexcept -> std::string_view;
+    [[nodiscard]] auto details() const noexcept -> std::string_view;
 
 private:
     std::source_location location_;

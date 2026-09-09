@@ -69,15 +69,15 @@ public:
     /*!
      * \return The number of characters copied to the given buffer.
      */
-    std::size_t read(std::span<char> bufferOut);
+    auto read(std::span<char> bufferOut) -> std::size_t;
     //! Extracts characters up to the next newline from the input stream and stores them in the given buffer.
     /*!
      * \note The extracted newline character, if any, is not added to the buffer.
      * \return The number of characters copied to the given buffer.
      */
-    std::size_t readLine(BasicCharBuffer& bufferOut);
+    auto readLine(BasicCharBuffer& bufferOut) -> std::size_t;
     //! Returns the current line number in the input stream, i.e., the number of newline characters extracted so far.
-    [[nodiscard]] unsigned line() const;
+    [[nodiscard]] auto line() const -> unsigned;
 
 private:
     static constexpr auto buf_size = static_cast<std::streamsize>(4095);
@@ -122,7 +122,7 @@ public:
     //! Resets this object to the state after default construction.
     void reset();
     //! Returns the current line number in the input stream.
-    [[nodiscard]] unsigned line() const;
+    [[nodiscard]] auto line() const -> unsigned;
     //! Sets the largest possible variable number.
     /*!
      * The given value is used when matching atoms or literals.
@@ -137,7 +137,7 @@ protected:
     using StreamType = BufferedStream;
     using WLit_t     = WeightLit;
     //! Returns the associated input stream.
-    [[nodiscard]] StreamType* stream() const;
+    [[nodiscard]] auto stream() const -> StreamType*;
     //! Extracts and discards characters up to and including the next newline.
     void skipLine();
     //! Extracts and discards any leading whitespace and then returns peek().
@@ -153,36 +153,38 @@ protected:
     //! Extracts the given character or fails with a std::exception.
     void matchChar(char c);
     //! Extracts an atom (i.e., a positive integer > 0) or fails with a std::exception.
-    Atom_t matchAtom(const char* error = "atom expected") {
+    auto matchAtom(const char* error = "atom expected") -> Atom_t {
         return static_cast<Atom_t>(matchUint(atom_min, varMax_, error));
     }
     //! Extracts an atom or zero or fails with a std::exception.
-    Atom_t matchAtomOrZero(const char* error = "atom or zero expected") {
+    auto matchAtomOrZero(const char* error = "atom or zero expected") -> Atom_t {
         return static_cast<Atom_t>(matchUint(0u, varMax_, error));
     }
     //! Extracts an id or fails with a std::exception.
     Id_t matchId(const char* error = "id expected") { return static_cast<Id_t>(matchUint(0u, id_max, error)); }
     //! Extracts a literal (i.e., positive or negative atom) or fails with a std::exception.
-    Lit_t matchLit(const char* error = "literal expected") {
+    auto matchLit(const char* error = "literal expected") -> Lit_t {
         auto res = matchInt(-static_cast<Lit_t>(varMax_), static_cast<Lit_t>(varMax_), error);
         require(res != 0, error);
         return static_cast<Lit_t>(res);
     }
     //! Extracts a weight or fails with a std::exception.
-    Weight_t matchWeight(bool requirePositive = false, const char* error = "weight expected") {
+    auto matchWeight(bool requirePositive = false, const char* error = "weight expected") -> Weight_t {
         return static_cast<Weight_t>(matchInt(requirePositive ? 0 : INT_MIN, INT_MAX, error));
     }
     //! Extracts a weight literal or fails with a std::exception.
-    WLit_t matchWLit(bool requirePositive = false, const char* error = "weight literal expected") {
+    auto matchWLit(bool requirePositive = false, const char* error = "weight literal expected") -> WLit_t {
         return {.lit = matchLit(error), .weight = matchWeight(requirePositive, error)};
     }
     //! Extracts an unsigned integer or fails with a std::exception.
-    unsigned matchUint(const char* error = "non-negative integer expected") { return matchUint(0u, UINT_MAX, error); }
+    auto matchUint(const char* error = "non-negative integer expected") -> unsigned {
+        return matchUint(0u, UINT_MAX, error);
+    }
     //! Extracts a signed integer or fails with a std::exception.
     int matchInt(const char* err = "integer expected") { return matchInt(INT_MIN, INT_MAX, err); }
 
     //! Extracts an unsigned integer in the range [minV, maxV] or fails with a std::exception.
-    unsigned matchUint(unsigned minV, unsigned maxV, const char* error = "non-negative integer expected") {
+    auto matchUint(unsigned minV, unsigned maxV, const char* error = "non-negative integer expected") -> unsigned {
         return static_cast<unsigned>(matchNum(minV, maxV, error));
     }
     //! Extracts a signed integer in the range [minV, maxV] or fails with a std::exception.
@@ -192,12 +194,12 @@ protected:
     //! Extracts a number in the range of the given enum or fails with a std::exception.
     template <typename EnumT>
     requires std::is_enum_v<EnumT>
-    EnumT matchEnum(const char* error) {
+    auto matchEnum(const char* error) -> EnumT {
         return static_cast<EnumT>(matchNum(enum_min<EnumT>(), enum_max<EnumT>(), error));
     }
 
     template <std::integral T>
-    [[nodiscard]] int64_t matchNum(T min, T max, const char* err) {
+    [[nodiscard]] auto matchNum(T min, T max, const char* err) -> int64_t {
         int64_t n;
         require(stream()->readInt(n) && n >= static_cast<int64_t>(min) && n <= static_cast<int64_t>(max), err);
         return n;

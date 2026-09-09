@@ -289,7 +289,7 @@ POTASSCO_ATTR_NORETURN extern void failAbort(const ExpressionInfo& expressionInf
  * \note x87 floating-point unit is typically only used on x86_32 (x86_64 uses SSE by default).
  * \return The previous configuration or UINT32_MAX if configuration failed.
  */
-unsigned initFpuPrecision();
+auto initFpuPrecision() -> unsigned;
 //! Restores x87 floating-point unit to a previous configuration `r` returned from initFpuPrecision().
 void restoreFpuPrecision(unsigned r);
 
@@ -349,7 +349,7 @@ struct SystemAllocator {
      * \return A suitable aligned block of memory of `sz` bytes.
      * \throw std::bad_alloc if memory allocation failed.
      */
-    static void* allocate(std::size_t sz, std::align_val_t align = default_align);
+    static auto allocate(std::size_t sz, std::align_val_t align = default_align) -> void*;
 
     //! Reallocates the given area of memory, which must be null or have been allocated via a call to `allocate`.
     /*!
@@ -361,7 +361,7 @@ struct SystemAllocator {
      * \return On success, a new block of memory of `sz` bytes. On failure, `mem` remains valid.
      * \throw std::bad_alloc if memory allocation failed.
      */
-    static void* reallocate(void* mem, std::size_t sz);
+    static auto reallocate(void* mem, std::size_t sz) -> void*;
 
     //! Frees the given memory block, which must have been allocated via a call to `allocate` or `reallocate`.
     static void deallocate(void* mem, std::size_t sz = no_size_info, std::align_val_t align = default_align);

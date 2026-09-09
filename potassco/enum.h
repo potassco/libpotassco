@@ -73,11 +73,11 @@ struct EnumMeta<EnumT, std::void_t<decltype(enable_meta(c_type<EnumT>))>> : std:
     static constexpr auto c_meta       = enable_meta(c_type<EnumT>);
     static constexpr auto meta_entries = requires { c_meta.entries(); };
 
-    static constexpr underlying_type  min() { return c_meta.min(); }
-    static constexpr underlying_type  max() { return c_meta.max(); }
-    static constexpr std::size_t      count() { return c_meta.count(); }
-    static constexpr bool             valid(underlying_type v) { return c_meta.valid(v); }
-    static constexpr std::string_view name(EnumT e) { return c_meta.name(e); }
+    static constexpr auto min() -> underlying_type { return c_meta.min(); }
+    static constexpr auto max() -> underlying_type { return c_meta.max(); }
+    static constexpr auto count() -> std::size_t { return c_meta.count(); }
+    static constexpr bool valid(underlying_type v) { return c_meta.valid(v); }
+    static constexpr auto name(EnumT e) -> std::string_view { return c_meta.name(e); }
 };
 
 template <std::size_t N>
@@ -92,7 +92,7 @@ struct FixedString {
     char                         data[N + 1];
 };
 template <auto S>
-consteval const auto& data() {
+consteval auto data() -> const auto& {
     return S.data;
 }
 template <auto V>
@@ -212,8 +212,8 @@ struct EnumEntries {
         return min() == 0 && static_cast<std::size_t>(max()) == count() - 1;
     }
     [[nodiscard]] constexpr bool valid(UT v) const noexcept { return find(static_cast<EnumT>(v)) != &null_elem; }
-    [[nodiscard]] constexpr std::string_view    name(EnumT e) const noexcept { return find(e)->second; }
-    [[nodiscard]] constexpr const element_type* find(EnumT e) const noexcept {
+    [[nodiscard]] constexpr auto name(EnumT e) const noexcept -> std::string_view { return find(e)->second; }
+    [[nodiscard]] constexpr auto find(EnumT e) const noexcept -> const element_type* {
         if (trivial()) {
             return to_underlying(e) >= min() && to_underlying(e) <= max() ? vals.data() + to_underlying(e) : &null_elem;
         }
@@ -222,7 +222,7 @@ struct EnumEntries {
         });
         return it != vals.end() && it->first == e ? &*it : &null_elem;
     }
-    constexpr const container_type& entries() const noexcept { return vals; }
+    constexpr auto entries() const noexcept -> const container_type& { return vals; }
 
     container_type vals{};
 };

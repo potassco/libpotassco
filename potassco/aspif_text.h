@@ -51,22 +51,22 @@ private:
     //! Parses statements until the next step directive or input is exhausted.
     void parseStatements();
 
-    bool   matchDirective();
-    void   matchRule(char peek);
-    void   matchAtoms(std::string_view sv);
-    void   matchLits();
-    void   matchCondition();
-    void   matchAgg();
-    void   matchDelim(char);
-    bool   matchOpt(std::string_view ts);
-    Atom_t matchId();
-    Lit_t  matchLit();
-    int    matchInt();
-    auto   matchHeuMod() -> DomModifier;
-    void   matchTerm();
-    void   matchAtomArg();
-    void   matchStr();
-    void   push(char c);
+    bool matchDirective();
+    void matchRule(char peek);
+    void matchAtoms(std::string_view sv);
+    void matchLits();
+    void matchCondition();
+    void matchAgg();
+    void matchDelim(char);
+    bool matchOpt(std::string_view ts);
+    auto matchId() -> Atom_t;
+    auto matchLit() -> Lit_t;
+    int  matchInt();
+    auto matchHeuMod() -> DomModifier;
+    void matchTerm();
+    void matchAtomArg();
+    void matchStr();
+    void push(char c);
 
     struct Data;
     AbstractProgram* out_;

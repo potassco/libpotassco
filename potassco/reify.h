@@ -45,8 +45,8 @@ public:
      */
     explicit Reifier(std::ostream& out, const Options& opts);
     ~Reifier() noexcept override;
-    Reifier(const Reifier&)            = delete;
-    Reifier& operator=(const Reifier&) = delete;
+    Reifier(const Reifier&)                    = delete;
+    auto operator=(const Reifier&) -> Reifier& = delete;
 
     //! Parses an aspif program and writes facts to the output stream.
     void parse(std::istream& in);

@@ -309,10 +309,10 @@ bool matchDomHeuPred(std::string_view in, std::string_view& atom, DomModifier& t
 /////////////////////////////////////////////////////////////////////////////////////////
 // SmodelsOutput
 /////////////////////////////////////////////////////////////////////////////////////////
-static constexpr Lit_t smLit(const WeightLit& x) { return x.weight >= 0 ? x.lit : -x.lit; }
-static constexpr Lit_t smLit(Lit_t x) { return x; }
+static constexpr auto smLit(const WeightLit& x) -> Lit_t { return x.weight >= 0 ? x.lit : -x.lit; }
+static constexpr auto smLit(Lit_t x) -> Lit_t { return x; }
 template <typename T>
-static constexpr unsigned negSize(const std::span<T>& lits) {
+static constexpr auto negSize(const std::span<T>& lits) -> unsigned {
     return static_cast<unsigned>(std::ranges::count_if(lits, [](auto x) { return smLit(x) < 0; }));
 }
 
@@ -340,17 +340,17 @@ SmodelsOutput::SmodelsOutput(std::ostream& os, bool ext, Atom_t fAtom)
     , ext_(ext)
     , inc_(false)
     , fHead_(false) {}
-SmodelsOutput& SmodelsOutput::startRule(SmodelsType rt) {
+auto SmodelsOutput::startRule(SmodelsType rt) -> SmodelsOutput& {
     POTASSCO_CHECK_PRE(sec_ == 0 || rt == SmodelsType::end || rt >= SmodelsType::clasp_increment,
                        "adding rules after symbols not supported");
     os_ << to_underlying(rt);
     return *this;
 }
-SmodelsOutput& SmodelsOutput::add(unsigned i) {
+auto SmodelsOutput::add(unsigned i) -> SmodelsOutput& {
     os_ << " " << i;
     return *this;
 }
-SmodelsOutput& SmodelsOutput::add(HeadType ht, AtomSpan head) {
+auto SmodelsOutput::add(HeadType ht, AtomSpan head) -> SmodelsOutput& {
     if (head.empty()) {
         POTASSCO_CHECK_PRE(false_ != 0 && ht == HeadType::disjunctive, "empty head requires false atom");
         fHead_ = true;
@@ -363,13 +363,13 @@ SmodelsOutput& SmodelsOutput::add(HeadType ht, AtomSpan head) {
     return *this;
 }
 
-SmodelsOutput& SmodelsOutput::add(LitSpan lits) {
+auto SmodelsOutput::add(LitSpan lits) -> SmodelsOutput& {
     unsigned neg = negSize(lits), size = size_cast<unsigned>(lits);
     add(size).add(neg);
     print(os_, lits, neg, size - neg);
     return *this;
 }
-SmodelsOutput& SmodelsOutput::add(Weight_t bound, WeightLitSpan lits, bool card) {
+auto SmodelsOutput::add(Weight_t bound, WeightLitSpan lits, bool card) -> SmodelsOutput& {
     unsigned neg = negSize(lits), size = size_cast<unsigned>(lits);
     if (not card) {
         add(static_cast<unsigned>(bound));
@@ -384,7 +384,7 @@ SmodelsOutput& SmodelsOutput::add(Weight_t bound, WeightLitSpan lits, bool card)
     }
     return *this;
 }
-SmodelsOutput& SmodelsOutput::endRule() {
+auto SmodelsOutput::endRule() -> SmodelsOutput& {
     os_ << '\n';
     return *this;
 }

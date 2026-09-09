@@ -53,22 +53,22 @@ public:
     //! Options for configuring reading of smodels format.
     struct Options {
         //! Enable clasp extensions for handling incremental programs.
-        Options& enableClaspExt() {
+        auto enableClaspExt() -> Options& {
             claspExt = true;
             return *this;
         }
         //! Convert _edge/_acyc_ atoms to edge directives.
-        Options& convertEdges() {
+        auto convertEdges() -> Options& {
             cEdge = true;
             return *this;
         }
         //! Convert _heuristic atoms to heuristic directives.
-        Options& convertHeuristic() {
+        auto convertHeuristic() -> Options& {
             cHeuristic = true;
             return *this;
         }
         //! Remove converted atoms from the output.
-        Options& dropConverted() {
+        auto dropConverted() -> Options& {
             filter = true;
             return *this;
         }
@@ -141,8 +141,8 @@ public:
      * set to 0 if integrity constraints are not used.
      */
     SmodelsOutput(std::ostream& os, bool enableClaspExt, Atom_t falseAtom);
-    SmodelsOutput(const SmodelsOutput&)            = delete;
-    SmodelsOutput& operator=(const SmodelsOutput&) = delete;
+    SmodelsOutput(const SmodelsOutput&)                    = delete;
+    auto operator=(const SmodelsOutput&) -> SmodelsOutput& = delete;
 
     //! Prepares the object for a new program.
     /*!
@@ -174,17 +174,17 @@ public:
 
 private:
     //! Starts writing a rule of type `rt`.
-    SmodelsOutput& startRule(SmodelsType rt);
+    auto startRule(SmodelsType rt) -> SmodelsOutput&;
     //! Writes the given head.
-    SmodelsOutput& add(HeadType ht, AtomSpan head);
+    auto add(HeadType ht, AtomSpan head) -> SmodelsOutput&;
     //! Writes the given normal body in smodels format, i.e. `size(lits)` `size(B-)` `atoms in B-` `atoms in B+`
-    SmodelsOutput& add(LitSpan lits);
+    auto add(LitSpan lits) -> SmodelsOutput&;
     //! Writes the given extended body in smodels format.
-    SmodelsOutput& add(Weight_t bound, WeightLitSpan lits, bool card);
+    auto add(Weight_t bound, WeightLitSpan lits, bool card) -> SmodelsOutput&;
     //! Writes `i`.
-    SmodelsOutput& add(unsigned i);
+    auto add(unsigned i) -> SmodelsOutput&;
     //! Terminates the active rule by writing a newline.
-    SmodelsOutput& endRule();
+    auto endRule() -> SmodelsOutput&;
 
     std::ostream& os_;
     Atom_t        false_;

@@ -54,8 +54,8 @@ public:
      */
     Option(Str name, Str description, ValueDesc&& value, char alias = 0);
     ~Option();
-    Option(const Option&)            = delete;
-    Option& operator=(const Option&) = delete;
+    Option(const Option&)                    = delete;
+    auto operator=(const Option&) -> Option& = delete;
 
     [[nodiscard]] auto name() const -> std::string_view { return str_[str_name]; }
     [[nodiscard]] auto id() const -> uint32_t { return id_; }
@@ -75,7 +75,7 @@ public:
      * Occurrences of %D, %I, and %A in the description are replaced
      * with the option's default value, implicit value, and the argument name, respectively.
      */
-    std::string& description(std::string& out) const;
+    auto description(std::string& out) const -> std::string&;
 
     //! Assigns the given value to the option.
     [[nodiscard]] bool assign(std::string_view value);
@@ -123,20 +123,20 @@ public:
     explicit OptionGroup(std::string_view caption = "", DescriptionLevel descLevel = desc_level_default);
 
     //! Returns the caption of this group.
-    [[nodiscard]] std::string_view caption() const { return caption_; }
+    [[nodiscard]] auto caption() const -> std::string_view { return caption_; }
 
     //! Returns whether the group does not contain any options.
     [[nodiscard]] bool empty() const { return options_.empty(); }
     //! Returns the number of options in this group.
-    [[nodiscard]] std::size_t size() const { return options_.size(); }
+    [[nodiscard]] auto size() const -> std::size_t { return options_.size(); }
     //! Returns the options in this group.
     [[nodiscard]] auto options() const -> std::span<const SharedOption> { return std::span{options_}; }
     //! Returns the description level of this group.
-    [[nodiscard]] DescriptionLevel descLevel() const { return level_; }
+    [[nodiscard]] auto descLevel() const -> DescriptionLevel { return level_; }
     //! Returns an option with the given name or nullptr if the group has no such option.
-    [[nodiscard]] Option* find(std::string_view name) const;
+    [[nodiscard]] auto find(std::string_view name) const -> Option*;
     //! Returns an option with the given alias or nullptr if the group has no such option.
-    [[nodiscard]] Option* find(char alias) const;
+    [[nodiscard]] auto find(char alias) const -> Option*;
     //! Returns the ith option in this group.
     [[nodiscard]] auto operator[](std::size_t i) const -> const SharedOption& {
         assert(i < size());
@@ -171,14 +171,14 @@ public:
          *
          * \throw Error if `name` is empty or `spec` is not valid.
          */
-        Init& operator()(Str name, std::string_view spec, ValueDesc value, Str desc);
+        auto operator()(Str name, std::string_view spec, ValueDesc value, Str desc) -> Init&;
 
         /*!
          * \overload Init::operator()(Str, std::string_view, ValueDesc, Str)
          * \note `name` can be either a plain name (e.g., `foo`) or a spec and a name separated by a comma (e.g.,
          *       `-f!,foo`).
          */
-        Init& operator()(Str name, ValueDesc value, Str desc);
+        auto operator()(Str name, ValueDesc value, Str desc) -> Init&;
 
     private:
         OptionContext* ctx_{nullptr};
@@ -201,7 +201,7 @@ public:
      * ;                                        // <- note the semicolon!
      * \endcode
      */
-    Init addOptions();
+    auto addOptions() -> Init;
 
     //! Adds the given option to this group.
     void addOption(std::unique_ptr<Option> option);
@@ -212,7 +212,7 @@ public:
     //! Creates a formatted description of all options with level() <= level in this group.
     void format(OptionOutput& out, size_t maxW, DescriptionLevel level = desc_level_default) const;
 
-    [[nodiscard]] std::size_t maxColumn(OptionOutput& out, DescriptionLevel level) const;
+    [[nodiscard]] auto maxColumn(OptionOutput& out, DescriptionLevel level) const -> std::size_t;
 
 private:
     friend class OptionContext;
@@ -236,7 +236,7 @@ public:
 
     explicit OptionContext(std::string_view caption = "", DescriptionLevel descDefault = desc_level_default);
 
-    [[nodiscard]] std::string_view caption() const;
+    [[nodiscard]] auto caption() const -> std::string_view;
 
     //! Adds the given group of options to this context.
     /*!
@@ -247,9 +247,9 @@ public:
      *        has the same short or long name as one of the
      *        options in this context.
      */
-    OptionContext& add(const OptionGroup& group);
-    OptionContext& add(OptionGroup&& group);
-    OptionContext& add(std::size_t groupId, std::unique_ptr<Option>);
+    auto add(const OptionGroup& group) -> OptionContext&;
+    auto add(OptionGroup&& group) -> OptionContext&;
+    auto add(std::size_t groupId, std::unique_ptr<Option>) -> OptionContext&;
     //! Returns an object that can be used to add options to a group with the given caption.
     /*!
      * \note Given an OptionContext `ctx`, the function behaves like:
@@ -268,7 +268,7 @@ public:
      * \throw DuplicateOption if an option with the name aliasName already exists.
      * \see index(std::string_view)
      */
-    OptionContext& addAlias(std::size_t idx, std::string_view aliasName);
+    auto addAlias(std::size_t idx, std::string_view aliasName) -> OptionContext&;
 
     //! Adds all groups (and their options) from other to this context.
     /*!
@@ -278,12 +278,12 @@ public:
      *
      * \see OptionContext& add(const OptionGroup&);
      */
-    OptionContext& add(const OptionContext& other);
+    auto add(const OptionContext& other) -> OptionContext&;
 
     //! Returns the number of options in this context.
-    [[nodiscard]] std::size_t size() const { return options_.size(); }
+    [[nodiscard]] auto size() const -> std::size_t { return options_.size(); }
     //! Returns the number of groups in this context
-    [[nodiscard]] std::size_t groups() const { return groups_.size(); }
+    [[nodiscard]] auto groups() const -> std::size_t { return groups_.size(); }
 
     enum FindType { find_name = 1, find_prefix = 2, find_name_or_prefix = find_name | find_prefix, find_alias = 4 };
 
@@ -320,13 +320,13 @@ public:
     [[nodiscard]] auto getActiveDescLevel() const -> DescriptionLevel { return descLevel_; }
 
     //! Writes a formatted description of options in this context.
-    OptionOutput& description(OptionOutput& out) const;
+    auto description(OptionOutput& out) const -> OptionOutput&;
 
     //! Returns the default command-line of this context.
-    [[nodiscard]] std::string defaults(std::size_t prefixSize = 0) const;
+    [[nodiscard]] auto defaults(std::size_t prefixSize = 0) const -> std::string;
 
     //! Writes a formatted description of options in this context to os.
-    friend std::ostream& operator<<(std::ostream& os, const OptionContext& ctx);
+    friend auto operator<<(std::ostream& os, const OptionContext& ctx) -> std::ostream&;
 
     //! Assigns any default values to all options not in exclude.
     /*!
@@ -341,8 +341,9 @@ private:
 
     [[nodiscard]] auto findGroupKey(std::string_view name) const -> std::size_t;
     [[nodiscard]] auto findOption(std::string_view name, FindType t) const -> std::size_t;
-    void               addToIndex(const OptionGroup::SharedOption& opt);
-    OptionGroup&       addGroup(std::string_view name, DescriptionLevel level, std::size_t* idx = nullptr);
+
+    void addToIndex(const OptionGroup::SharedOption& opt);
+    auto addGroup(std::string_view name, DescriptionLevel level, std::size_t* idx = nullptr) -> OptionGroup&;
 
     Name2Key         index_;
     OptionList       options_;
@@ -356,9 +357,9 @@ class ParsedOptions {
 public:
     ParsedOptions();
     ~ParsedOptions();
-    [[nodiscard]] bool        empty() const { return parsed_.empty(); }
-    [[nodiscard]] std::size_t size() const { return parsed_.size(); }
-    [[nodiscard]] bool        contains(std::string_view name) const { return parsed_.contains(name); }
+    [[nodiscard]] bool empty() const { return parsed_.empty(); }
+    [[nodiscard]] auto size() const -> std::size_t { return parsed_.size(); }
+    [[nodiscard]] bool contains(std::string_view name) const { return parsed_.contains(name); }
 
     void add(std::string_view name) { parsed_.emplace(name); }
     void merge(ParsedOptions&& other);
@@ -424,12 +425,12 @@ public:
     using FindType = OptionContext::FindType;
     explicit OptionParser(ParseContext& ctx);
     virtual ~OptionParser();
-    ParseContext& parse();
+    auto parse() -> ParseContext&;
 
 protected:
-    [[nodiscard]] ParseContext& ctx() const { return *ctx_; }
-    [[nodiscard]] Option&       getOption(std::string_view name, FindType ft) const;
-    void                        applyValue(Option& opt, std::string_view value);
+    [[nodiscard]] auto ctx() const -> ParseContext& { return *ctx_; }
+    [[nodiscard]] auto getOption(std::string_view name, FindType ft) const -> Option&;
+    void               applyValue(Option& opt, std::string_view value);
 
 private:
     virtual void  doParse() = 0;
@@ -440,13 +441,13 @@ private:
 struct DefaultFormat {
     enum class Element { caption, alias, name, arg, description };
     using StyleCb = auto (*)(Element, bool) -> std::string_view;
-    static std::string& format(std::string& buffer, const OptionContext&) { return buffer; }
+    static auto format(std::string& buffer, const OptionContext&) -> std::string& { return buffer; }
     //! Writes g.caption() to buffer.
-    static std::string& format(std::string& buffer, const OptionGroup& g, StyleCb = nullptr);
+    static auto format(std::string& buffer, const OptionGroup& g, StyleCb = nullptr) -> std::string&;
     //! Writes long, short, and argument name followed by option description to buffer.
-    static std::string& format(std::string& buffer, const Option& o, std::size_t maxWidth, StyleCb = nullptr);
+    static auto format(std::string& buffer, const Option& o, std::size_t maxWidth, StyleCb = nullptr) -> std::string&;
     //! Returns the formatted column width for the given option.
-    static std::size_t columnWidth(const Option& o);
+    static auto columnWidth(const Option& o) -> std::size_t;
 };
 
 //! Base class for printing options.
@@ -551,15 +552,15 @@ enum CommandLineFlags {
  * \throw SyntaxError if argument syntax is incorrect.
  * \throw UnknownOption if an argument is found that does not match any option.
  */
-ParseContext& parseCommandArray(ParseContext& ctx, std::span<const char* const> args, PosOption pos = nullptr,
-                                unsigned flags = 0);
+auto parseCommandArray(ParseContext& ctx, std::span<const char* const> args, PosOption pos = nullptr,
+                       unsigned flags = 0) -> ParseContext&;
 
 //! Parses the command line given in `args`.
 /*!
  * \copydetails parseCommandArray
  */
-ParseContext& parseCommandString(ParseContext& ctx, std::string_view args, PosOption pos = nullptr,
-                                 unsigned flags = command_line_allow_flag_value);
+auto parseCommandString(ParseContext& ctx, std::string_view args, PosOption pos = nullptr,
+                        unsigned flags = command_line_allow_flag_value) -> ParseContext&;
 
 //! Parses a config file having the format key = value.
 /*!
@@ -574,6 +575,6 @@ ParseContext& parseCommandString(ParseContext& ctx, std::string_view args, PosOp
  * \throw SyntaxError if config file syntax is incorrect.
  * \throw UnknownOption if a key is found that does not match any option.
  */
-ParseContext& parseCfgFile(ParseContext& ctx, std::istream& is);
+auto parseCfgFile(ParseContext& ctx, std::istream& is) -> ParseContext&;
 
 } // namespace Potassco::ProgramOptions

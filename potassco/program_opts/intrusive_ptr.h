@@ -37,7 +37,7 @@ public:
     constexpr IntrusiveSharedPtr(const IntrusiveSharedPtr& o) noexcept : ptr_(o.ptr_) { addRef(); }
     constexpr IntrusiveSharedPtr(IntrusiveSharedPtr&& o) noexcept : ptr_(std::exchange(o.ptr_, nullptr)) {}
     constexpr ~IntrusiveSharedPtr() noexcept { release(); }
-    constexpr IntrusiveSharedPtr& operator=(IntrusiveSharedPtr other) noexcept {
+    constexpr auto operator=(IntrusiveSharedPtr other) noexcept -> IntrusiveSharedPtr& {
         this->swap(other);
         return *this;
     }

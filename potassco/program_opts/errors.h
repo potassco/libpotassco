@@ -40,8 +40,8 @@ class SyntaxError : public Error {
 public:
     enum Type { missing_value, extra_value, invalid_format };
     SyntaxError(Type t, std::string_view key);
-    [[nodiscard]] Type               type() const { return type_; }
-    [[nodiscard]] const std::string& key() const { return key_; }
+    [[nodiscard]] Type type() const { return type_; }
+    [[nodiscard]] auto key() const -> const std::string& { return key_; }
 
 private:
     std::string key_;
@@ -53,9 +53,9 @@ class ContextError : public Error {
 public:
     enum Type : int { duplicate_option, unknown_option, ambiguous_option, unknown_group };
     ContextError(std::string_view ctx, Type t, std::string_view key, std::string_view desc = {});
-    [[nodiscard]] Type               type() const { return type_; }
-    [[nodiscard]] const std::string& key() const { return key_; }
-    [[nodiscard]] const std::string& ctx() const { return ctx_; }
+    [[nodiscard]] Type type() const { return type_; }
+    [[nodiscard]] auto key() const -> const std::string& { return key_; }
+    [[nodiscard]] auto ctx() const -> const std::string& { return ctx_; }
 
 private:
     std::string ctx_;
@@ -82,10 +82,10 @@ class ValueError : public Error {
 public:
     enum Type { multiple_occurrences, invalid_default, invalid_value };
     ValueError(std::string_view ctx, Type t, std::string_view opt, std::string_view value, std::string_view msg = {});
-    [[nodiscard]] Type               type() const { return type_; }
-    [[nodiscard]] const std::string& key() const { return key_; }
-    [[nodiscard]] const std::string& ctx() const { return ctx_; }
-    [[nodiscard]] const std::string& value() const { return value_; }
+    [[nodiscard]] Type type() const { return type_; }
+    [[nodiscard]] auto key() const -> const std::string& { return key_; }
+    [[nodiscard]] auto ctx() const -> const std::string& { return ctx_; }
+    [[nodiscard]] auto value() const -> const std::string& { return value_; }
 
 private:
     std::string ctx_;
