@@ -102,7 +102,7 @@ private:
     //! Reads an optional external block and the number of models.
     void readExtra();
     void matchBody(RuleBuilder& rule);
-    void matchSum(RuleBuilder& rule, bool weights);
+    void matchSum(RuleBuilder& rule, SmodelsType t);
     bool mapSymbol(Atom_t atom, std::string_view name);
 
     AbstractProgram&       out_;

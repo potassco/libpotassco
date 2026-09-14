@@ -105,35 +105,35 @@ bool SmodelsInput::doParse() {
 void SmodelsInput::matchBody(RuleBuilder& rule) {
     auto len = matchUint();
     auto neg = matchUint();
-    for (rule.startBody(); len--;) {
-        Lit_t p = lit(matchAtom());
+    for (auto sp = rule.startBody().allocBodyGoals(len); auto& p : sp) {
+        p = lit(matchAtom());
         if (neg) {
             p *= -1;
             --neg;
         }
-        rule.addGoal(p);
     }
 }
 
-void SmodelsInput::matchSum(RuleBuilder& rule, bool weights) {
+void SmodelsInput::matchSum(RuleBuilder& rule, SmodelsType type) {
     auto bnd = matchUint();
     auto len = matchUint();
     auto neg = matchUint();
-    if (not weights) {
+    if (type == SmodelsType::cardinality) {
         std::swap(len, bnd);
         std::swap(bnd, neg);
     }
-    rule.startSum(static_cast<Weight_t>(bnd));
-    while (len--) {
-        auto p = lit(matchAtom());
+    type != SmodelsType::optimize ? rule.startSum(static_cast<Weight_t>(bnd))
+                                  : rule.startMinimize(static_cast<Weight_t>(bnd));
+    auto sp = rule.allocSumGoals(len);
+    for (auto& p : sp) {
+        p = {.lit = lit(matchAtom()), .weight = 1};
         if (neg) {
-            p *= -1;
+            p.lit *= -1;
             --neg;
         }
-        rule.addGoal(p);
     }
-    if (weights) {
-        for (auto& [_, weight] : rule.sumLits()) { weight = matchWeight(true, "non-negative weight expected"); }
+    if (type != SmodelsType::cardinality) {
+        for (auto& [_, weight] : sp) { weight = matchWeight(true, "non-negative weight expected"); }
     }
 }
 
@@ -147,7 +147,9 @@ void SmodelsInput::readRules() {
             case SmodelsType::choice:
             case SmodelsType::disjunctive: // n a1...an
                 rule.start(rt == SmodelsType::choice ? HeadType::choice : HeadType::disjunctive);
-                for (unsigned i = matchAtom("positive head size expected"); i--;) { rule.addHead(matchAtom()); }
+                for (auto sp = rule.allocHeadAtoms(matchAtom("positive head size expected")); auto& a : sp) {
+                    a = matchAtom();
+                }
                 matchBody(rule);
                 rule.end(&out_);
                 break;
@@ -159,13 +161,12 @@ void SmodelsInput::readRules() {
             case SmodelsType::cardinality: // fall through
             case SmodelsType::weight:      // fall through
                 rule.start(HeadType::disjunctive).addHead(matchAtom());
-                matchSum(rule, rt == SmodelsType::weight);
+                matchSum(rule, rt);
                 rule.end(&out_);
                 break;
             case SmodelsType::optimize:
-                rule.startMinimize(minPrio++);
-                matchSum(rule, true);
-                rule.end(&out_);
+                matchSum(rule, rt);
+                rule.setBound(minPrio++).end(&out_);
                 break;
             case SmodelsType::clasp_increment:
                 require(opts_.claspExt && matchId() == 0, "unrecognized rule type");

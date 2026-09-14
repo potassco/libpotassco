@@ -103,6 +103,7 @@ bool AspifInput::doParse() {
                 rule.end(&out_);
                 break;
             case AspifType::project:
+                rule.start();
                 matchAtoms();
                 out_.project(rule.head());
                 break;
@@ -179,14 +180,18 @@ void AspifInput::outTerm(std::string_view term, LitSpan cond) {
     out_.output(tId, cond);
 }
 void AspifInput::matchAtoms() {
-    for (auto len = matchUint("number of atoms expected"); len--;) { data_->rule.addHead(matchAtom()); }
+    for (auto sp = data_->rule.allocHeadAtoms(matchUint("number of atoms expected")); auto& a : sp) { a = matchAtom(); }
 }
 void AspifInput::matchLits() {
     data_->rule.startBody();
-    for (auto len = matchUint("number of literals expected"); len--;) { data_->rule.addGoal(matchLit()); }
+    for (auto sp = data_->rule.allocBodyGoals(matchUint("number of literals expected")); auto& lit : sp) {
+        lit = matchLit();
+    }
 }
 void AspifInput::matchWLits(bool positive) {
-    for (auto len = matchUint("number of literals expected"); len--;) { data_->rule.addGoal(matchWLit(positive)); }
+    for (auto sp = data_->rule.allocSumGoals(matchUint("number of literals expected")); auto& lit : sp) {
+        lit = matchWLit(positive);
+    }
 }
 void AspifInput::matchString() {
     data_->sym.clear();
@@ -336,6 +341,10 @@ auto AspifOutput::map(Atom_t atom) -> Atom_t {
     }
     return m;
 }
+auto AspifOutput::map(Lit_t in) -> Lit_t {
+    auto a = map(atom(in));
+    return in < 0 ? neg(a) : lit(a);
+}
 template <typename T>
 auto AspifOutput::map(std::span<T>& lits) -> std::span<T> {
     auto maxAtom = 0u;
@@ -346,31 +355,24 @@ auto AspifOutput::map(std::span<T>& lits) -> std::span<T> {
         identityMax_ = std::max(identityMax_, maxAtom);
         return lits;
     }
-    RuleBuilder& rb = data_->rb;
-    if constexpr (std::is_same_v<std::remove_const_t<T>, Atom_t>) {
-        rb.clearHead();
-        for (auto a : lits) { rb.addHead(map(a)); }
-        return rb.head();
+    RuleBuilder& rb  = data_->rb;
+    auto         n   = static_cast<uint32_t>(lits.size());
+    using MappedType = std::remove_const_t<T>;
+    auto mapped      = std::span<MappedType>{};
+    if constexpr (std::is_same_v<MappedType, Atom_t>) {
+        mapped = rb.clearHead().start().allocHeadAtoms(n);
     }
     else {
         rb.clearBody();
-        if constexpr (std::is_same_v<std::remove_const_t<T>, Lit_t>) {
-            for (auto x : lits) {
-                auto a = map(atom(x));
-                rb.addGoal(x < 0 ? neg(a) : lit(a));
-            }
-            return rb.body();
+        if constexpr (std::is_same_v<MappedType, Lit_t>) {
+            mapped = rb.startBody().allocBodyGoals(n);
         }
         else {
-            rb.startSum(static_cast<Weight_t>(lits.size()));
-            for (auto x : lits) {
-                auto a = map(atom(x));
-                x.lit  = lit(x) < 0 ? neg(a) : lit(a);
-                rb.addGoal(x);
-            }
-            return rb.sumLits();
+            mapped = rb.startSum(static_cast<Weight_t>(lits.size())).allocSumGoals(n);
         }
     }
+    std::ranges::transform(lits, mapped.data(), [&](auto in) { return map(in); });
+    return mapped;
 }
 auto AspifOutput::endDir() -> AspifOutput& {
     os_ << '\n';

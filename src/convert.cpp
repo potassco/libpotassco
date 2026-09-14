@@ -143,18 +143,27 @@ struct SmodelsConvert::SmData {
         x.head  = 1;
         return x.sm();
     }
-    auto mapHead(AtomSpan h, HeadType ht = HeadType::disjunctive) -> RuleBuilder& {
-        rule.clear().start(ht);
-        for (auto a : h) { rule.addHead(mapHeadAtom(a)); }
-        if (h.empty()) {
+    void mapHead(AtomSpan h) {
+        if (auto n = static_cast<uint32_t>(h.size()); n) {
+            std::ranges::transform(h, rule.allocHeadAtoms(n).data(), [&](Atom_t a) { return mapHeadAtom(a); });
+        }
+        else {
             rule.addHead(false_atom);
         }
-        return rule;
     }
-    template <class T>
-    auto mapBody(std::span<const T> in) -> RuleBuilder& {
-        for (const auto& x : in) { rule.addGoal(mapLit(x)); }
-        return rule;
+    template <typename T>
+    void mapBody(std::span<const T> in) {
+        if (auto n = static_cast<uint32_t>(in.size()); n) {
+            using MappedT = std::span<std::remove_const_t<T>>;
+            MappedT sp;
+            if constexpr (std::is_same_v<typename MappedT::value_type, Lit_t>) {
+                sp = rule.allocBodyGoals(n);
+            }
+            else {
+                sp = rule.allocSumGoals(n);
+            }
+            std::ranges::transform(in, sp.data(), [&](auto lit) { return mapLit(lit); });
+        }
     }
     void addOutput(Atom& atom, std::string_view str) {
         POTASSCO_CHECK_PRE(not atom.hasName(), "Redefinition: atom '%u:%" PRIsv "' already shown as '%s'", atom.sm(),
@@ -235,12 +244,12 @@ auto SmodelsConvert::makeAtom(LitSpan lits, Lit_t last, bool named) -> Atom_t {
     Atom_t id;
     if (sz != 1 || front <= 0 || (data_->mapAtom(atom(front)).show && named)) {
         // aux :- lits [, last]
-        data_->rule.clear().addHead(id = data_->newAtom());
-        auto& r = data_->mapBody(lits);
+        data_->rule.clear().start().addHead(id = data_->newAtom()).startBody();
+        data_->mapBody(lits);
         if (last) {
-            r.addGoal(last);
+            data_->rule.addGoal(last);
         }
-        r.end(&out_);
+        data_->rule.end(&out_);
     }
     else {
         auto& ma = data_->mapAtom(atom(front));
@@ -256,8 +265,11 @@ void SmodelsConvert::beginStep() {
 }
 void SmodelsConvert::rule(HeadType ht, AtomSpan head, LitSpan body) {
     if (not head.empty() || ht == HeadType::disjunctive) {
-        data_->mapHead(head, ht).startBody();
-        data_->mapBody(body).end(&out_);
+        data_->rule.clear().start(ht);
+        data_->mapHead(head);
+        data_->rule.startBody();
+        data_->mapBody(body);
+        data_->rule.end(&out_);
     }
 }
 void SmodelsConvert::rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan body) {
@@ -268,7 +280,9 @@ void SmodelsConvert::rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitS
             SmodelsConvert::rule(ht, head, {});
             return;
         }
-        data_->mapHead(head, ht).startSum(bound);
+        data_->rule.clear().start(ht);
+        data_->mapHead(head);
+        data_->rule.startSum(bound);
         data_->mapBody(body);
         auto mHead = data_->rule.head();
         auto mBody = data_->rule.sum().lits;
@@ -292,12 +306,12 @@ void SmodelsConvert::outputTerm(Id_t termId, std::string_view name) { data_->add
 void SmodelsConvert::output(Id_t termId, LitSpan cond) {
     auto* term = termId < data_->terms.size() ? &data_->terms[termId] : nullptr;
     POTASSCO_CHECK_PRE(term != nullptr && term->name != id_max, "Undefined: term %u is unknown", termId);
-    auto condAtom = makeAtom(cond, neg(term->last), false);
+    auto condAtom = lit(makeAtom(cond, neg(term->last), false));
     if (not term->atom) {
         term->atom = data_->newAtom();
         data_->output.emplace_back(*term);
     }
-    data_->rule.clear().addHead(term->atom).addGoal(lit(condAtom)).end(&out_);
+    out_.rule(HeadType::disjunctive, toSpan(term->atom), toSpan(condAtom));
 }
 void SmodelsConvert::external(Atom_t a, TruthValue v) { data_->addExternal(a, v); }
 void SmodelsConvert::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan cond) {
@@ -336,7 +350,7 @@ void SmodelsConvert::flushMinimize() {
         return lhs.prio < rhs.prio || (lhs.prio == rhs.prio && lhs.startPos < rhs.startPos);
     });
     const auto* last = data_->minimize.data();
-    data_->rule.startMinimize(last->prio);
+    data_->rule.clear().startMinimize(last->prio);
     for (const auto& m : data_->minimize) {
         if (last->prio != m.prio) {
             data_->rule.end(&out_);
@@ -348,8 +362,7 @@ void SmodelsConvert::flushMinimize() {
     data_->rule.end(&out_);
 }
 void SmodelsConvert::flushExternal() {
-    LitSpan trueBody{};
-    data_->rule.clear();
+    data_->rule.clear().start(HeadType::choice);
     for (auto ext : data_->external) {
         const auto& a  = data_->mapAtom(ext);
         auto        vt = static_cast<TruthValue>(a.extn);
@@ -361,7 +374,7 @@ void SmodelsConvert::flushExternal() {
                 data_->rule.addHead(at);
             }
             else if (vt == TruthValue::true_) {
-                out_.rule(HeadType::disjunctive, toSpan(at), trueBody);
+                out_.rule(HeadType::disjunctive, toSpan(at), {});
             }
         }
         else {
@@ -369,7 +382,7 @@ void SmodelsConvert::flushExternal() {
         }
     }
     if (auto head = data_->rule.head(); not head.empty()) {
-        out_.rule(HeadType::choice, head, trueBody);
+        data_->rule.end(&out_);
     }
 }
 void SmodelsConvert::flushHeuristic() {

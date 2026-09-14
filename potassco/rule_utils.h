@@ -74,9 +74,9 @@ public:
     /*!
      * \name Start functions.
      * Functions for starting the definition of a rule's head or body.
-     * If the active rule is frozen (i.e., end() was called), the active rule is discarded.
+     * If the active rule already has a head/body, the active rule is discarded.
      * \note The body of a rule can be defined before or after its head is defined, but definitions
-     * of head and body must not be mixed.
+     *       of head and body must not overlap.
      */
     //@{
     //! Start definition of the rule's head, which can be either disjunctive or a choice.
@@ -93,25 +93,31 @@ public:
 
     /*!
      * \name Update functions.
-     * Functions for adding elements to the active rule.
-     * \note Update functions shall not be called once a rule is frozen.
-     * \note Calling an update function implicitly starts the definition of the corresponding rule part.
+     * Functions for adding elements to the active part of the rule.
      */
     //@{
     //! Add the given atom to the rule's head.
     auto addHead(Atom_t a) -> RuleBuilder&;
+    //! Allocate and return space for `n` head atoms.
+    auto allocHeadAtoms(uint32_t n) -> std::span<Atom_t> { return allocRange<Atom_t>(head_, body_.end, "Head", n); }
     //! Add lit to the rule's body.
     auto addGoal(Lit_t lit) -> RuleBuilder&;
     auto addGoal(WeightLit lit) -> RuleBuilder&;
     auto addGoal(Lit_t lit, Weight_t w) -> RuleBuilder& { return addGoal(WeightLit{.lit = lit, .weight = w}); }
+    //! Allocate and return space for `n` body literals.
+    auto allocBodyGoals(uint32_t n) -> std::span<Lit_t> {
+        POTASSCO_CHECK_PRE(bodyType() == BodyType::normal);
+        return allocRange<Lit_t>(body_, head_.end, "Body", n);
+    }
+    auto allocSumGoals(uint32_t n) -> std::span<WeightLit> {
+        POTASSCO_CHECK_PRE(bodyType() != BodyType::normal);
+        return allocRange<WeightLit>(body_, head_.end, "Sum", n);
+    }
     //@}
 
     //! Stop definition of rule and add rule to out if given.
-    /*!
-     * Once `end()` was called, the active rule is considered frozen.
-     */
     auto end(AbstractProgram* out = nullptr) -> RuleBuilder&;
-    //! Discard active rule and unfreeze builder.
+    //! Discard the active rule.
     auto clear() -> RuleBuilder&;
     //! Discard the body of the active rule but keep the head if any.
     auto clearBody() -> RuleBuilder&;
@@ -126,44 +132,52 @@ public:
      * \note The result of these functions is only valid until the next call to an update function.
      */
     //@{
-    [[nodiscard]] auto headType() const -> HeadType;
+    [[nodiscard]] auto headType() const -> HeadType { return static_cast<HeadType>(type(head_)); }
     [[nodiscard]] auto head() const -> AtomSpan;
     [[nodiscard]] auto isMinimize() const -> bool;
-    [[nodiscard]] auto bodyType() const -> BodyType;
+    [[nodiscard]] auto bodyType() const -> BodyType { return static_cast<BodyType>(type(body_)); }
     [[nodiscard]] auto body() const -> LitSpan;
     [[nodiscard]] auto bound() const -> Weight_t;
     [[nodiscard]] auto sumLits() const -> std::span<WeightLit>;
     [[nodiscard]] auto findSumLit(Lit_t lit) const -> WeightLit*;
     [[nodiscard]] auto sum() const -> Sum;
     [[nodiscard]] auto rule() const -> Rule;
-    [[nodiscard]] auto frozen() const -> bool;
     [[nodiscard]] auto isFact() const -> bool;
     //@}
 private:
-    auto               alloc(std::size_t n) -> std::span<char>;
-    [[nodiscard]] auto mem() const -> const char* { return mem_.data(); }
     struct Range {
-        static constexpr auto start_bit = 0u;
-        static constexpr auto end_bit   = 1u;
-        static constexpr auto mask      = 3u;
+        [[nodiscard]] bool open() const noexcept { return start == 0u; }
+        [[nodiscard]] auto size() const noexcept -> uint32_t { return end - start; }
 
-        [[nodiscard]] auto start() const -> uint32_t { return clear_mask(startType, mask); }
-        [[nodiscard]] auto end() const -> uint32_t { return clear_mask(endFlag, mask); }
-        [[nodiscard]] auto type() const -> uint32_t { return clear_mask(startType, ~mask); }
-        [[nodiscard]] bool started() const { return test_bit(endFlag, start_bit); }
-        [[nodiscard]] bool finished() const { return test_bit(endFlag, end_bit); }
-        [[nodiscard]] bool open() const { return not test_any(endFlag, mask); }
-        [[nodiscard]] auto size() const -> uint32_t { return end() - start(); }
-
-        uint32_t startType = 0; // 4-byte aligned, align-bits = type
-        uint32_t endFlag   = 0; // 4-byte aligned, align-bits = flags
+        uint32_t start = 0u;
+        uint32_t end   = 0u;
     };
-    void start(Range& r, uint32_t type, const Weight_t* bound = nullptr);
-    void clear(Range& r);
-    template <typename T>
-    void extend(Range& r, const T& elem, const char* what);
+    [[nodiscard]] auto mem() const noexcept -> std::byte* { return const_cast<std::byte*>(mem_.data()); }
+    [[nodiscard]] auto type(const Range& r) const noexcept -> uint32_t;
 
-    using Buffer = DynamicArray<char>;
+    void start(Range& r, uint32_t type, const Weight_t* bound = nullptr);
+    void clear(Range& r, uint32_t oPos);
+    template <typename T>
+    auto append(const T& elem) -> uint32_t {
+        auto sz = static_cast<uint32_t>(sizeof(T));
+        new (mem_.appendForOverwrite(sz).data()) T(elem);
+        return sz;
+    }
+    template <typename T>
+    auto allocRange(Range& r, uint32_t other, const char* what, uint32_t n) -> std::span<T> {
+        POTASSCO_CHECK_PRE(r.start > other || (r.open() && (start(r, 0u), true)), "%s already frozen", what);
+        auto sz  = static_cast<uint32_t>(n * sizeof(T));
+        auto sp  = mem_.appendForOverwrite(sz);
+        r.end   += sz;
+        return std::span{reinterpret_cast<T*>(sp.data()), n};
+    }
+    template <typename T>
+    void appendRange(Range& r, uint32_t other, const char* what, const T& elem) {
+        POTASSCO_CHECK_PRE(r.start > other || (r.open() && (start(r, 0u), true)), "%s already frozen", what);
+        r.end += append(elem);
+    }
+
+    using Buffer = DynamicArray<std::byte>;
     Buffer mem_;
     Range  head_{};
     Range  body_{};

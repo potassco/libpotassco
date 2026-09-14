@@ -717,7 +717,6 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
         REQUIRE(rb.bound() == 4);
         rb.clear();
         rb.startSum(2).addGoal(2, 1).addGoal(-3, 1).addGoal(4, 2).addHead(1).end();
-        REQUIRE_THROWS_AS(rb.setBound(4), std::logic_error);
     }
     SECTION("weaken to cardinality rule") {
         rb.start().addHead(1).startSum(2).addGoal(2, 2).addGoal(-3, 2).addGoal(4, 2).weaken(BodyType::count).end();
@@ -750,7 +749,7 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
         REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{2, -3, 4}));
     }
     SECTION("minimize rule") {
-        SECTION("implicit body") {
+        SECTION("no head") {
             rb.startMinimize(1).addGoal(-3, 2).addGoal(4, 1).addGoal(5).end();
             REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{}));
             REQUIRE(rb.isMinimize());
@@ -759,8 +758,8 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
             REQUIRE(spanEq(rb.sumLits(), std::vector<WeightLit>{{-3, 2}, {4, 1}, {5, 1}}));
             REQUIRE(spanEq(rb.sum().lits, rb.sumLits()));
         }
-        SECTION("explicit body") {
-            rb.startMinimize(1).startSum(0).addGoal(-3, 2).addGoal(4, 1).addGoal(5).end();
+        SECTION("clear head") {
+            rb.start().addHead(2).startMinimize(1).addGoal(-3, 2).addGoal(4, 1).addGoal(5).end();
             REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{}));
             REQUIRE(rb.isMinimize());
             REQUIRE(rb.bodyType() == BodyType::sum);
@@ -889,31 +888,39 @@ TEST_CASE("Test RuleBuilder", "[rule]") {
             REQUIRE(spanEq(mc.sumLits(), exp));
         }
     }
-
-    SECTION("freeze unfreeze") {
-        SECTION("start twice is invalid") {
-            REQUIRE_THROWS_AS(RuleBuilder().addHead(1).start(), std::logic_error);
-            REQUIRE_THROWS_AS(RuleBuilder().startBody().addGoal(2).startBody(), std::logic_error);
-            REQUIRE_THROWS_AS(RuleBuilder().startBody().addGoal(2).addHead(1).startBody(), std::logic_error);
-            REQUIRE_THROWS_AS(RuleBuilder().start().addHead(1).addGoal(2).start(), std::logic_error);
+    SECTION("implicit start and clear") {
+        SECTION("add starts") {
+            REQUIRE_NOTHROW(rb.addHead(1));
+            REQUIRE(rb.headType() == HeadType::disjunctive);
+            REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{1}));
+            rb.clear();
+            REQUIRE_NOTHROW(rb.addGoal(2));
+            REQUIRE(rb.bodyType() == BodyType::normal);
+            REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{2}));
         }
         SECTION("add after other start is invalid") {
             REQUIRE_THROWS_AS(RuleBuilder().start().addHead(1).addGoal(2).addHead(3), std::logic_error);
             REQUIRE_THROWS_AS(RuleBuilder().startBody().addGoal(2).addHead(1).addGoal(3), std::logic_error);
         }
-        SECTION("add after other start is invalid") {
-            REQUIRE_THROWS_AS(RuleBuilder().start().addHead(1).addGoal(2).addHead(3), std::logic_error);
-            REQUIRE_THROWS_AS(RuleBuilder().startBody().addGoal(2).addHead(1).addGoal(3), std::logic_error);
+        SECTION("start twice clears") {
+            REQUIRE_NOTHROW(rb.start().addHead(1).start().addHead(2));
+            REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{2}));
+            rb.clear().addHead(3).startBody().addGoal(1).startSum(2).addGoal(2, 1);
+            REQUIRE(rb.bodyType() == BodyType::sum);
+            REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{}));
+            REQUIRE(spanEq(rb.sumLits(), std::vector<WeightLit>{{2, 1}}));
         }
         SECTION("start after end clears") {
-            REQUIRE_NOTHROW(rb.start().addHead(1).addGoal(2).end().start().addHead(3));
-            REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{3}));
-            REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{}));
-            rb.clear();
+            REQUIRE_NOTHROW(rb.start().addHead(1).end());
+            REQUIRE_NOTHROW(rb.startBody().addGoal(1).addHead(2));
+            REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{2}));
+            REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{1}));
+        }
 
-            REQUIRE_NOTHROW(rb.startBody().addGoal(2).addHead(1).end().startBody().addGoal(3));
-            REQUIRE(spanEq(rb.head(), std::vector<Atom_t>{}));
-            REQUIRE(spanEq(rb.body(), std::vector<Lit_t>{3}));
+        SECTION("add after end clears") {
+            REQUIRE_NOTHROW(RuleBuilder().start().addHead(1).addGoal(2).end().addGoal(3));
+            REQUIRE_THROWS_AS(RuleBuilder().start().addGoal(2).addHead(1).end().addHead(3), std::logic_error);
+            REQUIRE_NOTHROW(RuleBuilder().end().addGoal(1));
         }
     }
     SECTION("grow bug") {

@@ -186,6 +186,10 @@ private:
     auto map(std::span<T>& lits) -> std::span<T>;
     //! Maps input to output atom.
     auto map(Atom_t atom) -> Atom_t;
+    //! Maps input to output literal.
+    auto map(Lit_t lit) -> Lit_t;
+    //! Maps input to output weight literal.
+    auto map(WeightLit in) -> WeightLit { return {.lit = map(in.lit), .weight = in.weight}; }
     //! Creates a new output atom.
     auto newAtom() -> Atom_t { return nextAtom_++; }
 
