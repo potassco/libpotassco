@@ -40,8 +40,9 @@ jobs:
 
     - name: install multi-lib on ubuntu
       if: ${{ matrix.os == 'ubuntu-latest' && matrix.cmake_extra == '-DCMAKE_CXX_FLAGS_INIT=-m32' }}
-      run:
-        sudo apt-get install -y g++-multilib
+      run: |
+        sudo apt update
+        sudo apt-get install --fix-missing -y g++-multilib
 
     - name: install prerequisites on macos
       if: ${{ matrix.os == 'macos-latest' }}
