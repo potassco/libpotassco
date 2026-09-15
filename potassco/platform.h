@@ -68,6 +68,7 @@
 #if !defined(__STDC_LIMIT_MACROS)
 #define __STDC_LIMIT_MACROS
 #endif
+#define POTASSCO_ATTR_NO_PROFILE          __attribute__((no_profile_instrument_function))
 #define POTASSCO_FUNC_NAME                __PRETTY_FUNCTION__
 #define POTASSCO_PRAGMA_TODO(X)           POTASSCO_PRAGMA(message("TODO: " X))
 #define POTASSCO_ATTRIBUTE_FORMAT(fp, ap) __attribute__((__format__(__printf__, fp, ap)))
@@ -127,6 +128,9 @@
 #endif
 #if !defined(POTASSCO_PREFETCH)
 #define POTASSCO_PREFETCH(...)
+#endif
+#if !defined(POTASSCO_ATTR_NO_PROFILE)
+#define POTASSCO_ATTR_NO_PROFILE
 #endif
 
 #define POTASSCO_WARNING_IGNORE_GNU(X) POTASSCO_WARNING_IGNORE_GCC(X) POTASSCO_WARNING_IGNORE_CLANG(X)
