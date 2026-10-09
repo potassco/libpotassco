@@ -42,7 +42,17 @@ requires(std::is_enum_v<EnumT>)
     return static_cast<std::underlying_type_t<EnumT>>(e);
 }
 #endif
+//! Concept for enums with fixed underlying type.
+template <typename EnumT>
+concept FixedEnum = std::is_enum_v<EnumT> && requires { EnumT{0}; };
+//! Concept for scoped enums.
+template <typename EnumT>
+concept ScopedEnum = std::is_enum_v<EnumT> && not std::is_convertible_v<EnumT, std::underlying_type_t<EnumT>>;
+
 namespace Detail {
+template <typename EnumT>
+concept BitFlagEnum = FixedEnum<EnumT> && std::unsigned_integral<std::underlying_type_t<EnumT>>;
+
 // NOLINTBEGIN
 template <typename T>
 inline constexpr auto c_type = std::type_identity<T>{};
@@ -131,7 +141,7 @@ constexpr void addEntries(std::pair<EnumT, std::string_view>* out, EnumT e, std:
         addEntries(out, args...);
     }
 }
-template <typename Op, typename E, typename... Args>
+template <typename Op, BitFlagEnum E, typename... Args>
 [[nodiscard]] POTASSCO_FORCE_INLINE constexpr E applyBitOp(Op op, E arg1, Args... args) noexcept {
 #if defined(__clang__) && __clang_major__ > 17
     [[clang::suppress]] // suppress clang analyzer warning optin.core.EnumCastOutOfRange
@@ -275,10 +285,6 @@ consteval auto reflectEntries() {
         return Potassco::reflectEntries<E, __VA_ARGS__>();                                                             \
     }                                                                                                                  \
     static_assert(Potassco::HasEnumEntries<E>)
-
-//! Concept for scoped enums.
-template <typename EnumT>
-concept ScopedEnum = std::is_enum_v<EnumT> && not std::is_convertible_v<EnumT, std::underlying_type_t<EnumT>>;
 
 //! Concept for enums with metadata.
 template <typename EnumT>
