@@ -68,7 +68,13 @@
 #if !defined(__STDC_LIMIT_MACROS)
 #define __STDC_LIMIT_MACROS
 #endif
-#define POTASSCO_ATTR_NO_PROFILE          __attribute__((no_profile_instrument_function))
+#if defined(__GNUC__) && !defined(__clang__)
+// NOTE: GCC 12+ inlining behavior differs between -fprofile-generate and -fprofile-use which leads to coverage
+//       mismatch failures, so disable inlining explicitly.
+#define POTASSCO_ATTR_NO_PROFILE __attribute__((no_profile_instrument_function, noinline))
+#else
+#define POTASSCO_ATTR_NO_PROFILE __attribute__((no_profile_instrument_function))
+#endif
 #define POTASSCO_FUNC_NAME                __PRETTY_FUNCTION__
 #define POTASSCO_PRAGMA_TODO(X)           POTASSCO_PRAGMA(message("TODO: " X))
 #define POTASSCO_ATTRIBUTE_FORMAT(fp, ap) __attribute__((__format__(__printf__, fp, ap)))
