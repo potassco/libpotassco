@@ -46,17 +46,20 @@ struct SmodelsConvert::SmData {
         buffer.push_back(')');
         return buffer.view();
     }
+
+    static constexpr auto no_str = 0u;
+
     struct Atom {
         [[nodiscard]] auto makePred(ScratchType& buffer) const -> std::string_view {
             return SmData::makePred(buffer, "_atom"sv, smId);
         }
         [[nodiscard]] auto sm() const -> Atom_t { return smId; }
-        [[nodiscard]] bool hasName() const { return name != id_max; }
+        [[nodiscard]] bool hasName() const { return name != no_str; }
 
-        Id_t     name{id_max};  // (optional) name of smodels (output) atom, i.e., symbol table entry
+        Id_t     name{no_str};  // (optional) name of smodels (output) atom, i.e., symbol table entry
         uint32_t smId : 28 {0}; // corresponding smodels (output) atom
         uint32_t head : 1 {0};  // atom occurs in a head of a rule
-        uint32_t show : 1 {0};  // atom has a name
+        uint32_t fact : 1 {0};  // atom is a fact
         uint32_t extn : 2 {0};  // value if atom is external
     };
     struct Heuristic {
@@ -72,14 +75,15 @@ struct SmodelsConvert::SmData {
     struct OutTerm {
         OutTerm() = default;
         explicit OutTerm(Id_t str) : name(str) {}
-        void step() {
+        [[nodiscard]] bool hasName() const { return name != no_str; }
+        void               step() {
             if (auto prev = std::exchange(atom, 0u); prev) {
                 last = prev;
             }
         }
         Atom_t atom{0u};
         Atom_t last{0u};
-        Id_t   name{id_max};
+        Id_t   name{no_str};
     };
     struct Output {
         enum Type : uint8_t { type_name = 0, type_edge = 1 };
@@ -90,7 +94,7 @@ struct SmodelsConvert::SmData {
             if (type == type_edge) {
                 return SmData::makePred(self.scratch, "_edge"sv, start, end);
             }
-            auto& n = self.strings[name];
+            auto& n = self.getString(name);
             return end == 0 ? n.view() : SmData::makePred(self.scratch, "_show_term"sv, n.view());
         }
         uint32_t atom : 31;
@@ -165,11 +169,19 @@ struct SmodelsConvert::SmData {
             std::ranges::transform(in, sp.data(), [&](auto lit) { return mapLit(lit); });
         }
     }
+    [[nodiscard]] auto getString(Id_t id) const -> const ConstString& {
+        POTASSCO_ASSERT(id != no_str);
+        return strings[id - 1];
+    }
+    auto addString(std::string_view str) -> Id_t {
+        auto id = strings.add(str).first;
+        POTASSCO_ASSERT(id < id_max);
+        return id + 1u;
+    }
     void addOutput(Atom& atom, std::string_view str) {
         POTASSCO_CHECK_PRE(not atom.hasName(), "Redefinition: atom '%u:%" PRIsv "' already shown as '%s'", atom.sm(),
-                           PRI_SV(str), strings[atom.name].c_str());
-        atom.show = 1u;
-        atom.name = strings.add(str).first;
+                           PRI_SV(str), getString(atom.name).c_str());
+        atom.name = addString(str);
         output.emplace_back(atom);
     }
     void addTerm(Id_t termId, std::string_view str) {
@@ -177,10 +189,10 @@ struct SmodelsConvert::SmData {
             terms.resize(termId + 1);
         }
         auto& t    = terms[termId];
-        auto  name = strings.add(str).first;
-        POTASSCO_CHECK_PRE(t.name == id_max || t.name == name,
+        auto  name = addString(str);
+        POTASSCO_CHECK_PRE(not t.hasName() || t.name == name,
                            "Redefinition: term '%u:%" PRIsv "' already defined as '%s'", termId, PRI_SV(str),
-                           strings[t.name].c_str());
+                           getString(t.name).c_str());
         t.name = name;
     }
     void addMinimize(Weight_t prio, WeightLitSpan lits) {
@@ -242,7 +254,7 @@ auto SmodelsConvert::makeAtom(LitSpan lits, Lit_t last, bool named) -> Atom_t {
     auto   sz    = lits.size() + static_cast<uint32_t>(last != 0);
     auto   front = lits.empty() ? last : lits.front();
     Atom_t id;
-    if (sz != 1 || front <= 0 || (data_->mapAtom(atom(front)).show && named)) {
+    if (sz != 1 || front <= 0 || (data_->mapAtom(atom(front)).hasName() && named)) {
         // aux :- lits [, last]
         data_->rule.clear().start().addHead(id = data_->newAtom()).startBody();
         data_->mapBody(lits);
@@ -253,8 +265,8 @@ auto SmodelsConvert::makeAtom(LitSpan lits, Lit_t last, bool named) -> Atom_t {
     }
     else {
         auto& ma = data_->mapAtom(atom(front));
-        ma.show  = static_cast<unsigned>(named);
         id       = ma.smId;
+        ma.name  = named ? data_->addString("*") : SmData::no_str;
     }
     return id;
 }
@@ -270,6 +282,9 @@ void SmodelsConvert::rule(HeadType ht, AtomSpan head, LitSpan body) {
         data_->rule.startBody();
         data_->mapBody(body);
         data_->rule.end(&out_);
+        if (ht == HeadType::disjunctive && body.empty() && head.size() == 1u) {
+            data_->mapped(head[0])->fact = 1u;
+        }
     }
 }
 void SmodelsConvert::rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitSpan body) {
@@ -300,12 +315,22 @@ void SmodelsConvert::rule(HeadType ht, AtomSpan head, Weight_t bound, WeightLitS
 void SmodelsConvert::minimize(Weight_t prio, WeightLitSpan lits) { data_->addMinimize(prio, lits); }
 void SmodelsConvert::outputAtom(Atom_t atom, std::string_view name) {
     POTASSCO_CHECK_PRE(atom, "atom expected");
-    data_->addOutput(data_->mapAtom(Potassco::atom(atom)), name);
+    if (auto& m = data_->mapAtom(Potassco::atom(atom)); not m.hasName()) {
+        data_->addOutput(m, name);
+    }
+    else if (data_->getString(m.name) != name) {
+        auto eqLit = lit(atom);
+        auto body  = m.fact ? LitSpan{} : toSpan(eqLit);
+        auto aux   = SmData::Atom{};
+        aux.smId   = makeAtom(body, 0, true);
+        aux.fact   = m.fact;
+        data_->addOutput(aux, name);
+    }
 }
 void SmodelsConvert::outputTerm(Id_t termId, std::string_view name) { data_->addTerm(termId, name); }
 void SmodelsConvert::output(Id_t termId, LitSpan cond) {
     auto* term = termId < data_->terms.size() ? &data_->terms[termId] : nullptr;
-    POTASSCO_CHECK_PRE(term != nullptr && term->name != id_max, "Undefined: term %u is unknown", termId);
+    POTASSCO_CHECK_PRE(term != nullptr && term->hasName(), "Undefined: term %u is unknown", termId);
     auto condAtom = lit(makeAtom(cond, neg(term->last), false));
     if (not term->atom) {
         term->atom = data_->newAtom();
@@ -392,7 +417,7 @@ void SmodelsConvert::flushHeuristic() {
                 data_->addOutput(*ma, ma->makePred(data_->scratch));
                 POTASSCO_DEBUG_ASSERT(ma->hasName());
             }
-            out_.outputAtom(heu.cond, heu.makePred(data_->scratch, data_->strings[ma->name].view()));
+            out_.outputAtom(heu.cond, heu.makePred(data_->scratch, data_->getString(ma->name).view()));
         }
     }
 }

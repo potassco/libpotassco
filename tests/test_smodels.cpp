@@ -617,6 +617,26 @@ TEST_CASE("Convert to smodels", "[convert]") {
         REQUIRE(observer.atoms.size() == 2);
         REQUIRE(observer.atoms.at(auxFoo2) == "_show_term(Foo)");
     }
+    SECTION("convert output atom") {
+        convert.rule(HeadType::disjunctive, Potassco::toSpan(a), {});
+        REQUIRE_NOTHROW(convert.outputAtom(a, "a"));
+        REQUIRE_NOTHROW(convert.outputAtom(2, "c"));
+        REQUIRE_NOTHROW(convert.outputAtom(a, "b"));
+        REQUIRE_NOTHROW(convert.outputAtom(2, "d"));
+        REQUIRE_NOTHROW(convert.outputAtom(a, "a"));
+        REQUIRE_NOTHROW(convert.endStep());
+
+        REQUIRE(observer.atoms.size() == 4);
+        REQUIRE(observer.atoms.at(2) == "a");
+        REQUIRE(observer.atoms.at(3) == "c");
+        REQUIRE(observer.atoms.at(4) == "b");
+        REQUIRE(observer.atoms.at(5) == "d");
+
+        REQUIRE(observer.rules.at(Rule_t::basic).size() == 3);
+        REQUIRE(observer.rules[Rule_t::basic][0] == RawRule{2});
+        REQUIRE(observer.rules[Rule_t::basic][1] == RawRule{4});
+        REQUIRE(observer.rules[Rule_t::basic][2] == RawRule{5, 3});
+    }
 
     SECTION("convert external") {
         convert.external(1, TruthValue::free);
