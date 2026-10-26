@@ -489,12 +489,12 @@ TEST_CASE("SmodelsOutput supports extended programs", "[smodels_ext]") {
     exp << static_cast<int>(Rule_t::choice) << " 2 2 3 2 1 5 4\n";
     writer.external(3, TruthValue::false_);
     writer.external(4, TruthValue::false_);
+    exp << static_cast<int>(Rule_t::clasp_assign_ext) << " 4 0\n";
+    exp << static_cast<int>(Rule_t::clasp_assign_ext) << " 5 0\n";
     writer.minimize(0, min);
     writer.heuristic(1, DomModifier::sign, 1, 0, {});
     exp << "1 6 0 0\n";
     exp << static_cast<int>(Rule_t::optimize) << " 0 2 1 2 3 2 1\n";
-    exp << static_cast<int>(Rule_t::clasp_assign_ext) << " 4 0\n";
-    exp << static_cast<int>(Rule_t::clasp_assign_ext) << " 5 0\n";
     exp << "0\n6 _heuristic(_atom(2),sign,1,0)\n2 _atom(2)\n0\nB+\n0\nB-\n1\n0\n1\n";
     writer.endStep();
     writer.beginStep();
@@ -649,6 +649,31 @@ TEST_CASE("Convert to smodels", "[convert]") {
         REQUIRE(observer.rules[Rule_t::clasp_assign_ext][0][1] == int(TruthValue::free));
         REQUIRE(observer.rules[Rule_t::clasp_assign_ext][1][1] == int(TruthValue::true_));
         REQUIRE(observer.rules[Rule_t::clasp_assign_ext][2][1] == int(TruthValue::false_));
+    }
+    SECTION("convert external without ext") {
+        SmodelsConvert noExt(observer, false);
+        noExt.external(1, TruthValue::free);
+        noExt.external(2, TruthValue::true_);
+        noExt.external(3, TruthValue::false_);
+        noExt.external(4, TruthValue::release);
+        noExt.external(4, TruthValue::true_); // ignored - already released
+        noExt.external(5, TruthValue::free);
+        noExt.external(5, TruthValue::true_); // overrides previous free
+        noExt.external(6, TruthValue::true_);
+        noExt.external(6, TruthValue::free); // overrides previous true
+
+        Atom_t defined = 7;
+        noExt.external(defined, TruthValue::free); // ignored
+        noExt.rule(HeadType::disjunctive, Potassco::toSpan(defined), {});
+
+        noExt.endStep();
+
+        REQUIRE(observer.rules.at(Rule_t::choice).size() == 1);
+        REQUIRE(observer.rules[Rule_t::choice][0] == RawRule{2, 2, 7});
+        REQUIRE(observer.rules.at(Rule_t::basic).at(0) == RawRule{8});
+        REQUIRE(observer.rules.at(Rule_t::basic).at(1) == RawRule{3});
+        REQUIRE(observer.rules.at(Rule_t::basic).at(2) == RawRule{6});
+        REQUIRE(observer.rules.at(Rule_t::basic).size() == 3);
     }
     SECTION("edges are converted to atoms") {
         convert.outputAtom(a, "a");

@@ -57,10 +57,9 @@ struct SmodelsConvert::SmData {
         [[nodiscard]] bool hasName() const { return name != no_str; }
 
         Id_t     name{no_str};  // (optional) name of smodels (output) atom, i.e., symbol table entry
-        uint32_t smId : 28 {0}; // corresponding smodels (output) atom
+        uint32_t smId : 30 {0}; // corresponding smodels (output) atom
         uint32_t head : 1 {0};  // atom occurs in a head of a rule
         uint32_t fact : 1 {0};  // atom is a fact
-        uint32_t extn : 2 {0};  // value if atom is external
     };
     struct Heuristic {
         auto makePred(ScratchType& buffer, std::string_view atomName) const -> std::string_view {
@@ -106,7 +105,7 @@ struct SmodelsConvert::SmData {
         int32_t end;
     };
     using AtomMap = DynamicArray<Atom>;
-    using AtomVec = DynamicArray<Atom_t>;
+    using ExtVec  = DynamicArray<uint32_t>;
     using WLitVec = DynamicArray<WeightLit>;
     using HeuVec  = DynamicArray<Heuristic>;
     using OutVec  = DynamicArray<Output>;
@@ -210,12 +209,6 @@ struct SmodelsConvert::SmData {
         }
         vec.endPos = minLits.size();
     }
-    void addExternal(Atom_t a, TruthValue v) {
-        if (auto& ma = mapAtom(a); not ma.head) {
-            ma.extn = static_cast<unsigned>(v);
-            external.push_back(a);
-        }
-    }
     void addHeuristic(Atom_t a, DomModifier t, int bias, unsigned prio, Atom_t cond) {
         Heuristic h = {a, t, bias, prio, cond};
         heuristic.push_back(h);
@@ -232,7 +225,7 @@ struct SmodelsConvert::SmData {
     OrderedStringSet strings;   // set of strings
     AtomMap          atoms;     // maps input atoms to output atoms
     TermVec          terms;     // list of output terms
-    AtomVec          external;  // external atoms
+    ExtVec           external;  // external atoms
     HeuVec           heuristic; // list of heuristic modifications not yet processed
     MinSet           minimize;  // set of minimize constraints
     WLitVec          minLits;   // minimize literals
@@ -338,7 +331,19 @@ void SmodelsConvert::output(Id_t termId, LitSpan cond) {
     }
     out_.rule(HeadType::disjunctive, toSpan(term->atom), toSpan(condAtom));
 }
-void SmodelsConvert::external(Atom_t a, TruthValue v) { data_->addExternal(a, v); }
+void SmodelsConvert::external(Atom_t a, TruthValue v) {
+    if (auto& ma = data_->mapAtom(a); not ma.head) { // once defined or released - no longer external
+        if (ext_) {
+            out_.external(ma.sm(), v);
+        }
+        else if (v != TruthValue::release) {
+            data_->external.push_back(a << 2u | static_cast<uint32_t>(v));
+        }
+        if (v == TruthValue::release) {
+            ma.head = 1u;
+        }
+    }
+}
 void SmodelsConvert::heuristic(Atom_t a, DomModifier t, int bias, unsigned prio, LitSpan cond) {
     if (not ext_) {
         out_.heuristic(a, t, bias, prio, cond);
@@ -387,27 +392,39 @@ void SmodelsConvert::flushMinimize() {
     data_->rule.end(&out_);
 }
 void SmodelsConvert::flushExternal() {
-    data_->rule.clear().start(HeadType::choice);
-    for (auto ext : data_->external) {
-        const auto& a  = data_->mapAtom(ext);
-        auto        vt = static_cast<TruthValue>(a.extn);
-        if (not ext_) {
-            if (a.head) {
-                continue;
-            }
-            if (auto at = a.sm(); vt == TruthValue::free) {
-                data_->rule.addHead(at);
-            }
-            else if (vt == TruthValue::true_) {
-                out_.rule(HeadType::disjunctive, toSpan(at), {});
+    if (not data_->external.empty()) {
+        static constexpr auto decodeExternal = [](uint32_t ext) -> Atom_t { return ext >> 2u; };
+        // Defined atoms are not external
+        erase_if(data_->external, [&](uint32_t ext) {
+            const auto* ma = data_->mapped(decodeExternal(ext));
+            POTASSCO_ASSERT(ma && ma->fact <= ma->head);
+            return ma->head != 0u;
+        });
+        data_->rule.clear().start(HeadType::choice);
+        // Compute final value
+        for (auto ext : data_->external) {
+            const auto& ma = data_->mapped(decodeExternal(ext));
+            auto        vt = static_cast<TruthValue>(ext & 3u);
+            ma->head       = (vt != TruthValue::false_);
+            ma->fact       = (vt == TruthValue::true_);
+        }
+        // Apply final value and restore head state
+        for (auto ext : data_->external) {
+            if (const auto& ma = data_->mapped(decodeExternal(ext)); ma->head) {
+                auto at = ma->sm();
+                if (ma->fact == 0u) {
+                    data_->rule.addHead(at);
+                }
+                else {
+                    out_.rule(HeadType::disjunctive, toSpan(at), {});
+                }
+                ma->head = 0u;
+                ma->fact = 0u;
             }
         }
-        else {
-            out_.external(a.sm(), vt);
+        if (auto head = data_->rule.head(); not head.empty()) {
+            data_->rule.end(&out_);
         }
-    }
-    if (auto head = data_->rule.head(); not head.empty()) {
-        data_->rule.end(&out_);
     }
 }
 void SmodelsConvert::flushHeuristic() {
