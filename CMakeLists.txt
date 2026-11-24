@@ -4,6 +4,11 @@ if(POLICY CMP0063)
     cmake_policy(SET CMP0063 NEW)
 endif()
 
+if(CMAKE_CXX_FLAGS MATCHES "-fprofile-")
+    set(POTASSCO_PROFILE ON)
+else()
+    set(POTASSCO_PROFILE OFF)
+endif()
 # enable folders in IDEs like Visual Studio
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include(GNUInstallDirs)
@@ -15,6 +20,7 @@ option(LIB_POTASSCO_INSTALL_VERSIONED "whether to use a versioned install layout
 cmake_dependent_option(LIB_POTASSCO_TESTS_ENABLE_DBG_HEAP "enable windows debug heap in catch2" OFF "LIB_POTASSCO_BUILD_TESTS" OFF)
 cmake_dependent_option(LIB_POTASSCO_BUILD_STATIC "link lpconvert statically if supported" OFF "LIB_POTASSCO_BUILD_APP" ON)
 option(LIB_POTASSCO_SETUP_CATCH2 "setup third_party/Catch2" ${LIB_POTASSCO_BUILD_TESTS})
+option(LIB_POTASSCO_PROFILE "whether to exclude certain functions from profiling" ${POTASSCO_PROFILE})
 mark_as_advanced(LIB_POTASSCO_SETUP_CATCH2)
 
 if(LIB_POTASSCO_INSTALL_LIB AND NOT CMAKE_INSTALL_LIBDIR)
@@ -84,6 +90,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL
         -Wall -Wextra -Wpedantic -Wshadow -Wundef -Wformat -Wformat=2 -Wunused -Wsign-conversion -Wimplicit-fallthrough
         -Wextra-semi -Woverloaded-virtual -Wnon-virtual-dtor)
 endif()
+target_compile_definitions(potassco_default_options INTERFACE $<$<BOOL:${LIB_POTASSCO_PROFILE}>:POTASSCO_PROFILING>)
 target_compile_features(potassco_default_options INTERFACE cxx_std_20)
 set_target_properties(potassco_default_options PROPERTIES CXX_EXTENSIONS OFF)
 target_compile_options(potassco_default_warnings
